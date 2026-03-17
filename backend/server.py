@@ -1,15 +1,17 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from typing import List, Optional
 import uuid
-from datetime import datetime, timezone
-
+from datetime import datetime, timezone, timedelta
+import jwt
+import bcrypt
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -19,52 +21,246 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
-app = FastAPI()
+# JWT Configuration
+JWT_SECRET = os.environ.get('JWT_SECRET', 'cardiac-solutions-stark-secret-key-2024')
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRATION_HOURS = 24
+
+# Create the main app
+app = FastAPI(title="Cardiac Solutions API")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
+security = HTTPBearer()
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
+# ==================== Models ====================
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+    name: str
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    name: str
+    created_at: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
+class AEDDevice(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    subscriber: str
+    location: str
+    status: str  # ready, not_ready, reposition, not_present, expired_bp, expiring_bp, lost_contact, unknown
+    last_check: str
+    battery_level: int
+    pads_expiry: str
+    camera_status: str  # online, offline
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+class Subscriber(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    total: int
+    ready: int
+    not_ready: int
+    reposition: int
+    not_present: int
+    expired_bp: int
+    expiring_bp: int
+    lost_contact: int
+    unknown: int
 
-# Add your routes to the router instead of directly to app
+class DashboardStats(BaseModel):
+    total_monitored: int
+    percent_ready: float
+    ready: int
+    not_ready: int
+    reposition: int
+    not_present: int
+    expired_bp: int
+    expiring_bp: int
+    lost_contact: int
+    unknown: int
+    last_updated: str
+
+# ==================== Auth Helpers ====================
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+
+def create_token(user_id: str, email: str) -> str:
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await db.users.find_one({"id": user_id}, {"_id": 0})
+        if user is None:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+# ==================== Auth Routes ====================
+
+@api_router.post("/auth/register", response_model=TokenResponse)
+async def register(user_data: UserCreate):
+    # Check if user exists
+    existing = await db.users.find_one({"email": user_data.email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Create user
+    user_id = str(uuid.uuid4())
+    user_doc = {
+        "id": user_id,
+        "email": user_data.email,
+        "name": user_data.name,
+        "password_hash": hash_password(user_data.password),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.users.insert_one(user_doc)
+    
+    # Generate token
+    token = create_token(user_id, user_data.email)
+    
+    return TokenResponse(
+        access_token=token,
+        user=UserResponse(
+            id=user_id,
+            email=user_data.email,
+            name=user_data.name,
+            created_at=user_doc["created_at"]
+        )
+    )
+
+@api_router.post("/auth/login", response_model=TokenResponse)
+async def login(credentials: UserLogin):
+    user = await db.users.find_one({"email": credentials.email}, {"_id": 0})
+    if not user or not verify_password(credentials.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    token = create_token(user["id"], user["email"])
+    
+    return TokenResponse(
+        access_token=token,
+        user=UserResponse(
+            id=user["id"],
+            email=user["email"],
+            name=user["name"],
+            created_at=user["created_at"]
+        )
+    )
+
+@api_router.get("/auth/me", response_model=UserResponse)
+async def get_me(current_user: dict = Depends(get_current_user)):
+    return UserResponse(
+        id=current_user["id"],
+        email=current_user["email"],
+        name=current_user["name"],
+        created_at=current_user["created_at"]
+    )
+
+# ==================== Dashboard Routes ====================
+
+@api_router.get("/dashboard/stats", response_model=DashboardStats)
+async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
+    # Return mock data for now - in production, aggregate from AED devices
+    stats = await db.dashboard_stats.find_one({}, {"_id": 0})
+    if not stats:
+        # Create default stats
+        stats = {
+            "total_monitored": 3108,
+            "percent_ready": 76.7,
+            "ready": 2385,
+            "not_ready": 6,
+            "reposition": 82,
+            "not_present": 7,
+            "expired_bp": 289,
+            "expiring_bp": 25,
+            "lost_contact": 256,
+            "unknown": 58,
+            "last_updated": datetime.now(timezone.utc).isoformat()
+        }
+        await db.dashboard_stats.insert_one(stats)
+        stats.pop("_id", None)
+    return DashboardStats(**stats)
+
+@api_router.get("/dashboard/subscribers", response_model=List[Subscriber])
+async def get_subscribers(current_user: dict = Depends(get_current_user)):
+    subscribers = await db.subscribers.find({}, {"_id": 0}).to_list(100)
+    if not subscribers:
+        # Create mock subscribers
+        mock_subscribers = [
+            {"id": str(uuid.uuid4()), "name": "Baton Rouge Airport", "total": 4, "ready": 0, "not_ready": 0, "reposition": 0, "not_present": 0, "expired_bp": 4, "expiring_bp": 0, "lost_contact": 0, "unknown": 0},
+            {"id": str(uuid.uuid4()), "name": "Birmingham Airport Authority", "total": 38, "ready": 34, "not_ready": 0, "reposition": 0, "not_present": 0, "expired_bp": 1, "expiring_bp": 1, "lost_contact": 2, "unknown": 0},
+            {"id": str(uuid.uuid4()), "name": "Birmingham City Schools", "total": 283, "ready": 269, "not_ready": 0, "reposition": 8, "not_present": 0, "expired_bp": 0, "expiring_bp": 0, "lost_contact": 4, "unknown": 1},
+            {"id": str(uuid.uuid4()), "name": "Birmingham Libraries", "total": 20, "ready": 19, "not_ready": 0, "reposition": 0, "not_present": 0, "expired_bp": 0, "expiring_bp": 0, "lost_contact": 1, "unknown": 0},
+            {"id": str(uuid.uuid4()), "name": "Birmingham Police Dept", "total": 188, "ready": 185, "not_ready": 0, "reposition": 0, "not_present": 0, "expired_bp": 0, "expiring_bp": 0, "lost_contact": 2, "unknown": 0},
+            {"id": str(uuid.uuid4()), "name": "Cardiac Solutions", "total": 1, "ready": 1, "not_ready": 0, "reposition": 0, "not_present": 0, "expired_bp": 0, "expiring_bp": 0, "lost_contact": 0, "unknown": 0},
+            {"id": str(uuid.uuid4()), "name": "Delta Airlines HQ", "total": 156, "ready": 142, "not_ready": 2, "reposition": 5, "not_present": 1, "expired_bp": 3, "expiring_bp": 2, "lost_contact": 1, "unknown": 0},
+            {"id": str(uuid.uuid4()), "name": "Emory Healthcare", "total": 520, "ready": 498, "not_ready": 3, "reposition": 12, "not_present": 2, "expired_bp": 2, "expiring_bp": 1, "lost_contact": 2, "unknown": 0},
+        ]
+        await db.subscribers.insert_many(mock_subscribers)
+        subscribers = mock_subscribers
+    return [Subscriber(**s) for s in subscribers]
+
+@api_router.get("/dashboard/devices", response_model=List[AEDDevice])
+async def get_devices(current_user: dict = Depends(get_current_user), limit: int = 50):
+    devices = await db.devices.find({}, {"_id": 0}).to_list(limit)
+    if not devices:
+        # Create mock devices
+        locations = ["Main Lobby", "Floor 2 East", "Cafeteria", "Gym", "Pool Area", "Conference Room A", "Emergency Exit 1"]
+        statuses = ["ready", "ready", "ready", "ready", "not_ready", "reposition", "lost_contact"]
+        mock_devices = []
+        for i in range(20):
+            mock_devices.append({
+                "id": str(uuid.uuid4()),
+                "subscriber": "Birmingham City Schools",
+                "location": locations[i % len(locations)],
+                "status": statuses[i % len(statuses)],
+                "last_check": datetime.now(timezone.utc).isoformat(),
+                "battery_level": 85 + (i % 15),
+                "pads_expiry": "2025-06-15",
+                "camera_status": "online" if i % 5 != 0 else "offline"
+            })
+        await db.devices.insert_many(mock_devices)
+        devices = mock_devices
+    return [AEDDevice(**d) for d in devices]
+
+# ==================== Health Check ====================
+
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "Cardiac Solutions API - Online", "status": "operational"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
-
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
+@api_router.get("/health")
+async def health():
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 # Include the router in the main app
 app.include_router(api_router)
