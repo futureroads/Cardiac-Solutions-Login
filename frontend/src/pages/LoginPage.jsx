@@ -396,6 +396,16 @@ export default function LoginPage({ onLogin }) {
         <AEDCursor position={cursorPosition} isClicking={isClicking} />
       )}
 
+      {/* Logo in upper left corner */}
+      <div className="absolute top-6 left-6 z-20">
+        <img 
+          src="https://customer-assets.emergentagent.com/job_pulse-ops/artifacts/wftdw2pr_Gemini_Generated_Image_3dl4mo3dl4mo3dl4.png" 
+          alt="Cardiac Solutions Logo" 
+          className="w-16 h-16 object-contain"
+          style={{ filter: 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.4))' }}
+        />
+      </div>
+
       {/* Holographic Grid Floor */}
       <div className="absolute bottom-0 left-0 right-0 h-[40vh] holo-grid-perspective opacity-30" />
       
