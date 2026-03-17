@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import axios from "axios";
-import { Eye, EyeOff, Zap, Shield, Activity } from "lucide-react";
+import { Eye, EyeOff, Zap, Shield, Activity, ArrowLeft } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -515,6 +515,23 @@ export default function LoginPage({ onLogin }) {
               transition={{ duration: 0.6 }}
               className="flex flex-col items-center w-full"
             >
+              {/* Back Button */}
+              <motion.button
+                onClick={() => {
+                  setCurrentScreen("heart");
+                  setIsBeating(false);
+                }}
+                className="absolute top-6 left-6 flex items-center gap-2 text-red-500 hover:text-red-400 transition-colors font-tech text-sm tracking-wider"
+                style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.4 }}
+                data-testid="back-button"
+              >
+                <ArrowLeft className="w-5 h-5" style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.6))' }} />
+                <span>BACK</span>
+              </motion.button>
+
               {/* Logo & Title */}
               <motion.div 
                 className="text-center mb-8"
