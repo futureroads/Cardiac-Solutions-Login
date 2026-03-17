@@ -453,7 +453,7 @@ export default function LoginPage({ onLogin }) {
                   style={{ filter: 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.4))' }}
                 />
                 <h1 className="font-tech text-4xl md:text-5xl text-red-500 mb-2" style={{ textShadow: '0 0 10px rgba(239, 68, 68, 0.8), 0 0 20px rgba(239, 68, 68, 0.6), 0 0 40px rgba(239, 68, 68, 0.4)' }}>
-                  CARDIAC SOLUTIONS
+                  CARDIAC SOLUTIONS, LLC
                 </h1>
                 <p className="font-tech text-slate-400 tracking-[0.3em] text-sm">
                   AED MONITORING COMMAND CENTER
@@ -526,7 +526,7 @@ export default function LoginPage({ onLogin }) {
                 transition={{ duration: 0.6 }}
               >
                 <h1 className="font-tech text-4xl md:text-5xl text-red-500 mb-2" style={{ textShadow: '0 0 10px rgba(239, 68, 68, 0.8), 0 0 20px rgba(239, 68, 68, 0.6), 0 0 40px rgba(239, 68, 68, 0.4)' }}>
-                  CARDIAC SOLUTIONS
+                  CARDIAC SOLUTIONS, LLC
                 </h1>
                 <p className="font-tech text-slate-400 tracking-[0.3em] text-sm">
                   AED MONITORING COMMAND CENTER
