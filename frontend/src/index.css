@@ -7,9 +7,9 @@
 :root {
   --obsidian: #020617;
   --obsidian-deep: #000000;
-  --neon-cyan: #06b6d4;
-  --neon-cyan-bright: #00f3ff;
-  --neon-blue: #0ea5e9;
+  --neon-red: #ef4444;
+  --neon-red-bright: #ff3333;
+  --neon-crimson: #dc2626;
   --slate-dark: #0f172a;
   --slate-mid: #1e293b;
   --slate-light: #334155;
@@ -52,31 +52,31 @@ code {
 /* Holographic Grid Background */
 .holo-grid {
   background-image: 
-    linear-gradient(rgba(6, 182, 212, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(6, 182, 212, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(239, 68, 68, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(239, 68, 68, 0.03) 1px, transparent 1px);
   background-size: 40px 40px;
 }
 
 .holo-grid-perspective {
   background-image: 
-    linear-gradient(rgba(6, 182, 212, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(6, 182, 212, 0.08) 1px, transparent 1px);
+    linear-gradient(rgba(239, 68, 68, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(239, 68, 68, 0.08) 1px, transparent 1px);
   background-size: 60px 60px;
   transform: perspective(500px) rotateX(60deg);
   transform-origin: center bottom;
 }
 
 /* Glow Effects */
-.glow-cyan {
-  box-shadow: 0 0 20px rgba(6, 182, 212, 0.3), 0 0 40px rgba(6, 182, 212, 0.1);
+.glow-red {
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3), 0 0 40px rgba(239, 68, 68, 0.1);
 }
 
-.glow-cyan-strong {
-  box-shadow: 0 0 30px rgba(6, 182, 212, 0.5), 0 0 60px rgba(6, 182, 212, 0.2);
+.glow-red-strong {
+  box-shadow: 0 0 30px rgba(239, 68, 68, 0.5), 0 0 60px rgba(239, 68, 68, 0.2);
 }
 
-.text-glow-cyan {
-  text-shadow: 0 0 10px rgba(6, 182, 212, 0.5), 0 0 20px rgba(6, 182, 212, 0.3);
+.text-glow-red {
+  text-shadow: 0 0 10px rgba(239, 68, 68, 0.5), 0 0 20px rgba(239, 68, 68, 0.3);
 }
 
 /* HUD Card Corners */
@@ -90,7 +90,7 @@ code {
   position: absolute;
   width: 20px;
   height: 20px;
-  border-color: var(--neon-cyan);
+  border-color: var(--neon-red);
   opacity: 0.5;
 }
 
@@ -118,7 +118,7 @@ code {
 .glass-dark {
   background: rgba(2, 6, 23, 0.8);
   backdrop-filter: blur(16px);
-  border: 1px solid rgba(6, 182, 212, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.1);
 }
 
 /* Shock Effect Animation */
@@ -249,19 +249,19 @@ code {
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
-    --primary: 187 94% 43%;
-    --primary-foreground: 222.2 84% 4.9%;
+    --primary: 0 84% 60%;
+    --primary-foreground: 210 40% 98%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
-    --accent: 199 89% 48%;
+    --accent: 0 72% 51%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 187 94% 43%;
+    --ring: 0 84% 60%;
     --radius: 0.5rem;
   }
 }

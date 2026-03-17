@@ -44,9 +44,9 @@ const API = `${BACKEND_URL}/api`;
 // Status Card Component
 const StatusCard = ({ title, value, icon: Icon, color, trend, trendValue }) => {
   const colorClasses = {
+    red: "text-red-500 border-red-500/30 bg-red-500/5",
     cyan: "text-cyan-500 border-cyan-500/30 bg-cyan-500/5",
     green: "text-green-500 border-green-500/30 bg-green-500/5",
-    red: "text-red-500 border-red-500/30 bg-red-500/5",
     yellow: "text-yellow-500 border-yellow-500/30 bg-yellow-500/5",
     orange: "text-orange-500 border-orange-500/30 bg-orange-500/5",
     pink: "text-pink-500 border-pink-500/30 bg-pink-500/5",
@@ -208,8 +208,8 @@ export default function Dashboard({ user, onLogout }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
         >
-          <Activity className="w-12 h-12 text-cyan-500 mx-auto mb-4 animate-pulse" />
-          <div className="font-tech text-cyan-500 tracking-wider">LOADING SYSTEMS...</div>
+          <Activity className="w-12 h-12 text-red-500 mx-auto mb-4 animate-pulse" />
+          <div className="font-tech text-red-500 tracking-wider">LOADING SYSTEMS...</div>
         </motion.div>
       </div>
     );
@@ -223,7 +223,7 @@ export default function Dashboard({ user, onLogout }) {
           <div className="flex items-center gap-6">
             <button 
               data-testid="notifications-btn"
-              className="flex items-center gap-2 px-4 py-2 border border-cyan-500/30 rounded text-cyan-500 hover:bg-cyan-500/10 transition-colors font-tech text-sm tracking-wider"
+              className="flex items-center gap-2 px-4 py-2 border border-red-500/30 rounded text-red-500 hover:bg-red-500/10 transition-colors font-tech text-sm tracking-wider"
             >
               <Bell className="w-4 h-4" />
               NOTIFICATIONS
@@ -234,7 +234,7 @@ export default function Dashboard({ user, onLogout }) {
             <button
               data-testid="refresh-btn"
               onClick={handleRefresh}
-              className="flex items-center gap-2 px-4 py-2 border border-cyan-500/30 rounded text-cyan-500 hover:bg-cyan-500/10 transition-colors font-tech text-sm tracking-wider"
+              className="flex items-center gap-2 px-4 py-2 border border-red-500/30 rounded text-red-500 hover:bg-red-500/10 transition-colors font-tech text-sm tracking-wider"
               disabled={refreshing}
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
@@ -242,7 +242,7 @@ export default function Dashboard({ user, onLogout }) {
             </button>
             <button 
               data-testid="download-csv-btn"
-              className="flex items-center gap-2 px-4 py-2 border border-cyan-500/30 rounded text-cyan-500 hover:bg-cyan-500/10 transition-colors font-tech text-sm tracking-wider"
+              className="flex items-center gap-2 px-4 py-2 border border-red-500/30 rounded text-red-500 hover:bg-red-500/10 transition-colors font-tech text-sm tracking-wider"
             >
               <Download className="w-4 h-4" />
               DOWNLOAD CSV
@@ -268,8 +268,8 @@ export default function Dashboard({ user, onLogout }) {
           animate={{ opacity: 1, y: 0 }}
         >
           <div className="flex items-center gap-3 mb-2">
-            <Heart className="w-6 h-6 text-cyan-500" />
-            <h1 className="font-tech text-2xl text-cyan-500 tracking-wider">
+            <Heart className="w-6 h-6 text-red-500" />
+            <h1 className="font-tech text-2xl text-red-500 tracking-wider">
               Daily AED Status Report
             </h1>
           </div>
@@ -285,7 +285,7 @@ export default function Dashboard({ user, onLogout }) {
             title="Total Monitored"
             value={stats?.total_monitored?.toLocaleString() || "—"}
             icon={Activity}
-            color="cyan"
+            color="red"
           />
           <StatusCard
             title="% Ready"
@@ -371,7 +371,7 @@ export default function Dashboard({ user, onLogout }) {
             <div className="flex items-center gap-2 text-sm text-slate-400 font-tech">
               <span>SORT:</span>
               <DropdownMenu>
-                <DropdownMenuTrigger data-testid="sort-dropdown" className="flex items-center gap-1 px-3 py-1 border border-slate-700 rounded text-slate-300 hover:border-cyan-500/50 transition-colors">
+                <DropdownMenuTrigger data-testid="sort-dropdown" className="flex items-center gap-1 px-3 py-1 border border-slate-700 rounded text-slate-300 hover:border-red-500/50 transition-colors">
                   <span className="capitalize">{sortField === "name" ? "Alphabetical" : sortField}</span>
                   <ChevronDown className="w-4 h-4" />
                 </DropdownMenuTrigger>
@@ -385,7 +385,7 @@ export default function Dashboard({ user, onLogout }) {
               <button
                 data-testid="sort-direction-btn"
                 onClick={() => setSortDirection(prev => prev === "asc" ? "desc" : "asc")}
-                className="p-1 border border-slate-700 rounded hover:border-cyan-500/50 transition-colors"
+                className="p-1 border border-slate-700 rounded hover:border-red-500/50 transition-colors"
               >
                 {sortDirection === "asc" ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </button>
@@ -394,7 +394,7 @@ export default function Dashboard({ user, onLogout }) {
             <div className="flex items-center gap-2 text-sm text-slate-400 font-tech">
               <Filter className="w-4 h-4" />
               <DropdownMenu>
-                <DropdownMenuTrigger data-testid="filter-dropdown" className="flex items-center gap-1 px-3 py-1 border border-slate-700 rounded text-slate-300 hover:border-cyan-500/50 transition-colors">
+                <DropdownMenuTrigger data-testid="filter-dropdown" className="flex items-center gap-1 px-3 py-1 border border-slate-700 rounded text-slate-300 hover:border-red-500/50 transition-colors">
                   <span>Filter by Status</span>
                   <ChevronDown className="w-4 h-4" />
                 </DropdownMenuTrigger>

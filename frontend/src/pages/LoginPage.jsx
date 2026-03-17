@@ -15,7 +15,7 @@ const HeartEKG = ({ isBeating, isFlat }) => {
       <motion.path
         d="M100 140 C100 140 30 90 30 50 C30 20 60 10 100 50 C140 10 170 20 170 50 C170 90 100 140 100 140"
         fill="none"
-        stroke="#06b6d4"
+        stroke="#ef4444"
         strokeWidth="2"
         className={isBeating ? "heartbeat" : ""}
         initial={{ pathLength: 0, opacity: 0 }}
@@ -26,7 +26,7 @@ const HeartEKG = ({ isBeating, isFlat }) => {
       {/* Inner Glow */}
       <motion.path
         d="M100 130 C100 130 40 85 40 52 C40 28 65 20 100 52 C135 20 160 28 160 52 C160 85 100 130 100 130"
-        fill="rgba(6, 182, 212, 0.1)"
+        fill="rgba(239, 68, 68, 0.1)"
         stroke="none"
         initial={{ opacity: 0 }}
         animate={{ opacity: isBeating ? 0.3 : 0.1 }}
@@ -40,7 +40,7 @@ const HeartEKG = ({ isBeating, isFlat }) => {
           : "M0 80 L60 80 L70 80 L75 60 L80 100 L85 40 L90 110 L95 70 L100 80 L200 80"
         }
         fill="none"
-        stroke="#00f3ff"
+        stroke="#ff3333"
         strokeWidth="2"
         strokeLinecap="round"
         className={!isFlat ? "ekg-animated" : ""}
@@ -197,7 +197,7 @@ export default function LoginPage({ onLogin }) {
         {[...Array(20)].map((_, i) => (
           <motion.div
             key={i}
-            className="absolute w-1 h-1 bg-cyan-500 rounded-full opacity-30"
+            className="absolute w-1 h-1 bg-red-500 rounded-full opacity-30"
             initial={{ 
               x: Math.random() * window.innerWidth, 
               y: Math.random() * window.innerHeight 
@@ -224,7 +224,7 @@ export default function LoginPage({ onLogin }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
-          <h1 className="font-tech text-4xl md:text-5xl text-cyan-500 text-glow-cyan mb-2">
+          <h1 className="font-tech text-4xl md:text-5xl text-red-500 text-glow-red mb-2">
             CARDIAC SOLUTIONS
           </h1>
           <p className="font-tech text-slate-400 tracking-[0.3em] text-sm">
@@ -240,13 +240,13 @@ export default function LoginPage({ onLogin }) {
           transition={{ duration: 0.8, delay: 0.2 }}
         >
           {/* Data Rings */}
-          <DataRing size="280px" color="#06b6d4" rotateClass="rotate-slow" opacity={0.2} />
-          <DataRing size="320px" color="#0ea5e9" rotateClass="rotate-reverse" opacity={0.15} />
-          <DataRing size="360px" color="#06b6d4" rotateClass="rotate-slow" opacity={0.1} />
+          <DataRing size="280px" color="#ef4444" rotateClass="rotate-slow" opacity={0.2} />
+          <DataRing size="320px" color="#dc2626" rotateClass="rotate-reverse" opacity={0.15} />
+          <DataRing size="360px" color="#ef4444" rotateClass="rotate-slow" opacity={0.1} />
           
           {/* Pulse Rings */}
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-52 h-52 rounded-full border border-cyan-500/30 pulse-ring" />
+            <div className="w-52 h-52 rounded-full border border-red-500/30 pulse-ring" />
           </div>
           
           {/* Heart SVG */}
@@ -264,8 +264,8 @@ export default function LoginPage({ onLogin }) {
         >
           <div className="glass-dark rounded-lg p-8 hud-corners">
             <div className="flex items-center gap-2 mb-6">
-              <Shield className="w-5 h-5 text-cyan-500" />
-              <span className="font-tech text-cyan-500 text-sm tracking-wider">
+              <Shield className="w-5 h-5 text-red-500" />
+              <span className="font-tech text-red-500 text-sm tracking-wider">
                 {isRegister ? "NEW OPERATOR REGISTRATION" : "OPERATOR AUTHENTICATION"}
               </span>
             </div>
@@ -288,7 +288,7 @@ export default function LoginPage({ onLogin }) {
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      className="w-full bg-transparent border-b border-slate-700 focus:border-cyan-500 px-0 py-3 text-white outline-none transition-colors font-mono"
+                      className="w-full bg-transparent border-b border-slate-700 focus:border-red-500 px-0 py-3 text-white outline-none transition-colors font-mono"
                       placeholder="Enter your name"
                       required={isRegister}
                     />
@@ -305,7 +305,7 @@ export default function LoginPage({ onLogin }) {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-transparent border-b border-slate-700 focus:border-cyan-500 px-0 py-3 text-white outline-none transition-colors font-mono"
+                  className="w-full bg-transparent border-b border-slate-700 focus:border-red-500 px-0 py-3 text-white outline-none transition-colors font-mono"
                   placeholder="operator@cardiac.com"
                   required
                 />
@@ -321,14 +321,14 @@ export default function LoginPage({ onLogin }) {
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-transparent border-b border-slate-700 focus:border-cyan-500 px-0 py-3 text-white outline-none transition-colors font-mono pr-10"
+                    className="w-full bg-transparent border-b border-slate-700 focus:border-red-500 px-0 py-3 text-white outline-none transition-colors font-mono pr-10"
                     placeholder="••••••••"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-500 hover:text-cyan-500 transition-colors"
+                    className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-500 hover:text-red-500 transition-colors"
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
@@ -339,7 +339,7 @@ export default function LoginPage({ onLogin }) {
                 data-testid="submit-button"
                 type="submit"
                 disabled={loading}
-                className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-tech py-4 rounded-full tracking-widest uppercase transition-all hover:shadow-[0_0_30px_rgba(6,182,212,0.5)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full bg-red-500 hover:bg-red-400 text-white font-tech py-4 rounded-full tracking-widest uppercase transition-all hover:shadow-[0_0_30px_rgba(239,68,68,0.5)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
               >
@@ -361,7 +361,7 @@ export default function LoginPage({ onLogin }) {
               <button
                 data-testid="toggle-auth-mode"
                 onClick={() => setIsRegister(!isRegister)}
-                className="text-sm text-slate-500 hover:text-cyan-500 transition-colors font-tech tracking-wider"
+                className="text-sm text-slate-500 hover:text-red-500 transition-colors font-tech tracking-wider"
               >
                 {isRegister ? "// EXISTING OPERATOR? AUTHENTICATE" : "// NEW OPERATOR? REGISTER"}
               </button>
@@ -383,10 +383,10 @@ export default function LoginPage({ onLogin }) {
       </div>
 
       {/* Corner Decorations */}
-      <div className="absolute top-4 left-4 w-20 h-20 border-t-2 border-l-2 border-cyan-500/30" />
-      <div className="absolute top-4 right-4 w-20 h-20 border-t-2 border-r-2 border-cyan-500/30" />
-      <div className="absolute bottom-4 left-4 w-20 h-20 border-b-2 border-l-2 border-cyan-500/30" />
-      <div className="absolute bottom-4 right-4 w-20 h-20 border-b-2 border-r-2 border-cyan-500/30" />
+      <div className="absolute top-4 left-4 w-20 h-20 border-t-2 border-l-2 border-red-500/30" />
+      <div className="absolute top-4 right-4 w-20 h-20 border-t-2 border-r-2 border-red-500/30" />
+      <div className="absolute bottom-4 left-4 w-20 h-20 border-b-2 border-l-2 border-red-500/30" />
+      <div className="absolute bottom-4 right-4 w-20 h-20 border-b-2 border-r-2 border-red-500/30" />
     </div>
   );
 }

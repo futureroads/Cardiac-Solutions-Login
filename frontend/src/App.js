@@ -37,7 +37,7 @@ function App() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#020617] flex items-center justify-center">
-        <div className="text-cyan-500 font-tech text-xl">INITIALIZING SYSTEMS...</div>
+        <div className="text-red-500 font-tech text-xl">INITIALIZING SYSTEMS...</div>
       </div>
     );
   }
