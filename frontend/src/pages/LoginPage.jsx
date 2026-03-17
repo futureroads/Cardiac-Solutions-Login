@@ -297,8 +297,18 @@ export default function LoginPage({ onLogin }) {
   const [showSparks, setShowSparks] = useState(false);
   const [currentScreen, setCurrentScreen] = useState("heart"); // "heart", "beating", "login"
   const containerRef = useRef(null);
+  const usernameInputRef = useRef(null);
   
   const { startHeartbeat, stopHeartbeat } = useEKGSound();
+
+  // Focus username input when login screen appears
+  useEffect(() => {
+    if (currentScreen === "login" && usernameInputRef.current) {
+      setTimeout(() => {
+        usernameInputRef.current.focus();
+      }, 100);
+    }
+  }, [currentScreen]);
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -552,6 +562,7 @@ export default function LoginPage({ onLogin }) {
                         USER NAME
                       </label>
                       <input
+                        ref={usernameInputRef}
                         data-testid="username-input"
                         type="text"
                         value={username}
