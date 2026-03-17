@@ -37,17 +37,17 @@ security = HTTPBearer()
 # ==================== Models ====================
 
 class UserCreate(BaseModel):
-    email: EmailStr
+    username: str
     password: str
-    name: str
+    name: Optional[str] = None
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    username: str
     password: str
 
 class UserResponse(BaseModel):
     id: str
-    email: str
+    username: str
     name: str
     created_at: str
 
@@ -102,13 +102,31 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
-def create_token(user_id: str, email: str) -> str:
+def create_token(user_id: str, username: str) -> str:
     payload = {
         "sub": user_id,
-        "email": email,
+        "username": username,
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+# Pre-defined users
+PREDEFINED_USERS = {
+    "Lew": {
+        "id": "user-lew-001",
+        "username": "Lew",
+        "name": "Lew",
+        "password": "Lew123",
+        "created_at": "2024-01-01T00:00:00Z"
+    },
+    "Stark": {
+        "id": "user-stark-001", 
+        "username": "Stark",
+        "name": "Tony Stark",
+        "password": "Stark123",
+        "created_at": "2024-01-01T00:00:00Z"
+    }
+}
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
@@ -116,7 +134,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         if credentials.credentials == "demo-token":
             return {
                 "id": "demo",
-                "email": "demo@cardiac.com",
+                "username": "demo",
                 "name": "Demo User",
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
@@ -125,6 +143,18 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # Check predefined users first
+        for username, user_data in PREDEFINED_USERS.items():
+            if user_data["id"] == user_id:
+                return {
+                    "id": user_data["id"],
+                    "username": user_data["username"],
+                    "name": user_data["name"],
+                    "created_at": user_data["created_at"]
+                }
+        
+        # Then check database
         user = await db.users.find_one({"id": user_id}, {"_id": 0})
         if user is None:
             raise HTTPException(status_code=401, detail="User not found")
@@ -138,48 +168,70 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 @api_router.post("/auth/register", response_model=TokenResponse)
 async def register(user_data: UserCreate):
-    # Check if user exists
-    existing = await db.users.find_one({"email": user_data.email})
+    # Check if username exists in predefined users
+    if user_data.username in PREDEFINED_USERS:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    # Check if user exists in database
+    existing = await db.users.find_one({"username": user_data.username})
     if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(status_code=400, detail="Username already registered")
     
     # Create user
     user_id = str(uuid.uuid4())
     user_doc = {
         "id": user_id,
-        "email": user_data.email,
-        "name": user_data.name,
+        "username": user_data.username,
+        "name": user_data.name or user_data.username,
         "password_hash": hash_password(user_data.password),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user_doc)
     
     # Generate token
-    token = create_token(user_id, user_data.email)
+    token = create_token(user_id, user_data.username)
     
     return TokenResponse(
         access_token=token,
         user=UserResponse(
             id=user_id,
-            email=user_data.email,
-            name=user_data.name,
+            username=user_data.username,
+            name=user_doc["name"],
             created_at=user_doc["created_at"]
         )
     )
 
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
-    user = await db.users.find_one({"email": credentials.email}, {"_id": 0})
-    if not user or not verify_password(credentials.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+    # Check predefined users first
+    if credentials.username in PREDEFINED_USERS:
+        user_data = PREDEFINED_USERS[credentials.username]
+        if credentials.password == user_data["password"]:
+            token = create_token(user_data["id"], user_data["username"])
+            return TokenResponse(
+                access_token=token,
+                user=UserResponse(
+                    id=user_data["id"],
+                    username=user_data["username"],
+                    name=user_data["name"],
+                    created_at=user_data["created_at"]
+                )
+            )
+        else:
+            raise HTTPException(status_code=401, detail="Invalid username or password")
     
-    token = create_token(user["id"], user["email"])
+    # Check database users
+    user = await db.users.find_one({"username": credentials.username}, {"_id": 0})
+    if not user or not verify_password(credentials.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    token = create_token(user["id"], user["username"])
     
     return TokenResponse(
         access_token=token,
         user=UserResponse(
             id=user["id"],
-            email=user["email"],
+            username=user["username"],
             name=user["name"],
             created_at=user["created_at"]
         )
@@ -189,7 +241,7 @@ async def login(credentials: UserLogin):
 async def get_me(current_user: dict = Depends(get_current_user)):
     return UserResponse(
         id=current_user["id"],
-        email=current_user["email"],
+        username=current_user["username"],
         name=current_user["name"],
         created_at=current_user["created_at"]
     )

@@ -525,7 +525,7 @@ export default function Dashboard({ user, onLogout }) {
           <span className="mx-2">|</span>
           <span>v3.14.159</span>
           <span className="mx-2">|</span>
-          <span>OPERATOR: {user?.name || "Unknown"}</span>
+          <span>OPERATOR: {user?.name || user?.username || "Unknown"}</span>
         </div>
       </main>
     </div>

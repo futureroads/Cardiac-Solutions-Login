@@ -317,7 +317,7 @@ const AEDCursor = ({ position, isClicking }) => {
 
 export default function LoginPage({ onLogin }) {
   const [isRegister, setIsRegister] = useState(false);
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -384,8 +384,8 @@ export default function LoginPage({ onLogin }) {
     try {
       const endpoint = isRegister ? "/auth/register" : "/auth/login";
       const payload = isRegister 
-        ? { email, password, name }
-        : { email, password };
+        ? { username, password, name }
+        : { username, password };
 
       const response = await axios.post(`${API}${endpoint}`, payload);
       
@@ -585,12 +585,12 @@ export default function LoginPage({ onLogin }) {
                         USER NAME
                       </label>
                       <input
-                        data-testid="email-input"
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        data-testid="username-input"
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
                         className="w-full bg-transparent border-b border-slate-700 focus:border-red-500 px-0 py-3 text-white outline-none transition-colors font-mono"
-                        placeholder="operator@cardiac.com"
+                        placeholder="Enter username"
                         required
                       />
                     </div>
