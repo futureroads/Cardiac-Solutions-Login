@@ -21,7 +21,6 @@ import {
   Filter,
   ArrowUpRight,
   ArrowDownRight,
-  Zap,
 } from "lucide-react";
 import {
   Table,
@@ -41,48 +40,6 @@ import { ScrollArea } from "../components/ui/scroll-area";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
-
-// Custom AED Pad Cursor
-const AEDCursor = ({ position, isClicking }) => {
-  return (
-    <div 
-      className="fixed pointer-events-none z-50 transition-transform duration-75"
-      style={{ 
-        left: position.x - 20, 
-        top: position.y - 20,
-      }}
-    >
-      <motion.div 
-        className="flex gap-1"
-        animate={{ 
-          gap: isClicking ? "0px" : "4px",
-          scale: isClicking ? 0.9 : 1
-        }}
-        transition={{ duration: 0.1 }}
-      >
-        {/* Left Pad */}
-        <div className="w-5 h-8 rounded-sm bg-gradient-to-b from-white to-slate-200 border border-slate-300 flex items-center justify-center shadow-lg">
-          <span className="text-[6px] font-bold text-slate-800">-</span>
-        </div>
-        {/* Right Pad */}
-        <div className="w-5 h-8 rounded-sm bg-gradient-to-b from-white to-slate-200 border border-slate-300 flex items-center justify-center shadow-lg">
-          <span className="text-[6px] font-bold text-slate-800">+</span>
-        </div>
-      </motion.div>
-      {/* Electrical Arc */}
-      {isClicking && (
-        <motion.div 
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-          initial={{ opacity: 0, scale: 0 }}
-          animate={{ opacity: 1, scale: 1.5 }}
-          exit={{ opacity: 0 }}
-        >
-          <Zap className="w-4 h-4 text-yellow-400" />
-        </motion.div>
-      )}
-    </div>
-  );
-};
 
 // Status Card Component
 const StatusCard = ({ title, value, icon: Icon, color, trend, trendValue }) => {
@@ -191,28 +148,6 @@ export default function Dashboard({ user, onLogout }) {
   const [sortField, setSortField] = useState("name");
   const [sortDirection, setSortDirection] = useState("asc");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
-  const [isClicking, setIsClicking] = useState(false);
-  const [showCustomCursor, setShowCustomCursor] = useState(true);
-
-  useEffect(() => {
-    const handleMouseMove = (e) => {
-      setCursorPosition({ x: e.clientX, y: e.clientY });
-    };
-
-    const handleMouseDown = () => setIsClicking(true);
-    const handleMouseUp = () => setIsClicking(false);
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mousedown", handleMouseDown);
-    window.addEventListener("mouseup", handleMouseUp);
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mousedown", handleMouseDown);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, []);
 
   const fetchData = async () => {
     const token = localStorage.getItem("token");
@@ -278,8 +213,7 @@ export default function Dashboard({ user, onLogout }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#020617] flex items-center justify-center" style={{ cursor: 'none' }}>
-        {showCustomCursor && <AEDCursor position={cursorPosition} isClicking={isClicking} />}
+      <div className="min-h-screen bg-[#020617] flex items-center justify-center">
         <motion.div
           className="text-center"
           initial={{ opacity: 0 }}
@@ -293,10 +227,7 @@ export default function Dashboard({ user, onLogout }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#020617] holo-grid" style={{ cursor: 'none' }}>
-      {/* Custom Cursor */}
-      {showCustomCursor && <AEDCursor position={cursorPosition} isClicking={isClicking} />}
-      
+    <div className="min-h-screen bg-[#020617] holo-grid">
       {/* Top Navigation */}
       <nav className="sticky top-0 z-50 glass-dark border-b border-slate-800/50">
         <div className="max-w-[1800px] mx-auto px-4 py-3 flex items-center justify-between">
