@@ -350,7 +350,7 @@ export default function Dashboard({ user, onLogout }) {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-3 mb-2 cursor-pointer" onClick={onLogout} data-testid="logo-home">
             <Heart className="w-6 h-6 text-red-500" style={{ filter: 'drop-shadow(0 0 6px rgba(239, 68, 68, 0.6))' }} />
             <h1 className="font-tech text-2xl text-red-500 tracking-wider" style={{ textShadow: '0 0 10px rgba(239, 68, 68, 0.6), 0 0 20px rgba(239, 68, 68, 0.4)' }}>
               Daily AED Status Report
