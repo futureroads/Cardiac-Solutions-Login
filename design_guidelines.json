@@ -1,0 +1,197 @@
+{
+  "identity": {
+    "persona": "E1",
+    "mission": "Create a high-tech, Stark Industries-inspired medical HUD interface for Cardiac Solutions LLC.",
+    "principles": [
+      "Fusion over Imitation: Mix Medical Precision with Cyberpunk HUD aesthetics.",
+      "Emotion First: The UI should feel 'alive', 'secure', and 'advanced'.",
+      "Content is King: Data is the hero; display it with clarity and style.",
+      "Zoom In: Focus on critical vitals and alerts.",
+      "Negative Space: Use deep black space to make neon accents pop.",
+      "Contrast: High contrast neon on obsidian black."
+    ],
+    "anti_patterns": [
+      "No purple or teal for CTAs (Use Neon Cyan or Electric Blue).",
+      "No 'Inter' for headings (Use Tech fonts).",
+      "No centered layouts for dashboard (Use Bento/HUD grids).",
+      "No generic gradients (Use subtle glows and grid lines)."
+    ]
+  },
+  "theme": {
+    "name": "Stark Medical HUD",
+    "mode": "dark",
+    "emotional_archetype": "The Performance Pro / Electric & Neon",
+    "vibe": "Futuristic, Precision, High-Stakes, Secure."
+  },
+  "colors": {
+    "background": "#020617",
+    "foreground": "#e2e8f0",
+    "primary": "#06b6d4",
+    "primary_foreground": "#000000",
+    "secondary": "#1e293b",
+    "secondary_foreground": "#94a3b8",
+    "accent": "#0ea5e9",
+    "accent_foreground": "#ffffff",
+    "destructive": "#ef4444",
+    "destructive_foreground": "#ffffff",
+    "border": "#1e293b",
+    "input": "#0f172a",
+    "ring": "#06b6d4",
+    "chart": {
+      "1": "#06b6d4",
+      "2": "#3b82f6",
+      "3": "#6366f1",
+      "4": "#8b5cf6",
+      "5": "#d946ef"
+    },
+    "custom": {
+      "neon_cyan": "#00f3ff",
+      "neon_blue": "#007aff",
+      "obsidian": "#050505",
+      "slate_glass": "rgba(30, 41, 59, 0.4)"
+    }
+  },
+  "typography": {
+    "headings": {
+      "family": "'Rajdhani', 'Orbitron', sans-serif",
+      "weight": "700",
+      "tracking": "tracking-wide",
+      "style": "uppercase"
+    },
+    "body": {
+      "family": "'Exo 2', 'Barlow', sans-serif",
+      "weight": "400",
+      "tracking": "tracking-normal"
+    },
+    "mono": {
+      "family": "'JetBrains Mono', monospace",
+      "usage": "Data points, coordinates, timestamps"
+    }
+  },
+  "layout_strategies": {
+    "login_page": {
+      "structure": "Centered distinct focal point.",
+      "elements": [
+        "Glowing Cyan Heart Symbol (SVG Animation)",
+        "Flat EKG Line (initially flat, pulses on login)",
+        "Glassmorphic Login Form (HUD style)",
+        "Background: Deep Obsidian with subtle holographic floor grid (perspective)",
+        "Foreground: Two AED electrode pads as custom cursor (or simulated via CSS)"
+      ]
+    },
+    "dashboard": {
+      "structure": "Bento Grid / HUD Layout (High Density)",
+      "grid": "grid-cols-1 md:grid-cols-4 lg:grid-cols-12 gap-6",
+      "elements": [
+        "Top Nav: Slim, fixed, glassmorphic.",
+        "Sidebar: Collapsible or icon-only HUD strip.",
+        "Main Area: Widgets with 'corner brackets' (HUD style borders).",
+        "Widgets: AED Status, Real-time Monitoring, Subscriber List, Map View."
+      ]
+    }
+  },
+  "components": {
+    "buttons": {
+      "style": "pill",
+      "variants": {
+        "primary": "bg-cyan-500 text-black hover:bg-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.5)] transition-all uppercase tracking-widest font-bold",
+        "secondary": "border border-slate-700 bg-transparent text-slate-300 hover:border-cyan-500/50 hover:text-cyan-500 uppercase tracking-widest"
+      }
+    },
+    "cards": {
+      "style": "glass",
+      "classes": "bg-slate-950/40 backdrop-blur-md border border-slate-800/60 relative overflow-hidden"
+    },
+    "inputs": {
+      "style": "underlined",
+      "classes": "bg-transparent border-b border-slate-700 focus:border-cyan-500 focus:ring-0 px-0 rounded-none transition-colors"
+    },
+    "borders": {
+      "style": "tech",
+      "classes": "border-slate-800 relative after:absolute after:inset-0 after:border after:border-cyan-500/20 after:content-['']"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": {
+      "usage": "Headers, Modals, Floating Panels",
+      "classes": "backdrop-blur-xl bg-black/60 border border-white/10"
+    },
+    "glow_effects": {
+      "usage": "Active states, Critical Alerts, Hero Elements",
+      "classes": "shadow-[0_0_20px_rgba(6,182,212,0.3)]"
+    },
+    "grid_background": {
+      "usage": "Global Background",
+      "css": "background-image: linear-gradient(rgba(6, 182, 212, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(6, 182, 212, 0.1) 1px, transparent 1px); background-size: 40px 40px; mask-image: radial-gradient(circle at center, black 40%, transparent 100%);"
+    },
+    "cursor": {
+      "type": "custom",
+      "description": "Custom cursor resembling AED pads. Use CSS 'cursor: url(...), auto' or a custom React component following the mouse position."
+    }
+  },
+  "motion": {
+    "library": "framer-motion",
+    "animations": {
+      "heartbeat": {
+        "scale": [1, 1.1, 1],
+        "transition": { "duration": 0.8, "repeat": "Infinity", "ease": "easeInOut" }
+      },
+      "ekg_line": {
+        "pathLength": [0, 1],
+        "opacity": [0, 1, 0],
+        "transition": { "duration": 1.5, "repeat": "Infinity", "ease": "linear" }
+      },
+      "shock_effect": {
+        "filter": ["brightness(1)", "brightness(2)", "brightness(1)"],
+        "transition": { "duration": 0.2 }
+      },
+      "page_entry": {
+        "opacity": [0, 1],
+        "y": [20, 0],
+        "transition": { "duration": 0.5 }
+      }
+    }
+  },
+  "images": {
+    "background_texture": {
+      "url": "https://images.unsplash.com/photo-1731400800900-1bce57414c09?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MDV8MHwxfHNlYXJjaHwzfHx0ZWNobm9sb2d5JTIwY2lyY3VpdCUyMGJvYXJkJTIwYmx1ZXxlbnwwfHx8fDE3NzM3NjM5MDR8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Blue Circuit Board Texture",
+      "usage": "Low opacity overlay (opacity-10) on dashboard background for tech feel."
+    },
+    "product_reference": {
+      "url": "https://images.unsplash.com/photo-1768552570511-da7813039445?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Njl8MHwxfHNlYXJjaHwzfHxkZWZpYnJpbGxhdG9yJTIwbWVkaWNhbHxlbnwwfHx8fDE3NzM3NjM5MDR8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "AED Device",
+      "usage": "Product image in dashboard widget."
+    }
+  },
+  "universal_guidelines": {
+    "general": [
+      "Do NOT use 'Inter' for headings.",
+      "Use 'sonner' for toasts.",
+      "Use 'lucide-react' for icons.",
+      "Ensure all interactive elements have 'data-testid'.",
+      "Mobile-first responsive design.",
+      "Use 'framer-motion' for all animations.",
+      "Use 'recharts' for data visualization.",
+      "Use 'clsx' and 'tailwind-merge' for class handling.",
+      "Do not use gradients for dark colors.",
+      "Create depth through layered z-index hierarchy.",
+      "Use 'backdrop-blur' for glass effects."
+    ],
+    "specific_to_this_app": [
+      "Implement the 'Shock' effect on login button click.",
+      "The EKG line must be animated.",
+      "The cursor must change to AED pads (or a representation) on the login page.",
+      "The background must be deep obsidian black (#020617 or #000000).",
+      "Use Neon Cyan (#06b6d4) as the primary brand color."
+    ]
+  },
+  "instructions_to_main_agent": [
+    "1. Install necessary dependencies: 'framer-motion', 'recharts', 'lucide-react', 'clsx', 'tailwind-merge', 'sonner', '@radix-ui/react-*' (if not present).",
+    "2. Configure Tailwind with the provided colors and fonts.",
+    "3. Create the 'Login' page with the Heart/EKG animation and custom cursor.",
+    "4. Create the 'Dashboard' with a Bento Grid layout, using Recharts for AED stats.",
+    "5. Use the provided image URLs for textures/product where appropriate.",
+    "6. Ensure the 'Stark Industries' aesthetic is maintained via typography, spacing, and borders."
+  ]
+}
