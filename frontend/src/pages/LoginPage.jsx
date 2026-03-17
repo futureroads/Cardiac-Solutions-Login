@@ -7,6 +7,97 @@ import { Eye, EyeOff, Zap, Shield, Activity } from "lucide-react";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
+// Electrical Sparks Component
+const ElectricalSparks = ({ isActive }) => {
+  if (!isActive) return null;
+  
+  const sparks = Array.from({ length: 12 }, (_, i) => ({
+    id: i,
+    angle: (i * 30) + Math.random() * 15,
+    distance: 80 + Math.random() * 60,
+    size: 2 + Math.random() * 3,
+    delay: Math.random() * 0.2,
+    duration: 0.3 + Math.random() * 0.3
+  }));
+
+  return (
+    <div className="absolute inset-0 pointer-events-none">
+      {sparks.map((spark) => (
+        <motion.div
+          key={spark.id}
+          className="absolute left-1/2 top-1/2"
+          initial={{ 
+            x: 0, 
+            y: 0, 
+            opacity: 1,
+            scale: 1
+          }}
+          animate={{ 
+            x: Math.cos(spark.angle * Math.PI / 180) * spark.distance,
+            y: Math.sin(spark.angle * Math.PI / 180) * spark.distance,
+            opacity: 0,
+            scale: 0
+          }}
+          transition={{ 
+            duration: spark.duration,
+            delay: spark.delay,
+            ease: "easeOut"
+          }}
+        >
+          <div 
+            className="rounded-full bg-yellow-400"
+            style={{ 
+              width: spark.size, 
+              height: spark.size,
+              boxShadow: '0 0 8px #facc15, 0 0 16px #fbbf24, 0 0 24px #f59e0b'
+            }} 
+          />
+        </motion.div>
+      ))}
+      {/* Lightning bolts */}
+      {[...Array(6)].map((_, i) => (
+        <motion.div
+          key={`bolt-${i}`}
+          className="absolute left-1/2 top-1/2"
+          initial={{ opacity: 0, scale: 0, rotate: i * 60 }}
+          animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 0], rotate: i * 60 }}
+          transition={{ duration: 0.4, delay: i * 0.05 }}
+        >
+          <svg width="40" height="60" viewBox="0 0 40 60" className="-translate-x-1/2 -translate-y-1/2">
+            <motion.path
+              d="M20 0 L25 20 L35 20 L15 40 L20 25 L10 25 Z"
+              fill="#facc15"
+              style={{ filter: 'drop-shadow(0 0 6px #facc15) drop-shadow(0 0 12px #f59e0b)' }}
+              initial={{ pathLength: 0, opacity: 0 }}
+              animate={{ pathLength: 1, opacity: [0, 1, 0] }}
+              transition={{ duration: 0.3, delay: i * 0.05 }}
+            />
+          </svg>
+        </motion.div>
+      ))}
+      {/* Arc lines */}
+      {[...Array(8)].map((_, i) => (
+        <motion.div
+          key={`arc-${i}`}
+          className="absolute left-1/2 top-1/2 origin-center"
+          style={{ rotate: `${i * 45}deg` }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 1, 0] }}
+          transition={{ duration: 0.5, delay: i * 0.03 }}
+        >
+          <motion.div
+            className="h-[2px] bg-gradient-to-r from-yellow-400 via-yellow-300 to-transparent"
+            initial={{ width: 0, x: 20 }}
+            animate={{ width: [0, 100, 60], x: [20, 40, 80] }}
+            transition={{ duration: 0.4, delay: i * 0.03 }}
+            style={{ boxShadow: '0 0 8px #facc15' }}
+          />
+        </motion.div>
+      ))}
+    </div>
+  );
+};
+
 // SVG Heart with EKG
 const HeartEKG = ({ isBeating, isFlat }) => {
   return (
@@ -122,6 +213,7 @@ export default function LoginPage({ onLogin }) {
   const [showCustomCursor, setShowCustomCursor] = useState(false);
   const [isBeating, setIsBeating] = useState(false);
   const [shockEffect, setShockEffect] = useState(false);
+  const [showSparks, setShowSparks] = useState(false);
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -145,10 +237,12 @@ export default function LoginPage({ onLogin }) {
 
   const handleHeartClick = () => {
     setShockEffect(true);
+    setShowSparks(true);
     setIsBeating(true);
     
     setTimeout(() => {
       setShockEffect(false);
+      setShowSparks(false);
       // Navigate to dashboard - using a simple approach without requiring login
       onLogin("demo-token", { id: "demo", email: "demo@cardiac.com", name: "Demo User", created_at: new Date().toISOString() });
     }, 1500);
@@ -267,6 +361,7 @@ export default function LoginPage({ onLogin }) {
             data-testid="heart-button"
           >
             <HeartEKG isBeating={isBeating} isFlat={!isBeating} />
+            <ElectricalSparks isActive={showSparks} />
           </div>
           
           {/* Click instruction text */}
