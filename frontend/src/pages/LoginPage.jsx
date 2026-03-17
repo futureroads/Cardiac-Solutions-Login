@@ -410,12 +410,12 @@ export default function LoginPage({ onLogin }) {
     <div 
       ref={containerRef}
       className={`min-h-screen bg-[#020617] relative overflow-hidden ${shockEffect ? 'shock-effect' : ''}`}
-      style={{ cursor: showCustomCursor ? 'none' : 'default' }}
+      style={{ cursor: (showCustomCursor && currentScreen !== "login") ? 'none' : 'default' }}
       onMouseEnter={() => setShowCustomCursor(true)}
       onMouseLeave={() => setShowCustomCursor(false)}
     >
-      {/* Custom Cursor */}
-      {showCustomCursor && (
+      {/* Custom Cursor - only show on heart and beating screens */}
+      {showCustomCursor && currentScreen !== "login" && (
         <AEDCursor position={cursorPosition} isClicking={isClicking} />
       )}
 
@@ -558,13 +558,6 @@ export default function LoginPage({ onLogin }) {
                 transition={{ duration: 0.5, delay: 0.2 }}
               >
                 <div className="glass-dark rounded-lg p-8 hud-corners">
-                  <div className="flex items-center gap-2 mb-6">
-                    <Shield className="w-5 h-5 text-red-500" style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.6))' }} />
-                    <span className="font-tech text-red-500 text-sm tracking-wider" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
-                      {isRegister ? "NEW OPERATOR REGISTRATION" : "OPERATOR AUTHENTICATION"}
-                    </span>
-                  </div>
-
                   <form onSubmit={handleSubmit} className="space-y-6">
                     {isRegister && (
                       <motion.div
