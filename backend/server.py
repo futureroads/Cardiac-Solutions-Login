@@ -127,6 +127,34 @@ PREDEFINED_USERS = {
         "name": "Tony Stark",
         "password": "Stark123",
         "created_at": "2024-01-01T00:00:00Z"
+    },
+    "Tony": {
+        "id": "user-tony-001",
+        "username": "Tony",
+        "name": "Tony",
+        "password": "Tony123",
+        "created_at": "2024-01-01T00:00:00Z"
+    },
+    "Tracey": {
+        "id": "user-tracey-001",
+        "username": "Tracey",
+        "name": "Tracey",
+        "password": "Tracey123",
+        "created_at": "2024-01-01T00:00:00Z"
+    },
+    "Nate": {
+        "id": "user-nate-001",
+        "username": "Nate",
+        "name": "Nate",
+        "password": "Nate123",
+        "created_at": "2024-01-01T00:00:00Z"
+    },
+    "Jon": {
+        "id": "user-jon-001",
+        "username": "Jon",
+        "name": "Jon",
+        "password": "Jon123",
+        "created_at": "2024-01-01T00:00:00Z"
     }
 }
 
