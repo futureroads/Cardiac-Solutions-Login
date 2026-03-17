@@ -10,7 +10,7 @@ const API = `${BACKEND_URL}/api`;
 // SVG Heart with EKG
 const HeartEKG = ({ isBeating, isFlat }) => {
   return (
-    <svg viewBox="-50 0 300 160" className="w-64 h-40">
+    <svg viewBox="-50 0 300 160" className="w-64 h-40" style={{ filter: 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.6)) drop-shadow(0 0 20px rgba(239, 68, 68, 0.4))' }}>
       {/* Heart Shape */}
       <motion.path
         d="M100 140 C100 140 30 90 30 50 C30 20 60 10 100 50 C140 10 170 20 170 50 C170 90 100 140 100 140"
@@ -26,10 +26,10 @@ const HeartEKG = ({ isBeating, isFlat }) => {
       {/* Inner Glow */}
       <motion.path
         d="M100 130 C100 130 40 85 40 52 C40 28 65 20 100 52 C135 20 160 28 160 52 C160 85 100 130 100 130"
-        fill="rgba(239, 68, 68, 0.1)"
+        fill="rgba(239, 68, 68, 0.15)"
         stroke="none"
         initial={{ opacity: 0 }}
-        animate={{ opacity: isBeating ? 0.3 : 0.1 }}
+        animate={{ opacity: isBeating ? 0.4 : 0.15 }}
         transition={{ duration: 0.5 }}
       />
       
@@ -40,8 +40,8 @@ const HeartEKG = ({ isBeating, isFlat }) => {
           : "M-50 80 L60 80 L70 80 L75 60 L80 100 L85 40 L90 110 L95 70 L100 80 L250 80"
         }
         fill="none"
-        stroke="#ff3333"
-        strokeWidth="2"
+        stroke="#ff4444"
+        strokeWidth="2.5"
         strokeLinecap="round"
         className={!isFlat ? "ekg-animated" : ""}
         initial={{ pathLength: 0 }}
@@ -224,7 +224,7 @@ export default function LoginPage({ onLogin }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
-          <h1 className="font-tech text-4xl md:text-5xl text-red-500 text-glow-red mb-2">
+          <h1 className="font-tech text-4xl md:text-5xl text-red-500 mb-2" style={{ textShadow: '0 0 10px rgba(239, 68, 68, 0.8), 0 0 20px rgba(239, 68, 68, 0.6), 0 0 40px rgba(239, 68, 68, 0.4)' }}>
             CARDIAC SOLUTIONS
           </h1>
           <p className="font-tech text-slate-400 tracking-[0.3em] text-sm">
@@ -240,13 +240,13 @@ export default function LoginPage({ onLogin }) {
           transition={{ duration: 0.8, delay: 0.2 }}
         >
           {/* Data Rings */}
-          <DataRing size="280px" color="#ef4444" rotateClass="rotate-slow" opacity={0.2} />
-          <DataRing size="320px" color="#dc2626" rotateClass="rotate-reverse" opacity={0.15} />
-          <DataRing size="360px" color="#ef4444" rotateClass="rotate-slow" opacity={0.1} />
+          <DataRing size="280px" color="#ef4444" rotateClass="rotate-slow" opacity={0.3} />
+          <DataRing size="320px" color="#dc2626" rotateClass="rotate-reverse" opacity={0.2} />
+          <DataRing size="360px" color="#ef4444" rotateClass="rotate-slow" opacity={0.15} />
           
           {/* Pulse Rings */}
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-52 h-52 rounded-full border border-red-500/30 pulse-ring" />
+            <div className="w-52 h-52 rounded-full border border-red-500/40 pulse-ring" style={{ boxShadow: '0 0 15px rgba(239, 68, 68, 0.3)' }} />
           </div>
           
           {/* Heart SVG */}
@@ -264,8 +264,8 @@ export default function LoginPage({ onLogin }) {
         >
           <div className="glass-dark rounded-lg p-8 hud-corners">
             <div className="flex items-center gap-2 mb-6">
-              <Shield className="w-5 h-5 text-red-500" />
-              <span className="font-tech text-red-500 text-sm tracking-wider">
+              <Shield className="w-5 h-5 text-red-500" style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.6))' }} />
+              <span className="font-tech text-red-500 text-sm tracking-wider" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
                 {isRegister ? "NEW OPERATOR REGISTRATION" : "OPERATOR AUTHENTICATION"}
               </span>
             </div>
@@ -339,8 +339,9 @@ export default function LoginPage({ onLogin }) {
                 data-testid="submit-button"
                 type="submit"
                 disabled={loading}
-                className="w-full bg-red-500 hover:bg-red-400 text-white font-tech py-4 rounded-full tracking-widest uppercase transition-all hover:shadow-[0_0_30px_rgba(239,68,68,0.5)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                whileHover={{ scale: 1.02 }}
+                className="w-full bg-red-500 hover:bg-red-400 text-white font-tech py-4 rounded-full tracking-widest uppercase transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                style={{ boxShadow: '0 0 15px rgba(239, 68, 68, 0.5), 0 0 30px rgba(239, 68, 68, 0.3)' }}
+                whileHover={{ scale: 1.02, boxShadow: '0 0 25px rgba(239, 68, 68, 0.7), 0 0 50px rgba(239, 68, 68, 0.4)' }}
                 whileTap={{ scale: 0.98 }}
               >
                 {loading ? (
@@ -383,10 +384,10 @@ export default function LoginPage({ onLogin }) {
       </div>
 
       {/* Corner Decorations */}
-      <div className="absolute top-4 left-4 w-20 h-20 border-t-2 border-l-2 border-red-500/30" />
-      <div className="absolute top-4 right-4 w-20 h-20 border-t-2 border-r-2 border-red-500/30" />
-      <div className="absolute bottom-4 left-4 w-20 h-20 border-b-2 border-l-2 border-red-500/30" />
-      <div className="absolute bottom-4 right-4 w-20 h-20 border-b-2 border-r-2 border-red-500/30" />
+      <div className="absolute top-4 left-4 w-20 h-20 border-t-2 border-l-2 border-red-500/50" style={{ boxShadow: 'inset 10px 10px 20px rgba(239, 68, 68, 0.1)' }} />
+      <div className="absolute top-4 right-4 w-20 h-20 border-t-2 border-r-2 border-red-500/50" style={{ boxShadow: 'inset -10px 10px 20px rgba(239, 68, 68, 0.1)' }} />
+      <div className="absolute bottom-4 left-4 w-20 h-20 border-b-2 border-l-2 border-red-500/50" style={{ boxShadow: 'inset 10px -10px 20px rgba(239, 68, 68, 0.1)' }} />
+      <div className="absolute bottom-4 right-4 w-20 h-20 border-b-2 border-r-2 border-red-500/50" style={{ boxShadow: 'inset -10px -10px 20px rgba(239, 68, 68, 0.1)' }} />
     </div>
   );
 }

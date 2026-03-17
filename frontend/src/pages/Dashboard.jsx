@@ -54,6 +54,17 @@ const StatusCard = ({ title, value, icon: Icon, color, trend, trendValue }) => {
     slate: "text-slate-400 border-slate-500/30 bg-slate-500/5",
   };
 
+  const glowStyles = {
+    red: { textShadow: '0 0 10px rgba(239, 68, 68, 0.6)', filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.4))' },
+    green: { textShadow: '0 0 10px rgba(34, 197, 94, 0.6)', filter: 'drop-shadow(0 0 4px rgba(34, 197, 94, 0.4))' },
+    yellow: { textShadow: '0 0 10px rgba(234, 179, 8, 0.6)', filter: 'drop-shadow(0 0 4px rgba(234, 179, 8, 0.4))' },
+    orange: { textShadow: '0 0 10px rgba(249, 115, 22, 0.6)', filter: 'drop-shadow(0 0 4px rgba(249, 115, 22, 0.4))' },
+    pink: { textShadow: '0 0 10px rgba(236, 72, 153, 0.6)', filter: 'drop-shadow(0 0 4px rgba(236, 72, 153, 0.4))' },
+    purple: { textShadow: '0 0 10px rgba(168, 85, 247, 0.6)', filter: 'drop-shadow(0 0 4px rgba(168, 85, 247, 0.4))' },
+    cyan: { textShadow: '0 0 10px rgba(6, 182, 212, 0.6)', filter: 'drop-shadow(0 0 4px rgba(6, 182, 212, 0.4))' },
+    slate: { textShadow: 'none', filter: 'none' },
+  };
+
   return (
     <motion.div
       className={`relative p-4 rounded-lg border ${colorClasses[color]} hud-corners overflow-hidden`}
@@ -64,8 +75,8 @@ const StatusCard = ({ title, value, icon: Icon, color, trend, trendValue }) => {
     >
       <div className="flex items-start justify-between">
         <div>
-          <Icon className="w-5 h-5 mb-2 opacity-60" />
-          <div className="font-tech text-3xl md:text-4xl font-bold">{value}</div>
+          <Icon className="w-5 h-5 mb-2 opacity-60" style={{ filter: glowStyles[color]?.filter }} />
+          <div className="font-tech text-3xl md:text-4xl font-bold" style={{ textShadow: glowStyles[color]?.textShadow }}>{value}</div>
           <div className="font-tech text-xs text-slate-500 tracking-wider mt-1 uppercase">
             {title}
           </div>
@@ -224,8 +235,9 @@ export default function Dashboard({ user, onLogout }) {
             <button 
               data-testid="notifications-btn"
               className="flex items-center gap-2 px-4 py-2 border border-red-500/30 rounded text-red-500 hover:bg-red-500/10 transition-colors font-tech text-sm tracking-wider"
+              style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.5)' }}
             >
-              <Bell className="w-4 h-4" />
+              <Bell className="w-4 h-4" style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.5))' }} />
               NOTIFICATIONS
             </button>
           </div>
@@ -235,16 +247,18 @@ export default function Dashboard({ user, onLogout }) {
               data-testid="refresh-btn"
               onClick={handleRefresh}
               className="flex items-center gap-2 px-4 py-2 border border-red-500/30 rounded text-red-500 hover:bg-red-500/10 transition-colors font-tech text-sm tracking-wider"
+              style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.5)' }}
               disabled={refreshing}
             >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.5))' }} />
               REFRESH
             </button>
             <button 
               data-testid="download-csv-btn"
               className="flex items-center gap-2 px-4 py-2 border border-red-500/30 rounded text-red-500 hover:bg-red-500/10 transition-colors font-tech text-sm tracking-wider"
+              style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.5)' }}
             >
-              <Download className="w-4 h-4" />
+              <Download className="w-4 h-4" style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.5))' }} />
               DOWNLOAD CSV
             </button>
             <button
@@ -268,8 +282,8 @@ export default function Dashboard({ user, onLogout }) {
           animate={{ opacity: 1, y: 0 }}
         >
           <div className="flex items-center gap-3 mb-2">
-            <Heart className="w-6 h-6 text-red-500" />
-            <h1 className="font-tech text-2xl text-red-500 tracking-wider">
+            <Heart className="w-6 h-6 text-red-500" style={{ filter: 'drop-shadow(0 0 6px rgba(239, 68, 68, 0.6))' }} />
+            <h1 className="font-tech text-2xl text-red-500 tracking-wider" style={{ textShadow: '0 0 10px rgba(239, 68, 68, 0.6), 0 0 20px rgba(239, 68, 68, 0.4)' }}>
               Daily AED Status Report
             </h1>
           </div>
