@@ -131,13 +131,13 @@ const ElectricalSparks = ({ isActive }) => {
 // SVG Heart with EKG
 const HeartEKG = ({ isBeating, isFlat }) => {
   return (
-    <svg viewBox="-150 0 500 160" className="w-[500px] h-40" style={{ filter: 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.6)) drop-shadow(0 0 20px rgba(239, 68, 68, 0.4))' }}>
+    <svg viewBox="-150 0 500 160" className="w-[500px] h-40" style={{ filter: 'drop-shadow(0 0 5px #ef4444) drop-shadow(0 0 10px #ef4444) drop-shadow(0 0 20px #ef4444) drop-shadow(0 0 40px #dc2626) drop-shadow(0 0 60px #dc2626)' }}>
       {/* Heart Shape */}
       <motion.path
         d="M100 140 C100 140 30 90 30 50 C30 20 60 10 100 50 C140 10 170 20 170 50 C170 90 100 140 100 140"
         fill="none"
         stroke="#ef4444"
-        strokeWidth="2"
+        strokeWidth="2.5"
         initial={{ pathLength: 0, opacity: 0 }}
         animate={{ 
           pathLength: 1, 
@@ -153,10 +153,10 @@ const HeartEKG = ({ isBeating, isFlat }) => {
       {/* Inner Glow */}
       <motion.path
         d="M100 130 C100 130 40 85 40 52 C40 28 65 20 100 52 C135 20 160 28 160 52 C160 85 100 130 100 130"
-        fill="rgba(239, 68, 68, 0.15)"
+        fill="rgba(239, 68, 68, 0.2)"
         stroke="none"
         initial={{ opacity: 0 }}
-        animate={{ opacity: isBeating ? [0.15, 0.4, 0.15] : 0.15 }}
+        animate={{ opacity: isBeating ? [0.2, 0.5, 0.2] : 0.2 }}
         transition={{ duration: 0.8, repeat: isBeating ? Infinity : 0 }}
       />
       
@@ -165,8 +165,8 @@ const HeartEKG = ({ isBeating, isFlat }) => {
         <motion.path
           d="M-150 80 L350 80"
           fill="none"
-          stroke="#ff4444"
-          strokeWidth="2.5"
+          stroke="#ef4444"
+          strokeWidth="3"
           strokeLinecap="round"
           initial={{ pathLength: 0 }}
           animate={{ pathLength: 1 }}
@@ -179,8 +179,8 @@ const HeartEKG = ({ isBeating, isFlat }) => {
         <motion.path
           d="M-150 80 L30 80 L50 80 L55 65 L60 95 L65 50 L70 105 L75 70 L80 80 L350 80"
           fill="none"
-          stroke="#ff4444"
-          strokeWidth="2.5"
+          stroke="#ef4444"
+          strokeWidth="3"
           strokeLinecap="round"
           initial={{ pathLength: 0, pathOffset: 0 }}
           animate={{ 
@@ -193,16 +193,13 @@ const HeartEKG = ({ isBeating, isFlat }) => {
             ease: "linear",
             repeatDelay: 0.4
           }}
-          style={{
-            filter: 'drop-shadow(0 0 4px rgba(255, 68, 68, 0.8))'
-          }}
         />
       )}
       
       {/* Pulse dot that travels along the line when beating */}
       {isBeating && (
         <motion.circle
-          r="4"
+          r="5"
           fill="#ff6666"
           initial={{ cx: -150, cy: 80 }}
           animate={{ 
@@ -216,7 +213,7 @@ const HeartEKG = ({ isBeating, isFlat }) => {
             repeatDelay: 0.4
           }}
           style={{
-            filter: 'drop-shadow(0 0 8px rgba(255, 100, 100, 1))'
+            filter: 'drop-shadow(0 0 8px #ef4444) drop-shadow(0 0 15px #ef4444)'
           }}
         />
       )}
