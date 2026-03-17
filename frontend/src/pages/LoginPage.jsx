@@ -10,7 +10,7 @@ const API = `${BACKEND_URL}/api`;
 // SVG Heart with EKG
 const HeartEKG = ({ isBeating, isFlat }) => {
   return (
-    <svg viewBox="0 0 200 160" className="w-48 h-40">
+    <svg viewBox="-50 0 300 160" className="w-64 h-40">
       {/* Heart Shape */}
       <motion.path
         d="M100 140 C100 140 30 90 30 50 C30 20 60 10 100 50 C140 10 170 20 170 50 C170 90 100 140 100 140"
@@ -36,8 +36,8 @@ const HeartEKG = ({ isBeating, isFlat }) => {
       {/* EKG Line */}
       <motion.path
         d={isFlat 
-          ? "M0 80 L200 80" 
-          : "M0 80 L60 80 L70 80 L75 60 L80 100 L85 40 L90 110 L95 70 L100 80 L200 80"
+          ? "M-50 80 L250 80" 
+          : "M-50 80 L60 80 L70 80 L75 60 L80 100 L85 40 L90 110 L95 70 L100 80 L250 80"
         }
         fill="none"
         stroke="#ff3333"
