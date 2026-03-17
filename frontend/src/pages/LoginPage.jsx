@@ -7,53 +7,23 @@ import { Eye, EyeOff, Zap, Shield, Activity } from "lucide-react";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
-// EKG Sound Effect using Web Audio API
+// EKG Sound Effect using MP3 file
 const useEKGSound = () => {
-  const audioContextRef = useRef(null);
-  const intervalRef = useRef(null);
-
-  const playBeep = (frequency = 880, duration = 0.1) => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    const ctx = audioContextRef.current;
-    
-    // Main beep oscillator
-    const oscillator = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(ctx.destination);
-    
-    oscillator.frequency.value = frequency;
-    oscillator.type = 'sine';
-    
-    // Sharp attack, quick decay for that medical monitor sound
-    gainNode.gain.setValueAtTime(0, ctx.currentTime);
-    gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.01);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
-    
-    oscillator.start(ctx.currentTime);
-    oscillator.stop(ctx.currentTime + duration);
-  };
+  const audioRef = useRef(null);
 
   const startHeartbeat = () => {
-    // Play the characteristic "beep-beep" pattern
-    const playHeartbeatPattern = () => {
-      // First beep (higher pitch)
-      playBeep(880, 0.08);
-      // Second beep after short delay (slightly lower)
-      setTimeout(() => playBeep(660, 0.12), 150);
-    };
-
-    playHeartbeatPattern();
-    intervalRef.current = setInterval(playHeartbeatPattern, 1200);
+    if (!audioRef.current) {
+      audioRef.current = new Audio('https://customer-assets.emergentagent.com/job_pulse-ops/artifacts/qr3njjwx_EKG.mp3');
+      audioRef.current.loop = true;
+    }
+    audioRef.current.currentTime = 0;
+    audioRef.current.play().catch(err => console.log('Audio play failed:', err));
   };
 
   const stopHeartbeat = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
     }
   };
 
@@ -61,9 +31,6 @@ const useEKGSound = () => {
   useEffect(() => {
     return () => {
       stopHeartbeat();
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
     };
   }, []);
 
