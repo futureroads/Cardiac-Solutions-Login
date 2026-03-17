@@ -270,12 +270,14 @@ export default function LoginPage({ onLogin }) {
           transition={{ duration: 0.6, delay: 0.4 }}
         >
           <div className="glass-dark rounded-lg p-8 hud-corners">
-            <div className="flex items-center gap-2 mb-6">
-              <Shield className="w-5 h-5 text-red-500" style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.6))' }} />
-              <span className="font-tech text-red-500 text-sm tracking-wider" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
-                {isRegister ? "NEW OPERATOR REGISTRATION" : "OPERATOR AUTHENTICATION"}
-              </span>
-            </div>
+            {isRegister && (
+              <div className="flex items-center gap-2 mb-6">
+                <Shield className="w-5 h-5 text-red-500" style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.6))' }} />
+                <span className="font-tech text-red-500 text-sm tracking-wider" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
+                  NEW OPERATOR REGISTRATION
+                </span>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <AnimatePresence mode="wait">
