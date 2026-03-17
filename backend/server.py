@@ -112,6 +112,15 @@ def create_token(user_id: str, email: str) -> str:
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
+        # Allow demo token for demo mode
+        if credentials.credentials == "demo-token":
+            return {
+                "id": "demo",
+                "email": "demo@cardiac.com",
+                "name": "Demo User",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+        
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user_id = payload.get("sub")
         if user_id is None:
