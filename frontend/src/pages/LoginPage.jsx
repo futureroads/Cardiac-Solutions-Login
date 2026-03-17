@@ -331,9 +331,6 @@ export default function LoginPage({ onLogin }) {
               </AnimatePresence>
 
               <div>
-                <label className="block text-xs font-tech text-slate-400 mb-2 tracking-wider">
-                  ACCESS CODE
-                </label>
                 <div className="relative">
                   <input
                     data-testid="password-input"
