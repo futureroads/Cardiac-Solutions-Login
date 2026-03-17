@@ -265,7 +265,7 @@ export default function LoginPage({ onLogin }) {
   const [isBeating, setIsBeating] = useState(false);
   const [shockEffect, setShockEffect] = useState(false);
   const [showSparks, setShowSparks] = useState(false);
-  const [showLoginForm, setShowLoginForm] = useState(false);
+  const [currentScreen, setCurrentScreen] = useState("heart"); // "heart", "beating", "login"
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -288,17 +288,23 @@ export default function LoginPage({ onLogin }) {
   }, []);
 
   const handleHeartClick = () => {
-    if (showLoginForm) return; // Already showing form
+    if (currentScreen !== "heart") return; // Already clicked
     
     setShockEffect(true);
     setShowSparks(true);
     setIsBeating(true);
+    setCurrentScreen("beating");
     
+    // Hide sparks after initial effect
     setTimeout(() => {
       setShockEffect(false);
       setShowSparks(false);
-      setShowLoginForm(true);
     }, 1000);
+    
+    // After 5 seconds of heartbeat, transition to login screen
+    setTimeout(() => {
+      setCurrentScreen("login");
+    }, 5000);
   };
 
   const handleSubmit = async (e) => {
@@ -375,170 +381,216 @@ export default function LoginPage({ onLogin }) {
 
       {/* Main Content */}
       <div className="relative z-10 min-h-screen flex flex-col items-center justify-center px-4">
-        {/* Logo & Title */}
-        <motion.div 
-          className="text-center mb-8"
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <h1 className="font-tech text-4xl md:text-5xl text-red-500 mb-2" style={{ textShadow: '0 0 10px rgba(239, 68, 68, 0.8), 0 0 20px rgba(239, 68, 68, 0.6), 0 0 40px rgba(239, 68, 68, 0.4)' }}>
-            CARDIAC SOLUTIONS
-          </h1>
-          <p className="font-tech text-slate-400 tracking-[0.3em] text-sm">
-            AED MONITORING COMMAND CENTER
-          </p>
-        </motion.div>
-
-        {/* Heart & Data Rings Container */}
-        <motion.div 
-          className="relative mb-8"
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-        >
-          {/* Data Rings */}
-          <DataRing size="280px" color="#ef4444" rotateClass="rotate-slow" opacity={0.3} />
-          <DataRing size="320px" color="#dc2626" rotateClass="rotate-reverse" opacity={0.2} />
-          <DataRing size="360px" color="#ef4444" rotateClass="rotate-slow" opacity={0.15} />
-          
-          {/* Pulse Rings */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-52 h-52 rounded-full border border-red-500/40 pulse-ring" style={{ boxShadow: '0 0 15px rgba(239, 68, 68, 0.3)' }} />
-          </div>
-          
-          {/* Heart SVG */}
-          <div 
-            className="relative z-10 flex items-center justify-center p-16 cursor-pointer"
-            onClick={handleHeartClick}
-            data-testid="heart-button"
-          >
-            <HeartEKG isBeating={isBeating} isFlat={!isBeating} />
-            <ElectricalSparks isActive={showSparks} />
-          </div>
-          
-          {/* Click instruction text */}
-          {!showLoginForm && (
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-8">
-              <span className="font-tech text-red-500 text-sm tracking-wider" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
-                CLICK ON THE HEART TO START
-              </span>
-            </div>
-          )}
-        </motion.div>
-
-        {/* Login Form - Shows after clicking heart */}
-        <AnimatePresence>
-          {showLoginForm && (
+        
+        {/* SCREEN: Heart (Initial) and Beating */}
+        <AnimatePresence mode="wait">
+          {(currentScreen === "heart" || currentScreen === "beating") && (
             <motion.div
-              className="w-full max-w-md"
+              key="heart-screen"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.5 }}
+              className="flex flex-col items-center"
+            >
+              {/* Logo & Title */}
+              <motion.div 
+                className="text-center mb-8"
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+              >
+                <h1 className="font-tech text-4xl md:text-5xl text-red-500 mb-2" style={{ textShadow: '0 0 10px rgba(239, 68, 68, 0.8), 0 0 20px rgba(239, 68, 68, 0.6), 0 0 40px rgba(239, 68, 68, 0.4)' }}>
+                  CARDIAC SOLUTIONS
+                </h1>
+                <p className="font-tech text-slate-400 tracking-[0.3em] text-sm">
+                  AED MONITORING COMMAND CENTER
+                </p>
+              </motion.div>
+
+              {/* Heart & Data Rings Container */}
+              <motion.div 
+                className="relative mb-8"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.8, delay: 0.2 }}
+              >
+                {/* Data Rings */}
+                <DataRing size="280px" color="#ef4444" rotateClass="rotate-slow" opacity={0.3} />
+                <DataRing size="320px" color="#dc2626" rotateClass="rotate-reverse" opacity={0.2} />
+                <DataRing size="360px" color="#ef4444" rotateClass="rotate-slow" opacity={0.15} />
+                
+                {/* Pulse Rings */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-52 h-52 rounded-full border border-red-500/40 pulse-ring" style={{ boxShadow: '0 0 15px rgba(239, 68, 68, 0.3)' }} />
+                </div>
+                
+                {/* Heart SVG */}
+                <div 
+                  className="relative z-10 flex items-center justify-center p-16 cursor-pointer"
+                  onClick={handleHeartClick}
+                  data-testid="heart-button"
+                >
+                  <HeartEKG isBeating={isBeating} isFlat={!isBeating} />
+                  <ElectricalSparks isActive={showSparks} />
+                </div>
+                
+                {/* Click instruction text - only on initial screen */}
+                {currentScreen === "heart" && (
+                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-8">
+                    <span className="font-tech text-red-500 text-sm tracking-wider" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
+                      CLICK ON THE HEART TO START
+                    </span>
+                  </div>
+                )}
+                
+                {/* Status text during beating */}
+                {currentScreen === "beating" && (
+                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-8">
+                    <span className="font-tech text-red-500 text-sm tracking-wider animate-pulse" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
+                      INITIALIZING SYSTEMS...
+                    </span>
+                  </div>
+                )}
+              </motion.div>
+            </motion.div>
+          )}
+
+          {/* SCREEN: Login Form */}
+          {currentScreen === "login" && (
+            <motion.div
+              key="login-screen"
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 30 }}
-              transition={{ duration: 0.5 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.6 }}
+              className="flex flex-col items-center w-full"
             >
-              <div className="glass-dark rounded-lg p-8 hud-corners">
-                <div className="flex items-center gap-2 mb-6">
-                  <Shield className="w-5 h-5 text-red-500" style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.6))' }} />
-                  <span className="font-tech text-red-500 text-sm tracking-wider" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
-                    {isRegister ? "NEW OPERATOR REGISTRATION" : "OPERATOR AUTHENTICATION"}
-                  </span>
-                </div>
+              {/* Logo & Title */}
+              <motion.div 
+                className="text-center mb-8"
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+              >
+                <h1 className="font-tech text-4xl md:text-5xl text-red-500 mb-2" style={{ textShadow: '0 0 10px rgba(239, 68, 68, 0.8), 0 0 20px rgba(239, 68, 68, 0.6), 0 0 40px rgba(239, 68, 68, 0.4)' }}>
+                  CARDIAC SOLUTIONS
+                </h1>
+                <p className="font-tech text-slate-400 tracking-[0.3em] text-sm">
+                  AED MONITORING COMMAND CENTER
+                </p>
+              </motion.div>
 
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  {isRegister && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                    >
+              {/* Login Form */}
+              <motion.div
+                className="w-full max-w-md"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+              >
+                <div className="glass-dark rounded-lg p-8 hud-corners">
+                  <div className="flex items-center gap-2 mb-6">
+                    <Shield className="w-5 h-5 text-red-500" style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.6))' }} />
+                    <span className="font-tech text-red-500 text-sm tracking-wider" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
+                      {isRegister ? "NEW OPERATOR REGISTRATION" : "OPERATOR AUTHENTICATION"}
+                    </span>
+                  </div>
+
+                  <form onSubmit={handleSubmit} className="space-y-6">
+                    {isRegister && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                      >
+                        <label className="block text-xs font-tech text-slate-400 mb-2 tracking-wider">
+                          OPERATOR NAME
+                        </label>
+                        <input
+                          data-testid="register-name-input"
+                          type="text"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          className="w-full bg-transparent border-b border-slate-700 focus:border-red-500 px-0 py-3 text-white outline-none transition-colors font-mono"
+                          placeholder="Enter your name"
+                          required={isRegister}
+                        />
+                      </motion.div>
+                    )}
+
+                    <div>
                       <label className="block text-xs font-tech text-slate-400 mb-2 tracking-wider">
-                        OPERATOR NAME
+                        USER NAME
                       </label>
                       <input
-                        data-testid="register-name-input"
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        data-testid="email-input"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
                         className="w-full bg-transparent border-b border-slate-700 focus:border-red-500 px-0 py-3 text-white outline-none transition-colors font-mono"
-                        placeholder="Enter your name"
-                        required={isRegister}
-                      />
-                    </motion.div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-tech text-slate-400 mb-2 tracking-wider">
-                      USER NAME
-                    </label>
-                    <input
-                      data-testid="email-input"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full bg-transparent border-b border-slate-700 focus:border-red-500 px-0 py-3 text-white outline-none transition-colors font-mono"
-                      placeholder="operator@cardiac.com"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-tech text-slate-400 mb-2 tracking-wider">
-                      PASSWORD
-                    </label>
-                    <div className="relative">
-                      <input
-                        data-testid="password-input"
-                        type={showPassword ? "text" : "password"}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full bg-transparent border-b border-slate-700 focus:border-red-500 px-0 py-3 text-white outline-none transition-colors font-mono pr-10"
-                        placeholder="••••••••"
+                        placeholder="operator@cardiac.com"
                         required
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-500 hover:text-red-500 transition-colors"
-                      >
-                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                      </button>
                     </div>
+
+                    <div>
+                      <label className="block text-xs font-tech text-slate-400 mb-2 tracking-wider">
+                        PASSWORD
+                      </label>
+                      <div className="relative">
+                        <input
+                          data-testid="password-input"
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="w-full bg-transparent border-b border-slate-700 focus:border-red-500 px-0 py-3 text-white outline-none transition-colors font-mono pr-10"
+                          placeholder="••••••••"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-500 hover:text-red-500 transition-colors"
+                        >
+                          {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <motion.button
+                      data-testid="submit-button"
+                      type="submit"
+                      disabled={loading}
+                      className="w-full bg-red-500 hover:bg-red-400 text-white font-tech py-4 rounded-full tracking-widest uppercase transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      style={{ boxShadow: '0 0 15px rgba(239, 68, 68, 0.5), 0 0 30px rgba(239, 68, 68, 0.3)' }}
+                      whileHover={{ scale: 1.02, boxShadow: '0 0 25px rgba(239, 68, 68, 0.7), 0 0 50px rgba(239, 68, 68, 0.4)' }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      {loading ? (
+                        <>
+                          <Activity className="w-5 h-5 animate-pulse" />
+                          <span>PROCESSING...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-5 h-5" />
+                          <span>{isRegister ? "REGISTER" : "LOGIN"}</span>
+                        </>
+                      )}
+                    </motion.button>
+                  </form>
+
+                  <div className="mt-6 text-center">
+                    <button
+                      data-testid="toggle-auth-mode"
+                      onClick={() => setIsRegister(!isRegister)}
+                      className="text-sm text-slate-500 hover:text-red-500 transition-colors font-tech tracking-wider"
+                    >
+                      {isRegister ? "// EXISTING OPERATOR? LOGIN" : "// NEW OPERATOR? REGISTER"}
+                    </button>
                   </div>
-
-                  <motion.button
-                    data-testid="submit-button"
-                    type="submit"
-                    disabled={loading}
-                    className="w-full bg-red-500 hover:bg-red-400 text-white font-tech py-4 rounded-full tracking-widest uppercase transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    style={{ boxShadow: '0 0 15px rgba(239, 68, 68, 0.5), 0 0 30px rgba(239, 68, 68, 0.3)' }}
-                    whileHover={{ scale: 1.02, boxShadow: '0 0 25px rgba(239, 68, 68, 0.7), 0 0 50px rgba(239, 68, 68, 0.4)' }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    {loading ? (
-                      <>
-                        <Activity className="w-5 h-5 animate-pulse" />
-                        <span>PROCESSING...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="w-5 h-5" />
-                        <span>{isRegister ? "REGISTER" : "LOGIN"}</span>
-                      </>
-                    )}
-                  </motion.button>
-                </form>
-
-                <div className="mt-6 text-center">
-                  <button
-                    data-testid="toggle-auth-mode"
-                    onClick={() => setIsRegister(!isRegister)}
-                    className="text-sm text-slate-500 hover:text-red-500 transition-colors font-tech tracking-wider"
-                  >
-                    {isRegister ? "// EXISTING OPERATOR? LOGIN" : "// NEW OPERATOR? REGISTER"}
-                  </button>
                 </div>
-              </div>
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
