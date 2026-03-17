@@ -253,6 +253,13 @@ export default function LoginPage({ onLogin }) {
           <div className="relative z-10 flex items-center justify-center p-16">
             <HeartEKG isBeating={isBeating} isFlat={!isBeating} />
           </div>
+          
+          {/* Click instruction text */}
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-8">
+            <span className="font-tech text-red-500 text-sm tracking-wider" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
+              CLICK ON THE HEART TO START
+            </span>
+          </div>
         </motion.div>
 
         {/* Login Form */}
@@ -266,7 +273,7 @@ export default function LoginPage({ onLogin }) {
             <div className="flex items-center gap-2 mb-6">
               <Shield className="w-5 h-5 text-red-500" style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.6))' }} />
               <span className="font-tech text-red-500 text-sm tracking-wider" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
-                {isRegister ? "NEW OPERATOR REGISTRATION" : "CLICK ON THE HEART TO START"}
+                {isRegister ? "NEW OPERATOR REGISTRATION" : "OPERATOR AUTHENTICATION"}
               </span>
             </div>
 
