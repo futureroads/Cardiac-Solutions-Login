@@ -305,20 +305,30 @@ export default function LoginPage({ onLogin }) {
                 )}
               </AnimatePresence>
 
-              <div>
-                <label className="block text-xs font-tech text-slate-400 mb-2 tracking-wider">
-                  EMAIL ADDRESS
-                </label>
-                <input
-                  data-testid="email-input"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-transparent border-b border-slate-700 focus:border-red-500 px-0 py-3 text-white outline-none transition-colors font-mono"
-                  placeholder="operator@cardiac.com"
-                  required
-                />
-              </div>
+              <AnimatePresence mode="wait">
+                {isRegister && (
+                  <motion.div
+                    key="email-field"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <label className="block text-xs font-tech text-slate-400 mb-2 tracking-wider">
+                      EMAIL ADDRESS
+                    </label>
+                    <input
+                      data-testid="email-input"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-transparent border-b border-slate-700 focus:border-red-500 px-0 py-3 text-white outline-none transition-colors font-mono"
+                      placeholder="operator@cardiac.com"
+                      required
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               <div>
                 <label className="block text-xs font-tech text-slate-400 mb-2 tracking-wider">
