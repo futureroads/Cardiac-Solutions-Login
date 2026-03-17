@@ -143,6 +143,17 @@ export default function LoginPage({ onLogin }) {
     };
   }, []);
 
+  const handleHeartClick = () => {
+    setShockEffect(true);
+    setIsBeating(true);
+    
+    setTimeout(() => {
+      setShockEffect(false);
+      // Navigate to dashboard - using a simple approach without requiring login
+      onLogin("demo-token", { id: "demo", email: "demo@cardiac.com", name: "Demo User", created_at: new Date().toISOString() });
+    }, 1500);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -250,7 +261,11 @@ export default function LoginPage({ onLogin }) {
           </div>
           
           {/* Heart SVG */}
-          <div className="relative z-10 flex items-center justify-center p-16">
+          <div 
+            className="relative z-10 flex items-center justify-center p-16 cursor-pointer"
+            onClick={handleHeartClick}
+            data-testid="heart-button"
+          >
             <HeartEKG isBeating={isBeating} isFlat={!isBeating} />
           </div>
           
@@ -259,142 +274,6 @@ export default function LoginPage({ onLogin }) {
             <span className="font-tech text-red-500 text-sm tracking-wider" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
               CLICK ON THE HEART TO START
             </span>
-          </div>
-        </motion.div>
-
-        {/* Login Form */}
-        <motion.div
-          className="w-full max-w-md"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-        >
-          <div className="glass-dark rounded-lg p-8 hud-corners">
-            {isRegister && (
-              <div className="flex items-center gap-2 mb-6">
-                <Shield className="w-5 h-5 text-red-500" style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.6))' }} />
-                <span className="font-tech text-red-500 text-sm tracking-wider" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
-                  NEW OPERATOR REGISTRATION
-                </span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <AnimatePresence mode="wait">
-                {isRegister && (
-                  <motion.div
-                    key="name-field"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <label className="block text-xs font-tech text-slate-400 mb-2 tracking-wider">
-                      OPERATOR NAME
-                    </label>
-                    <input
-                      data-testid="register-name-input"
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full bg-transparent border-b border-slate-700 focus:border-red-500 px-0 py-3 text-white outline-none transition-colors font-mono"
-                      placeholder="Enter your name"
-                      required={isRegister}
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <AnimatePresence mode="wait">
-                {isRegister && (
-                  <motion.div
-                    key="email-field"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <label className="block text-xs font-tech text-slate-400 mb-2 tracking-wider">
-                      EMAIL ADDRESS
-                    </label>
-                    <input
-                      data-testid="email-input"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full bg-transparent border-b border-slate-700 focus:border-red-500 px-0 py-3 text-white outline-none transition-colors font-mono"
-                      placeholder="operator@cardiac.com"
-                      required
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <div>
-                <div className="relative">
-                  <input
-                    data-testid="password-input"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-transparent border-b border-slate-700 focus:border-red-500 px-0 py-3 text-white outline-none transition-colors font-mono pr-10"
-                    placeholder="••••••••"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-500 hover:text-red-500 transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-
-              <motion.button
-                data-testid="submit-button"
-                type="submit"
-                disabled={loading}
-                className="w-full bg-red-500 hover:bg-red-400 text-white font-tech py-4 rounded-full tracking-widest uppercase transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                style={{ boxShadow: '0 0 15px rgba(239, 68, 68, 0.5), 0 0 30px rgba(239, 68, 68, 0.3)' }}
-                whileHover={{ scale: 1.02, boxShadow: '0 0 25px rgba(239, 68, 68, 0.7), 0 0 50px rgba(239, 68, 68, 0.4)' }}
-                whileTap={{ scale: 0.98 }}
-              >
-                {loading ? (
-                  <>
-                    <Activity className="w-5 h-5 animate-pulse" />
-                    <span>PROCESSING...</span>
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-5 h-5" />
-                    <span>{isRegister ? "REGISTER" : "AUTHENTICATE"}</span>
-                  </>
-                )}
-              </motion.button>
-            </form>
-
-            <div className="mt-6 text-center">
-              <button
-                data-testid="toggle-auth-mode"
-                onClick={() => setIsRegister(!isRegister)}
-                className="text-sm text-slate-500 hover:text-red-500 transition-colors font-tech tracking-wider"
-              >
-                {isRegister ? "// EXISTING OPERATOR? AUTHENTICATE" : "// NEW OPERATOR? REGISTER"}
-              </button>
-            </div>
-          </div>
-
-          {/* System Status */}
-          <div className="mt-6 flex items-center justify-center gap-4 text-xs font-mono text-slate-600">
-            <span className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              SYSTEMS ONLINE
-            </span>
-            <span>|</span>
-            <span>v3.14.159</span>
-            <span>|</span>
-            <span>JARVIS PROTOCOL</span>
           </div>
         </motion.div>
       </div>
