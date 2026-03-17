@@ -452,7 +452,7 @@ export default function LoginPage({ onLogin }) {
                   className="w-20 h-20 object-contain mx-auto mb-4"
                   style={{ filter: 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.4))' }}
                 />
-                <h1 className="font-tech text-4xl md:text-5xl text-red-500 mb-2 animate-pulse" style={{ textShadow: '0 0 10px #ef4444, 0 0 20px #ef4444, 0 0 30px #ef4444, 0 0 40px #dc2626, 0 0 70px #dc2626, 0 0 80px #dc2626, 0 0 100px #b91c1c' }}>
+                <h1 className="font-tech text-4xl md:text-5xl text-red-500 mb-2" style={{ textShadow: '0 0 10px #ef4444, 0 0 20px #ef4444, 0 0 30px #ef4444, 0 0 40px #dc2626, 0 0 70px #dc2626, 0 0 80px #dc2626, 0 0 100px #b91c1c' }}>
                   CARDIAC SOLUTIONS, LLC
                 </h1>
                 <p className="font-tech text-slate-300 tracking-[0.3em] text-sm" style={{ textShadow: '0 0 5px rgba(148, 163, 184, 0.5), 0 0 10px rgba(148, 163, 184, 0.3)' }}>
@@ -525,7 +525,7 @@ export default function LoginPage({ onLogin }) {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6 }}
               >
-                <h1 className="font-tech text-4xl md:text-5xl text-red-500 mb-2 animate-pulse" style={{ textShadow: '0 0 10px #ef4444, 0 0 20px #ef4444, 0 0 30px #ef4444, 0 0 40px #dc2626, 0 0 70px #dc2626, 0 0 80px #dc2626, 0 0 100px #b91c1c' }}>
+                <h1 className="font-tech text-4xl md:text-5xl text-red-500 mb-2" style={{ textShadow: '0 0 10px #ef4444, 0 0 20px #ef4444, 0 0 30px #ef4444, 0 0 40px #dc2626, 0 0 70px #dc2626, 0 0 80px #dc2626, 0 0 100px #b91c1c' }}>
                   CARDIAC SOLUTIONS, LLC
                 </h1>
                 <p className="font-tech text-slate-300 tracking-[0.3em] text-sm" style={{ textShadow: '0 0 5px rgba(148, 163, 184, 0.5), 0 0 10px rgba(148, 163, 184, 0.3)' }}>
