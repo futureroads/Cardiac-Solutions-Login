@@ -266,7 +266,7 @@ export default function LoginPage({ onLogin }) {
             <div className="flex items-center gap-2 mb-6">
               <Shield className="w-5 h-5 text-red-500" style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.6))' }} />
               <span className="font-tech text-red-500 text-sm tracking-wider" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
-                {isRegister ? "NEW OPERATOR REGISTRATION" : "OPERATOR AUTHENTICATION"}
+                {isRegister ? "NEW OPERATOR REGISTRATION" : "CLICK ON THE HEART TO START"}
               </span>
             </div>
 
