@@ -5,6 +5,18 @@
   background-color: #020617;
 }
 
+/* Hide Emergent watermark */
+[data-testid="emergent-watermark"],
+[class*="emergent-watermark"],
+[class*="watermark"],
+div[style*="Made with"],
+a[href*="emergentagent.com"]:has(svg),
+div:has(> a[href*="emergentagent.com"]) {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
 /* Remove default link styling */
 a {
   color: inherit;

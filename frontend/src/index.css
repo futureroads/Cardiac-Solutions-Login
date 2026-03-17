@@ -26,6 +26,28 @@ body {
   color: var(--foreground);
 }
 
+/* Hide Emergent watermark */
+[data-testid="emergent-watermark"],
+[class*="emergent-badge"],
+[class*="watermark"],
+#emergent-badge,
+.emergent-badge,
+div[class*="Emergent"],
+a[href*="emergentagent"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  width: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Fix for injected watermarks at bottom right */
+body > div:last-child:not(.App):not(#root) {
+  display: none !important;
+}
+
 code {
   font-family: 'JetBrains Mono', monospace;
 }
