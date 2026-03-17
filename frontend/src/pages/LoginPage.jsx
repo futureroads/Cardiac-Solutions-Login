@@ -108,10 +108,16 @@ const HeartEKG = ({ isBeating, isFlat }) => {
         fill="none"
         stroke="#ef4444"
         strokeWidth="2"
-        className={isBeating ? "heartbeat" : ""}
         initial={{ pathLength: 0, opacity: 0 }}
-        animate={{ pathLength: 1, opacity: 1 }}
-        transition={{ duration: 1.5, ease: "easeInOut" }}
+        animate={{ 
+          pathLength: 1, 
+          opacity: 1,
+          scale: isBeating ? [1, 1.05, 1, 1.03, 1] : 1
+        }}
+        transition={{ 
+          pathLength: { duration: 1.5, ease: "easeInOut" },
+          scale: { duration: 0.8, repeat: isBeating ? Infinity : 0, ease: "easeInOut" }
+        }}
       />
       
       {/* Inner Glow */}
@@ -120,25 +126,70 @@ const HeartEKG = ({ isBeating, isFlat }) => {
         fill="rgba(239, 68, 68, 0.15)"
         stroke="none"
         initial={{ opacity: 0 }}
-        animate={{ opacity: isBeating ? 0.4 : 0.15 }}
-        transition={{ duration: 0.5 }}
+        animate={{ opacity: isBeating ? [0.15, 0.4, 0.15] : 0.15 }}
+        transition={{ duration: 0.8, repeat: isBeating ? Infinity : 0 }}
       />
       
-      {/* EKG Line */}
-      <motion.path
-        d={isFlat 
-          ? "M-150 80 L350 80" 
-          : "M-150 80 L60 80 L70 80 L75 60 L80 100 L85 40 L90 110 L95 70 L100 80 L350 80"
-        }
-        fill="none"
-        stroke="#ff4444"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        className={!isFlat ? "ekg-animated" : ""}
-        initial={{ pathLength: 0 }}
-        animate={{ pathLength: 1 }}
-        transition={{ duration: 1, ease: "linear" }}
-      />
+      {/* EKG Line - Flat when not beating */}
+      {!isBeating && (
+        <motion.path
+          d="M-150 80 L350 80"
+          fill="none"
+          stroke="#ff4444"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 1, ease: "linear" }}
+        />
+      )}
+      
+      {/* EKG Line - Animated heartbeat when beating */}
+      {isBeating && (
+        <motion.path
+          d="M-150 80 L30 80 L50 80 L55 65 L60 95 L65 50 L70 105 L75 70 L80 80 L350 80"
+          fill="none"
+          stroke="#ff4444"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          initial={{ pathLength: 0, pathOffset: 0 }}
+          animate={{ 
+            pathLength: [0, 1],
+            pathOffset: [0, 0]
+          }}
+          transition={{ 
+            duration: 0.8,
+            repeat: Infinity,
+            ease: "linear",
+            repeatDelay: 0.4
+          }}
+          style={{
+            filter: 'drop-shadow(0 0 4px rgba(255, 68, 68, 0.8))'
+          }}
+        />
+      )}
+      
+      {/* Pulse dot that travels along the line when beating */}
+      {isBeating && (
+        <motion.circle
+          r="4"
+          fill="#ff6666"
+          initial={{ cx: -150, cy: 80 }}
+          animate={{ 
+            cx: [-150, 30, 50, 55, 60, 65, 70, 75, 80, 350],
+            cy: [80, 80, 80, 65, 95, 50, 105, 70, 80, 80]
+          }}
+          transition={{
+            duration: 0.8,
+            repeat: Infinity,
+            ease: "linear",
+            repeatDelay: 0.4
+          }}
+          style={{
+            filter: 'drop-shadow(0 0 8px rgba(255, 100, 100, 1))'
+          }}
+        />
+      )}
     </svg>
   );
 };
