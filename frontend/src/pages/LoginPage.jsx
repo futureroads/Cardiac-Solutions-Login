@@ -7,6 +7,69 @@ import { Eye, EyeOff, Zap, Shield, Activity } from "lucide-react";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
+// EKG Sound Effect using Web Audio API
+const useEKGSound = () => {
+  const audioContextRef = useRef(null);
+  const intervalRef = useRef(null);
+
+  const playBeep = (frequency = 880, duration = 0.1) => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const ctx = audioContextRef.current;
+    
+    // Main beep oscillator
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    
+    oscillator.frequency.value = frequency;
+    oscillator.type = 'sine';
+    
+    // Sharp attack, quick decay for that medical monitor sound
+    gainNode.gain.setValueAtTime(0, ctx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+    
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + duration);
+  };
+
+  const startHeartbeat = () => {
+    // Play the characteristic "beep-beep" pattern
+    const playHeartbeatPattern = () => {
+      // First beep (higher pitch)
+      playBeep(880, 0.08);
+      // Second beep after short delay (slightly lower)
+      setTimeout(() => playBeep(660, 0.12), 150);
+    };
+
+    playHeartbeatPattern();
+    intervalRef.current = setInterval(playHeartbeatPattern, 1200);
+  };
+
+  const stopHeartbeat = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopHeartbeat();
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+    };
+  }, []);
+
+  return { startHeartbeat, stopHeartbeat };
+};
+
 // Electrical Sparks Component
 const ElectricalSparks = ({ isActive }) => {
   if (!isActive) return null;
@@ -267,6 +330,8 @@ export default function LoginPage({ onLogin }) {
   const [showSparks, setShowSparks] = useState(false);
   const [currentScreen, setCurrentScreen] = useState("heart"); // "heart", "beating", "login"
   const containerRef = useRef(null);
+  
+  const { startHeartbeat, stopHeartbeat } = useEKGSound();
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -295,6 +360,9 @@ export default function LoginPage({ onLogin }) {
     setIsBeating(true);
     setCurrentScreen("beating");
     
+    // Start the EKG heartbeat sound
+    startHeartbeat();
+    
     // Hide sparks after initial effect
     setTimeout(() => {
       setShockEffect(false);
@@ -303,6 +371,7 @@ export default function LoginPage({ onLogin }) {
     
     // After 5 seconds of heartbeat, transition to login screen
     setTimeout(() => {
+      stopHeartbeat();
       setCurrentScreen("login");
     }, 5000);
   };
