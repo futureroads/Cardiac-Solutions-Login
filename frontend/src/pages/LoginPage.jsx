@@ -539,6 +539,12 @@ export default function LoginPage({ onLogin }) {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6 }}
               >
+                <img 
+                  src="https://customer-assets.emergentagent.com/job_pulse-ops/artifacts/wftdw2pr_Gemini_Generated_Image_3dl4mo3dl4mo3dl4.png" 
+                  alt="Cardiac Solutions Logo" 
+                  className="w-20 h-20 object-contain mx-auto mb-4"
+                  style={{ filter: 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.4))' }}
+                />
                 <h1 className="font-tech text-4xl md:text-5xl text-red-500 mb-2" style={{ textShadow: '0 0 10px #ef4444, 0 0 20px #ef4444, 0 0 30px #ef4444, 0 0 40px #dc2626, 0 0 70px #dc2626, 0 0 80px #dc2626, 0 0 100px #b91c1c' }}>
                   CARDIAC SOLUTIONS, LLC
                 </h1>
