@@ -396,16 +396,6 @@ export default function LoginPage({ onLogin }) {
         <AEDCursor position={cursorPosition} isClicking={isClicking} />
       )}
 
-      {/* Logo in upper left corner */}
-      <div className="absolute top-6 left-6 z-20">
-        <img 
-          src="https://customer-assets.emergentagent.com/job_pulse-ops/artifacts/wftdw2pr_Gemini_Generated_Image_3dl4mo3dl4mo3dl4.png" 
-          alt="Cardiac Solutions Logo" 
-          className="w-16 h-16 object-contain"
-          style={{ filter: 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.4))' }}
-        />
-      </div>
-
       {/* Holographic Grid Floor */}
       <div className="absolute bottom-0 left-0 right-0 h-[40vh] holo-grid-perspective opacity-30" />
       
@@ -456,6 +446,12 @@ export default function LoginPage({ onLogin }) {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6 }}
               >
+                <img 
+                  src="https://customer-assets.emergentagent.com/job_pulse-ops/artifacts/wftdw2pr_Gemini_Generated_Image_3dl4mo3dl4mo3dl4.png" 
+                  alt="Cardiac Solutions Logo" 
+                  className="w-20 h-20 object-contain mx-auto mb-4"
+                  style={{ filter: 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.4))' }}
+                />
                 <h1 className="font-tech text-4xl md:text-5xl text-red-500 mb-2" style={{ textShadow: '0 0 10px rgba(239, 68, 68, 0.8), 0 0 20px rgba(239, 68, 68, 0.6), 0 0 40px rgba(239, 68, 68, 0.4)' }}>
                   CARDIAC SOLUTIONS
                 </h1>
