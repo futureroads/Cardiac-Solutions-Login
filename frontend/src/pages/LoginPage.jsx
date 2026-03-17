@@ -87,12 +87,12 @@ const AEDCursor = ({ position, isClicking }) => {
         transition={{ duration: 0.1 }}
       >
         {/* Left Pad */}
-        <div className="w-5 h-8 rounded-sm bg-gradient-to-b from-red-600 to-red-800 border border-red-400 flex items-center justify-center">
-          <span className="text-[6px] font-bold text-white">-</span>
+        <div className="w-5 h-8 rounded-sm bg-gradient-to-b from-white to-slate-200 border border-slate-300 flex items-center justify-center shadow-lg">
+          <span className="text-[6px] font-bold text-slate-800">-</span>
         </div>
         {/* Right Pad */}
-        <div className="w-5 h-8 rounded-sm bg-gradient-to-b from-red-600 to-red-800 border border-red-400 flex items-center justify-center">
-          <span className="text-[6px] font-bold text-white">+</span>
+        <div className="w-5 h-8 rounded-sm bg-gradient-to-b from-white to-slate-200 border border-slate-300 flex items-center justify-center shadow-lg">
+          <span className="text-[6px] font-bold text-slate-800">+</span>
         </div>
       </motion.div>
       {/* Electrical Arc */}
