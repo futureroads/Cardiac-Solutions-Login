@@ -1,464 +1,494 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import axios from "axios";
-import {
-  Activity,
-  Bell,
-  Download,
-  LogOut,
-  RefreshCw,
-  Heart,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  MapPin,
-  Wifi,
-  WifiOff,
-  ChevronUp,
-  ChevronDown,
-  Filter,
-  ArrowUpRight,
-  ArrowDownRight,
-} from "lucide-react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../components/ui/dropdown-menu";
-import { ScrollArea } from "../components/ui/scroll-area";
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-// Status Card Component
-const StatusCard = ({ title, value, icon: Icon, color, trend, trendValue }) => {
-  const colorClasses = {
-    red: "text-red-500 border-red-500/30 bg-red-500/5",
-    cyan: "text-cyan-500 border-cyan-500/30 bg-cyan-500/5",
-    green: "text-green-500 border-green-500/30 bg-green-500/5",
-    yellow: "text-yellow-500 border-yellow-500/30 bg-yellow-500/5",
-    orange: "text-orange-500 border-orange-500/30 bg-orange-500/5",
-    pink: "text-pink-500 border-pink-500/30 bg-pink-500/5",
-    purple: "text-purple-500 border-purple-500/30 bg-purple-500/5",
-    slate: "text-slate-400 border-slate-500/30 bg-slate-500/5",
-  };
-
-  const glowStyles = {
-    red: { textShadow: '0 0 10px rgba(239, 68, 68, 0.6)', filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.4))' },
-    green: { textShadow: '0 0 10px rgba(34, 197, 94, 0.6)', filter: 'drop-shadow(0 0 4px rgba(34, 197, 94, 0.4))' },
-    yellow: { textShadow: '0 0 10px rgba(234, 179, 8, 0.6)', filter: 'drop-shadow(0 0 4px rgba(234, 179, 8, 0.4))' },
-    orange: { textShadow: '0 0 10px rgba(249, 115, 22, 0.6)', filter: 'drop-shadow(0 0 4px rgba(249, 115, 22, 0.4))' },
-    pink: { textShadow: '0 0 10px rgba(236, 72, 153, 0.6)', filter: 'drop-shadow(0 0 4px rgba(236, 72, 153, 0.4))' },
-    purple: { textShadow: '0 0 10px rgba(168, 85, 247, 0.6)', filter: 'drop-shadow(0 0 4px rgba(168, 85, 247, 0.4))' },
-    cyan: { textShadow: '0 0 10px rgba(6, 182, 212, 0.6)', filter: 'drop-shadow(0 0 4px rgba(6, 182, 212, 0.4))' },
-    slate: { textShadow: 'none', filter: 'none' },
-  };
-
-  return (
-    <motion.div
-      className={`relative p-4 rounded-lg border ${colorClasses[color]} hud-corners overflow-hidden`}
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.3 }}
-      whileHover={{ scale: 1.02 }}
-    >
-      <div className="flex items-start justify-between">
-        <div>
-          <Icon className="w-5 h-5 mb-2 opacity-60" style={{ filter: glowStyles[color]?.filter }} />
-          <div className="font-tech text-3xl md:text-4xl font-bold" style={{ textShadow: glowStyles[color]?.textShadow }}>{value}</div>
-          <div className="font-tech text-xs text-slate-500 tracking-wider mt-1 uppercase">
-            {title}
-          </div>
-        </div>
-        {trend && (
-          <div className={`flex items-center gap-1 text-xs ${trend === 'up' ? 'text-green-500' : 'text-red-500'}`}>
-            {trend === 'up' ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-            <span>{trendValue}</span>
-          </div>
-        )}
-      </div>
-    </motion.div>
-  );
-};
-
-// Subscriber Row Component
-const SubscriberRow = ({ subscriber, index }) => {
-  const percentReady = subscriber.total > 0 
-    ? ((subscriber.ready / subscriber.total) * 100).toFixed(1) 
-    : 0;
-  
-  const getPercentColor = (pct) => {
-    if (pct >= 90) return "text-green-500";
-    if (pct >= 70) return "text-yellow-500";
-    return "text-red-500";
-  };
-
-  const getTrend = (val) => {
-    if (val === 0) return null;
-    return Math.random() > 0.5 ? "up" : "down";
-  };
-
-  return (
-    <TableRow className="border-slate-800/50 hover:bg-slate-900/50">
-      <TableCell className="font-medium">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${percentReady >= 90 ? 'bg-green-500' : percentReady >= 70 ? 'bg-yellow-500' : 'bg-red-500'}`} />
-          <span className="text-slate-300">{subscriber.name}</span>
-        </div>
-      </TableCell>
-      <TableCell className="text-center font-mono text-slate-400">{subscriber.total}</TableCell>
-      <TableCell className={`text-center font-mono ${getPercentColor(percentReady)}`}>
-        <div className="flex items-center justify-center gap-1">
-          {percentReady}%
-          {getTrend(percentReady) && (
-            getTrend(percentReady) === 'up' 
-              ? <ChevronUp className="w-3 h-3" /> 
-              : <ChevronDown className="w-3 h-3" />
-          )}
-        </div>
-      </TableCell>
-      <TableCell className="text-center font-mono text-green-500">{subscriber.ready || '—'}</TableCell>
-      <TableCell className="text-center font-mono text-red-500">{subscriber.not_ready || '—'}</TableCell>
-      <TableCell className="text-center font-mono text-yellow-500">{subscriber.reposition || '—'}</TableCell>
-      <TableCell className="text-center font-mono text-slate-400">{subscriber.not_present || '—'}</TableCell>
-      <TableCell className="text-center font-mono text-orange-500">{subscriber.expired_bp || '—'}</TableCell>
-      <TableCell className="text-center font-mono text-amber-500">{subscriber.expiring_bp || '—'}</TableCell>
-      <TableCell className="text-center font-mono text-pink-500">{subscriber.lost_contact || '—'}</TableCell>
-      <TableCell className="text-center font-mono text-purple-500">{subscriber.unknown || '—'}</TableCell>
-    </TableRow>
-  );
-};
+import { LogOut, Mic } from "lucide-react";
 
 export default function Dashboard({ user, onLogout }) {
-  const [stats, setStats] = useState(null);
-  const [subscribers, setSubscribers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [sortField, setSortField] = useState("name");
-  const [sortDirection, setSortDirection] = useState("asc");
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [isListening, setIsListening] = useState(false);
 
-  const fetchData = async () => {
-    const token = localStorage.getItem("token");
-    const config = {
-      headers: { Authorization: `Bearer ${token}` }
-    };
-
-    try {
-      const [statsRes, subscribersRes] = await Promise.all([
-        axios.get(`${API}/dashboard/stats`, config),
-        axios.get(`${API}/dashboard/subscribers`, config)
-      ]);
-      setStats(statsRes.data);
-      setSubscribers(subscribersRes.data);
-    } catch (error) {
-      if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
-        onLogout();
-      } else {
-        toast.error("Failed to fetch dashboard data");
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  // Mock data
+  const stats = {
+    total: 3300,
+    ready: 3201,
+    lost: 62,
+    service: 28,
+    dispatch: 9,
+    alerts: 12,
+    pendingNotifs: 2,
+    sentToday: 2,
+    devicesAffected: 5,
+    openTickets: 10
   };
+
+  const pctReady = ((stats.ready / stats.total) * 100).toFixed(1);
+
+  const aiRecommendations = [
+    { type: 'INFO', msg: 'Tech R. Chen has 4 open tickets in SW region. Recommend reassigning AED-0772 (Phoenix) to nearest available tech.' },
+    { type: 'ACT', msg: 'Battery degradation on AED-1204 & AED-1205 (Seattle). Schedule combined service visit.' },
+    { type: 'WARN', msg: '3 devices in Miami-Dade lost contact within 12h — possible network outage. Check ISP before dispatching.' },
+    { type: 'ACT', msg: "AED-0881 Chicago O'Hare offline 48h — escalate to SVC-0038. Risk: critical public venue." },
+    { type: 'ACT', msg: 'Dispatch tech to AED-0293 (Tampa Intl) — lost contact 6h, high-traffic zone. Recommend same-day response.' },
+  ];
+
+  const statusChanges = [
+    { location: 'Miami-Dade FL', status: 'Lost Contact', delta: '+3', positive: false },
+    { location: 'Chicago IL', status: 'Needs Service', delta: '+2', positive: false },
+    { location: 'Dallas TX', status: 'Ready', delta: '-8', positive: true },
+    { location: 'Seattle WA', status: 'Lost Contact', delta: '+2', positive: false },
+    { location: 'Atlanta GA', status: 'Ready', delta: '-5', positive: true },
+  ];
+
+  const notifications = [
+    {
+      customer: 'Westfield Mall Group',
+      time: '3 days ago',
+      contacts: 'mgmt@westfieldgroup.com · facility@westfield.com',
+      devices: [
+        { id: 'AED-0441', issue: 'Exp. Battery', type: 'bat' },
+        { id: 'AED-0442', issue: 'Exp. Pads', type: 'pad' },
+        { id: 'AED-0889', issue: 'Reposition', type: 'repos' },
+      ]
+    },
+    {
+      customer: 'Tampa Bay Convention Ctr',
+      time: '1 day ago',
+      contacts: 'ops@tbcc.com · safety@tbcc.com',
+      devices: [
+        { id: 'AED-1102', issue: 'Exp. Battery', type: 'bat' },
+        { id: 'AED-1103', issue: 'Exp. Battery', type: 'bat' },
+      ]
+    },
+  ];
+
+  const tickets = [
+    { id: 'SVC-0042', loc: 'Tampa Intl Airport', status: 'open' },
+    { id: 'SVC-0041', loc: 'Miami Central Mall', status: 'dispatched' },
+    { id: 'SVC-0040', loc: 'Atlanta Hartsfield', status: 'enroute' },
+    { id: 'SVC-0039', loc: 'Dallas Conv. Ctr', status: 'onsite' },
+    { id: 'SVC-0038', loc: "O'Hare Terminal 3", status: 'open' },
+    { id: 'SVC-0037', loc: 'LAX Concourse B', status: 'dispatched' },
+    { id: 'SVC-0036', loc: 'NYC Penn Station', status: 'complete' },
+    { id: 'SVC-0035', loc: 'Seattle Waterfront', status: 'open' },
+    { id: 'SVC-0034', loc: 'Denver Union Sta.', status: 'enroute' },
+    { id: 'SVC-0033', loc: 'Boston South Sta.', status: 'open' },
+  ];
 
   useEffect(() => {
-    fetchData();
-    // Refresh every 5 minutes
-    const interval = setInterval(fetchData, 300000);
-    return () => clearInterval(interval);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
   }, []);
 
-  const handleRefresh = () => {
-    setRefreshing(true);
-    fetchData();
-    toast.success("Data refreshed");
+  const formatTime = (date) => date.toTimeString().slice(0, 8);
+  const formatDate = (date) => {
+    const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    return `${days[date.getDay()]} ${months[date.getMonth()]} ${String(date.getDate()).padStart(2, '0')} ${date.getFullYear()}`;
   };
 
-  const sortedSubscribers = [...subscribers].sort((a, b) => {
-    const aVal = a[sortField] || 0;
-    const bVal = b[sortField] || 0;
-    if (sortField === "name") {
-      return sortDirection === "asc" 
-        ? aVal.localeCompare(bVal) 
-        : bVal.localeCompare(aVal);
-    }
-    return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
-  });
-
-  const formatDate = (isoString) => {
-    const date = new Date(isoString);
-    return date.toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true
-    });
+  const getStatusBadge = (status) => {
+    const badges = {
+      open: { label: 'OPEN', class: 'bg-red-500/20 text-red-400' },
+      dispatched: { label: 'DISPATCHED', class: 'bg-cyan-500/20 text-cyan-400' },
+      enroute: { label: 'EN ROUTE', class: 'bg-yellow-500/20 text-yellow-400' },
+      onsite: { label: 'ON SITE', class: 'bg-orange-500/20 text-orange-400' },
+      complete: { label: 'DONE', class: 'bg-green-500/20 text-green-400' },
+    };
+    return badges[status] || badges.open;
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#020617] flex items-center justify-center">
-        <motion.div
-          className="text-center"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
-          <Activity className="w-12 h-12 text-red-500 mx-auto mb-4 animate-pulse" />
-          <div className="font-tech text-red-500 tracking-wider">LOADING SYSTEMS...</div>
-        </motion.div>
-      </div>
-    );
-  }
+  const getTagType = (type) => {
+    const types = {
+      bat: 'bg-orange-500/20 text-orange-400',
+      pad: 'bg-yellow-500/20 text-yellow-400',
+      repos: 'bg-cyan-500/20 text-cyan-400',
+    };
+    return types[type] || types.bat;
+  };
 
   return (
-    <div className="min-h-screen bg-[#020617] holo-grid">
-      {/* Top Navigation */}
-      <nav className="sticky top-0 z-50 glass-dark border-b border-slate-800/50">
-        <div className="max-w-[1800px] mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <button 
-              data-testid="notifications-btn"
-              className="flex items-center gap-2 px-4 py-2 border border-red-500/30 rounded text-red-500 hover:bg-red-500/10 transition-colors font-tech text-sm tracking-wider"
-              style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.5)' }}
-            >
-              <Bell className="w-4 h-4" style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.5))' }} />
-              NOTIFICATIONS
-            </button>
+    <div className="jarvis-dash min-h-screen text-cyan-400 font-mono text-[11px] relative">
+      {/* Background Grid */}
+      <div className="fixed inset-0 pointer-events-none z-0" style={{
+        backgroundImage: 'linear-gradient(rgba(0,212,255,0.032) 1px, transparent 1px), linear-gradient(90deg, rgba(0,212,255,0.032) 1px, transparent 1px)',
+        backgroundSize: '36px 36px'
+      }} />
+      
+      {/* Scan Line */}
+      <div className="fixed top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-500/10 to-transparent animate-scan pointer-events-none z-0" />
+
+      <div className="grid grid-cols-[210px_1fr_220px] grid-rows-[auto_1fr_auto] gap-[7px] p-[10px] relative z-10 min-h-screen">
+        
+        {/* TOP BAR */}
+        <div className="col-span-3 flex items-center justify-between px-[18px] py-[7px] border border-cyan-500/30 bg-[rgba(0,18,32,0.93)]" style={{ clipPath: 'polygon(0 0, 100% 0, 98.5% 100%, 1.5% 100%)' }}>
+          <div className="font-orbitron text-[13px] font-black tracking-[0.25em] text-red-500 animate-logo-pulse">
+            CARDIAC SOLUTIONS
           </div>
-          
+          <div className="flex gap-[18px] items-center text-[9px] tracking-wider">
+            <span className="flex items-center gap-1">
+              <span className="w-[5px] h-[5px] rounded-full bg-green-400 animate-blink" />
+              AI MONITOR ACTIVE
+            </span>
+            <span>|</span>
+            <span>{stats.total.toLocaleString()} DEVICES</span>
+            <span>|</span>
+            <span className="flex items-center gap-1">
+              <span className="w-[5px] h-[5px] rounded-full bg-yellow-400 animate-blink-fast" />
+              {stats.alerts} ALERTS
+            </span>
+          </div>
           <div className="flex items-center gap-4">
-            <button
-              data-testid="refresh-btn"
-              onClick={handleRefresh}
-              className="flex items-center gap-2 px-4 py-2 border border-red-500/30 rounded text-red-500 hover:bg-red-500/10 transition-colors font-tech text-sm tracking-wider"
-              style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.5)' }}
-              disabled={refreshing}
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.5))' }} />
-              REFRESH
-            </button>
-            <button 
-              data-testid="download-csv-btn"
-              className="flex items-center gap-2 px-4 py-2 border border-red-500/30 rounded text-red-500 hover:bg-red-500/10 transition-colors font-tech text-sm tracking-wider"
-              style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.5)' }}
-            >
-              <Download className="w-4 h-4" style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.5))' }} />
-              DOWNLOAD CSV
-            </button>
-            <button
-              data-testid="logout-btn"
-              onClick={onLogout}
-              className="flex items-center gap-2 px-4 py-2 border border-red-500/30 rounded text-red-500 hover:bg-red-500/10 transition-colors font-tech text-sm tracking-wider"
-            >
+            <div className="flex flex-col items-end gap-[2px]">
+              <div className="font-orbitron text-[13px] font-bold tracking-wider">{formatTime(currentTime)}</div>
+              <div className="font-orbitron text-[8px] tracking-[0.18em] text-cyan-500/50">{formatDate(currentTime)}</div>
+            </div>
+            <button onClick={onLogout} className="text-red-500 hover:text-red-400 transition-colors" data-testid="logout-btn">
               <LogOut className="w-4 h-4" />
-              LOGOUT
             </button>
           </div>
         </div>
-      </nav>
 
-      {/* Main Content */}
-      <main className="max-w-[1800px] mx-auto p-6">
-        {/* Header */}
-        <motion.div
-          className="glass-dark rounded-lg p-6 mb-6 border border-slate-800/50"
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="flex items-center gap-3 mb-2 cursor-pointer" onClick={onLogout} data-testid="logo-home">
-            <Heart className="w-6 h-6 text-red-500" style={{ filter: 'drop-shadow(0 0 6px rgba(239, 68, 68, 0.6))' }} />
-            <h1 className="font-tech text-2xl text-red-500 tracking-wider" style={{ textShadow: '0 0 10px rgba(239, 68, 68, 0.6), 0 0 20px rgba(239, 68, 68, 0.4)' }}>
-              Daily AED Status Report
-            </h1>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-slate-500 font-mono">
-            <Clock className="w-4 h-4" />
-            Last updated: {stats ? formatDate(stats.last_updated) : "—"}
-          </div>
-        </motion.div>
-
-        {/* Stats Grid - Top Row */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
-          <StatusCard
-            title="Total Monitored"
-            value={stats?.total_monitored?.toLocaleString() || "—"}
-            icon={Activity}
-            color="red"
-          />
-          <StatusCard
-            title="% Ready"
-            value={`${stats?.percent_ready || 0}%`}
-            icon={CheckCircle2}
-            color="green"
-            trend="down"
-            trendValue="0.3%"
-          />
-          <StatusCard
-            title="Ready"
-            value={stats?.ready?.toLocaleString() || "—"}
-            icon={CheckCircle2}
-            color="green"
-            trend="down"
-            trendValue="12"
-          />
-          <StatusCard
-            title="Not Ready"
-            value={stats?.not_ready || "—"}
-            icon={XCircle}
-            color="red"
-          />
-          <StatusCard
-            title="Reposition"
-            value={stats?.reposition || "—"}
-            icon={MapPin}
-            color="yellow"
-            trend="down"
-            trendValue="3"
-          />
-        </div>
-
-        {/* Stats Grid - Bottom Row */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-          <StatusCard
-            title="Not Present"
-            value={stats?.not_present || "—"}
-            icon={AlertTriangle}
-            color="slate"
-            trend="up"
-            trendValue="1"
-          />
-          <StatusCard
-            title="Expired B/P"
-            value={stats?.expired_bp || "—"}
-            icon={Clock}
-            color="orange"
-          />
-          <StatusCard
-            title="Expiring B/P"
-            value={stats?.expiring_bp || "—"}
-            icon={AlertTriangle}
-            color="yellow"
-            trend="down"
-            trendValue="2"
-          />
-          <StatusCard
-            title="Lost Contact"
-            value={stats?.lost_contact || "—"}
-            icon={WifiOff}
-            color="pink"
-            trend="up"
-            trendValue="5"
-          />
-          <StatusCard
-            title="Unknown"
-            value={stats?.unknown || "—"}
-            icon={AlertTriangle}
-            color="purple"
-          />
-        </div>
-
-        {/* Subscribers Table */}
-        <motion.div
-          className="glass-dark rounded-lg border border-slate-800/50 overflow-hidden"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          {/* Table Controls */}
-          <div className="p-4 border-b border-slate-800/50 flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2 text-sm text-slate-400 font-tech">
-              <span>SORT:</span>
-              <DropdownMenu>
-                <DropdownMenuTrigger data-testid="sort-dropdown" className="flex items-center gap-1 px-3 py-1 border border-slate-700 rounded text-slate-300 hover:border-red-500/50 transition-colors">
-                  <span className="capitalize">{sortField === "name" ? "Alphabetical" : sortField}</span>
-                  <ChevronDown className="w-4 h-4" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="bg-slate-900 border-slate-700">
-                  <DropdownMenuItem onClick={() => setSortField("name")}>Alphabetical</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSortField("total")}>Total</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSortField("ready")}>Ready</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSortField("not_ready")}>Not Ready</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <button
-                data-testid="sort-direction-btn"
-                onClick={() => setSortDirection(prev => prev === "asc" ? "desc" : "asc")}
-                className="p-1 border border-slate-700 rounded hover:border-red-500/50 transition-colors"
-              >
-                {sortDirection === "asc" ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 text-sm text-slate-400 font-tech">
-              <Filter className="w-4 h-4" />
-              <DropdownMenu>
-                <DropdownMenuTrigger data-testid="filter-dropdown" className="flex items-center gap-1 px-3 py-1 border border-slate-700 rounded text-slate-300 hover:border-red-500/50 transition-colors">
-                  <span>Filter by Status</span>
-                  <ChevronDown className="w-4 h-4" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="bg-slate-900 border-slate-700">
-                  <DropdownMenuItem onClick={() => setFilterStatus("all")}>All</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setFilterStatus("ready")}>Ready Only</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setFilterStatus("issues")}>Has Issues</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+        {/* LEFT COLUMN */}
+        <div className="flex flex-col gap-[7px]">
+          {/* System Status */}
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
+            <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+            <div className="panel-glow" />
+            <div className="plabel">System Status</div>
+            <div className="flex flex-col items-center py-[10px]">
+              <div className="relative w-[105px] h-[105px]">
+                <div className="absolute inset-0 rounded-full border border-cyan-500/30 animate-spin-slow" />
+                <div className="absolute inset-[9px] rounded-full border border-cyan-500/45 border-t-cyan-400 animate-spin-reverse" />
+                <div className="absolute inset-[19px] rounded-full border border-cyan-500/20 border-l-cyan-400 border-r-cyan-400 animate-spin-medium" />
+                <div className="absolute inset-[34px] rounded-full bg-[rgba(0,35,70,0.95)] border border-cyan-500/65 flex items-center justify-center animate-core-glow">
+                  <span className="font-orbitron text-[15px] font-black text-green-400">{Math.round(parseFloat(pctReady))}%</span>
+                </div>
+              </div>
+              <div className="font-orbitron text-[9px] font-bold text-green-400 mt-[6px] tracking-wider">{stats.ready.toLocaleString()} READY</div>
             </div>
           </div>
 
-          {/* Table */}
-          <ScrollArea className="h-[500px]">
-            <Table>
-              <TableHeader className="sticky top-0 bg-slate-900/95 backdrop-blur-sm">
-                <TableRow className="border-slate-800/50 hover:bg-transparent">
-                  <TableHead className="font-tech text-slate-400 tracking-wider">SUBSCRIBER</TableHead>
-                  <TableHead className="font-tech text-slate-400 tracking-wider text-center">TOTAL</TableHead>
-                  <TableHead className="font-tech text-slate-400 tracking-wider text-center">% READY</TableHead>
-                  <TableHead className="font-tech text-slate-400 tracking-wider text-center">READY</TableHead>
-                  <TableHead className="font-tech text-slate-400 tracking-wider text-center">NOT READY</TableHead>
-                  <TableHead className="font-tech text-slate-400 tracking-wider text-center">REPOSITION</TableHead>
-                  <TableHead className="font-tech text-slate-400 tracking-wider text-center">NOT PRESENT</TableHead>
-                  <TableHead className="font-tech text-slate-400 tracking-wider text-center">EXPIRED B/P</TableHead>
-                  <TableHead className="font-tech text-slate-400 tracking-wider text-center">EXPIRING B/P</TableHead>
-                  <TableHead className="font-tech text-slate-400 tracking-wider text-center">LOST CONTACT</TableHead>
-                  <TableHead className="font-tech text-slate-400 tracking-wider text-center">UNKNOWN</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedSubscribers.map((subscriber, index) => (
-                  <SubscriberRow key={subscriber.id} subscriber={subscriber} index={index} />
+          {/* Stats Panel */}
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1">
+            <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+            <div className="panel-glow" />
+            
+            {/* % Ready */}
+            <div className="pb-[10px] mb-[10px] border-b border-cyan-500/15">
+              <div className="plabel">% Ready</div>
+              <div className="flex items-end justify-between gap-2">
+                <div>
+                  <div className="text-[7px] tracking-wider text-cyan-500/45 uppercase mb-[2px]">Fleet Uptime</div>
+                  <div className="font-orbitron text-[32px] font-black text-green-400 leading-none" style={{ textShadow: '0 0 18px rgba(57,255,20,0.5)' }}>{pctReady}%</div>
+                </div>
+                <div className="flex-1 flex flex-col justify-end">
+                  <div className="flex gap-[2px] h-[24px] items-end">
+                    {[13, 19, 17, 7, 7, 11, 17].map((h, i) => (
+                      <div key={i} className="flex-1 rounded-t-sm" style={{ height: h, background: i === 6 ? '#39ff14' : 'rgba(57,255,20,0.3)' }} />
+                    ))}
+                  </div>
+                  <div className="flex justify-between text-[7px] text-cyan-500/35 tracking-wider mt-[2px]">
+                    <span>30d</span><span>Now</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Status Breakdown */}
+            <div className="plabel">Status Breakdown</div>
+            {[
+              { name: 'READY', val: stats.ready, pct: (stats.ready/stats.total*100), color: 'green' },
+              { name: 'LOST CONTACT', val: stats.lost, pct: (stats.lost/stats.total*100), color: 'yellow' },
+              { name: 'NEEDS SERVICE', val: stats.service, pct: (stats.service/stats.total*100), color: 'orange' },
+              { name: 'DISPATCHED', val: stats.dispatch, pct: (stats.dispatch/stats.total*100), color: 'cyan' },
+            ].map((item, i) => (
+              <div key={i}>
+                <div className="flex justify-between items-center mb-[2px]">
+                  <span className="text-[9px] tracking-wider text-cyan-500/75 uppercase">{item.name}</span>
+                  <span className="font-orbitron text-[11px] font-bold text-white">{item.val.toLocaleString()}</span>
+                </div>
+                <div className="h-[3px] bg-cyan-500/10 rounded mb-[10px] overflow-hidden">
+                  <div className={`h-full rounded bg-gradient-to-r ${item.color === 'green' ? 'from-green-500/25 to-green-400' : item.color === 'yellow' ? 'from-yellow-500/25 to-yellow-400' : item.color === 'orange' ? 'from-orange-500/25 to-orange-400' : 'from-cyan-500/25 to-cyan-400'}`} style={{ width: `${item.pct}%` }} />
+                </div>
+              </div>
+            ))}
+
+            <hr className="border-cyan-500/15 my-[10px]" />
+            <div className="plabel">Status Changes vs Yesterday</div>
+            <table className="w-full">
+              <thead>
+                <tr className="text-[7px] font-orbitron font-bold text-cyan-500/60 uppercase tracking-wider">
+                  <th className="text-left pb-[5px]">Location</th>
+                  <th className="text-left pb-[5px]">Status</th>
+                  <th className="text-left pb-[5px]">Δ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {statusChanges.map((item, i) => (
+                  <tr key={i} className="text-[8px] hover:bg-cyan-500/5">
+                    <td className="py-[4px] text-slate-300/85">{item.location}</td>
+                    <td className="py-[4px] text-cyan-500/60 text-[8px]">{item.status}</td>
+                    <td className={`py-[4px] font-orbitron font-bold ${item.positive ? 'text-green-400' : 'text-red-400'}`}>
+                      {item.positive ? '▼' : '▲'}{item.delta.replace(/[+-]/, '')}
+                    </td>
+                  </tr>
                 ))}
-              </TableBody>
-            </Table>
-          </ScrollArea>
-        </motion.div>
-
-        {/* Footer */}
-        <div className="mt-6 text-center text-xs font-mono text-slate-600">
-          <span>CARDIAC SOLUTIONS LLC</span>
-          <span className="mx-2">|</span>
-          <span>AED MONITORING SYSTEM</span>
-          <span className="mx-2">|</span>
-          <span>v3.14.159</span>
-          <span className="mx-2">|</span>
-          <span>OPERATOR: {user?.name || user?.username || "Unknown"}</span>
+              </tbody>
+            </table>
+          </div>
         </div>
-      </main>
+
+        {/* CENTER COLUMN */}
+        <div className="flex flex-col gap-[7px]">
+          {/* AI Recommendations */}
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
+            <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+            <div className="panel-glow" />
+            <div className="plabel">Decision Intelligence — AI Recommendations</div>
+            <div className="max-h-[220px] overflow-hidden relative">
+              {aiRecommendations.map((rec, i) => (
+                <div key={i} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
+                  <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-cyan-500/15 text-cyan-400'}`}>
+                    {rec.type}
+                  </span>
+                  <span className="text-[11px] text-slate-200/90 leading-relaxed">{rec.msg}</span>
+                </div>
+              ))}
+              <div className="absolute bottom-0 left-0 right-0 h-[32px] bg-gradient-to-t from-[rgba(0,18,32,0.93)] to-transparent pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Customer Notifications */}
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1 flex flex-col">
+            <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+            <div className="panel-glow" />
+            <div className="plabel">Customer Notifications</div>
+            <div className="flex gap-[14px] mb-[10px] pb-[10px] border-b border-cyan-500/10">
+              <div className="flex flex-col items-center gap-[2px]">
+                <div className="font-orbitron text-[14px] font-black text-yellow-400">{stats.pendingNotifs}</div>
+                <div className="text-[7px] tracking-wider text-cyan-500/45 uppercase">Pending</div>
+              </div>
+              <div className="flex flex-col items-center gap-[2px]">
+                <div className="font-orbitron text-[14px] font-black text-green-400">{stats.sentToday}</div>
+                <div className="text-[7px] tracking-wider text-cyan-500/45 uppercase">Sent Today</div>
+              </div>
+              <div className="flex flex-col items-center gap-[2px]">
+                <div className="font-orbitron text-[14px] font-black text-orange-400">{stats.devicesAffected}</div>
+                <div className="text-[7px] tracking-wider text-cyan-500/45 uppercase">Devices</div>
+              </div>
+            </div>
+            <div className="flex flex-col gap-[8px]">
+              {notifications.map((notif, i) => (
+                <div key={i} className="bg-cyan-500/5 border border-cyan-500/15 border-l-[3px] border-l-yellow-400 p-[9px]">
+                  <div className="flex justify-between items-center mb-[5px]">
+                    <span className="text-[11px] font-bold text-slate-200/95">{notif.customer}</span>
+                    <span className="font-orbitron text-[7px] text-cyan-500/35 tracking-wider">{notif.time}</span>
+                  </div>
+                  <div className="text-[8px] text-cyan-500/50 mb-[6px]">{notif.contacts}</div>
+                  <div className="flex flex-wrap gap-[4px] mb-[8px]">
+                    {notif.devices.map((dev, j) => (
+                      <span key={j} className={`font-orbitron text-[7px] font-bold px-[6px] py-[2px] rounded-sm ${getTagType(dev.type)}`}>
+                        {dev.id} · {dev.issue}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[8px] text-cyan-500/35">{notif.devices.length} devices · owner + contact</span>
+                    <button className="font-orbitron text-[7px] font-bold tracking-wider px-[12px] py-[5px] border border-yellow-400 bg-yellow-500/10 text-yellow-400 rounded-sm hover:bg-yellow-500/20 hover:shadow-[0_0_10px_rgba(255,204,0,0.35)] transition-all">
+                      SEND EMAIL
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN */}
+        <div className="flex flex-col gap-[7px]">
+          {/* Service Tickets */}
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1">
+            <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+            <div className="panel-glow" />
+            <div className="plabel">Service Tickets</div>
+            <div className="flex flex-col gap-[5px] max-h-[400px] overflow-y-auto scrollbar-thin">
+              {tickets.map((ticket, i) => {
+                const badge = getStatusBadge(ticket.status);
+                const borderColors = {
+                  open: 'border-l-red-500',
+                  dispatched: 'border-l-cyan-400',
+                  enroute: 'border-l-yellow-400',
+                  onsite: 'border-l-orange-400',
+                  complete: 'border-l-green-400',
+                };
+                return (
+                  <div key={i} className={`flex items-center gap-[8px] px-[8px] py-[7px] bg-cyan-500/5 border-l-2 ${borderColors[ticket.status]} cursor-pointer hover:bg-cyan-500/10 transition-colors`}>
+                    <span className="font-orbitron text-[8px] font-bold text-cyan-500/70 min-w-[52px]">{ticket.id}</span>
+                    <span className="flex-1 text-[10px] text-slate-200/95 truncate max-w-[95px]">{ticket.loc}</span>
+                    <span className={`font-orbitron text-[7px] font-bold px-[6px] py-[3px] rounded-sm ${badge.class}`}>{badge.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Voice Query */}
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
+            <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+            <div className="panel-glow" />
+            <div className="plabel">Voice Query</div>
+            <div className="flex flex-col items-center gap-[10px] py-[8px]">
+              <div className="flex items-center gap-[2px] h-[20px]">
+                {[4, 8, 14, 10, 18, 12, 20, 14, 10, 16, 8, 5].map((h, i) => (
+                  <div key={i} className={`w-[2px] rounded-sm ${isListening ? 'bg-red-500 animate-voice-wave' : 'bg-cyan-500/30'}`} style={{ height: h, animationDelay: `${i * 0.1}s` }} />
+                ))}
+              </div>
+              <button 
+                onClick={() => setIsListening(!isListening)}
+                className={`w-[52px] h-[52px] rounded-full border flex items-center justify-center transition-all ${isListening ? 'border-red-500 bg-red-500/10 animate-mic-pulse' : 'border-cyan-500/50 bg-[rgba(0,40,70,0.8)] hover:border-cyan-400 hover:shadow-[0_0_16px_rgba(0,212,255,0.35)]'}`}
+              >
+                <Mic className={`w-[18px] h-[18px] ${isListening ? 'text-red-500' : 'text-cyan-400'}`} />
+              </button>
+              <div className={`font-orbitron text-[8px] font-bold tracking-[0.18em] ${isListening ? 'text-red-500 animate-blink' : 'text-cyan-500/60'}`}>
+                {isListening ? 'LISTENING' : 'READY'}
+              </div>
+              <div className="text-[9px] text-cyan-500/70 text-center max-w-[160px]">
+                Press mic to query JARVIS
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* BOTTOM BAR */}
+        <div className="col-span-3 flex gap-[7px]">
+          {[
+            { label: 'Total\nDevices', value: stats.total.toLocaleString(), size: '13px' },
+            { label: 'Ready', value: stats.ready.toLocaleString(), color: 'green' },
+            { label: 'Lost\nContact', value: stats.lost, color: 'yellow' },
+            { label: 'Needs\nService', value: stats.service, color: 'orange' },
+            { label: 'Notifs\nPending', value: stats.pendingNotifs, color: 'yellow', size: '14px' },
+            { label: 'Open\nTickets', value: stats.openTickets, size: '14px' },
+          ].map((item, i) => (
+            <div key={i} className="flex-1 flex items-center justify-center gap-[10px] px-[8px] py-[7px] border border-cyan-500/30 bg-[rgba(0,18,32,0.93)] relative overflow-hidden">
+              <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/10 to-transparent" />
+              <div className="w-[44px] h-[44px] rounded-full border border-cyan-500/30 flex items-center justify-center relative flex-shrink-0">
+                <div className="absolute inset-[4px] rounded-full border border-cyan-500/15" />
+                <span className={`font-orbitron font-black ${item.color === 'green' ? 'text-green-400' : item.color === 'yellow' ? 'text-yellow-400' : item.color === 'orange' ? 'text-orange-400' : 'text-cyan-400'}`} style={{ fontSize: item.size || '18px', textShadow: item.color ? `0 0 10px ${item.color === 'green' ? 'rgba(57,255,20,0.45)' : item.color === 'yellow' ? 'rgba(255,204,0,0.45)' : 'rgba(255,107,53,0.45)'}` : '0 0 8px rgba(0,212,255,0.35)' }}>
+                  {item.value}
+                </span>
+              </div>
+              <div className="text-[7px] tracking-[0.13em] text-cyan-500/50 uppercase leading-[1.5] whitespace-pre-line">{item.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <style jsx>{`
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=swap');
+        
+        .jarvis-dash {
+          background: #020c15;
+          font-family: 'Share Tech Mono', monospace;
+        }
+        
+        .font-orbitron {
+          font-family: 'Orbitron', monospace;
+        }
+        
+        .corner {
+          position: absolute;
+          width: 9px;
+          height: 9px;
+          border-color: rgb(0, 212, 255);
+          border-style: solid;
+        }
+        .corner.tl { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+        .corner.tr { top: -1px; right: -1px; border-width: 2px 2px 0 0; }
+        .corner.bl { bottom: -1px; left: -1px; border-width: 0 0 2px 2px; }
+        .corner.br { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+        
+        .panel-glow {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgb(0, 212, 255), transparent);
+          opacity: 0.35;
+          animation: topline 5s ease-in-out infinite;
+        }
+        
+        .plabel {
+          font-family: 'Orbitron', monospace;
+          font-size: 8px;
+          font-weight: 700;
+          letter-spacing: 0.2em;
+          color: rgba(0, 212, 255, 0.85);
+          text-transform: uppercase;
+          margin-bottom: 10px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .plabel::after {
+          content: '';
+          flex: 1;
+          height: 1px;
+          background: linear-gradient(90deg, rgba(0, 212, 255, 0.4), transparent);
+        }
+        
+        @keyframes topline {
+          0%, 100% { opacity: 0.15; }
+          50% { opacity: 0.65; }
+        }
+        
+        @keyframes scan {
+          from { transform: translateY(-100vh); }
+          to { transform: translateY(100vh); }
+        }
+        .animate-scan { animation: scan 7s linear infinite; }
+        
+        @keyframes logo-pulse {
+          0%, 100% { text-shadow: 0 0 8px rgba(255, 34, 68, 0.5); }
+          50% { text-shadow: 0 0 26px #ff2244, 0 0 50px rgba(255, 34, 68, 0.4); }
+        }
+        .animate-logo-pulse { animation: logo-pulse 3s ease-in-out infinite; }
+        
+        @keyframes blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.2; }
+        }
+        .animate-blink { animation: blink 2s ease-in-out infinite; }
+        .animate-blink-fast { animation: blink 1s ease-in-out infinite; }
+        
+        @keyframes spin-slow { to { transform: rotate(360deg); } }
+        @keyframes spin-reverse { to { transform: rotate(-360deg); } }
+        @keyframes spin-medium { to { transform: rotate(360deg); } }
+        .animate-spin-slow { animation: spin-slow 14s linear infinite; }
+        .animate-spin-reverse { animation: spin-reverse 9s linear infinite; }
+        .animate-spin-medium { animation: spin-medium 5.5s linear infinite; }
+        
+        @keyframes core-glow {
+          0%, 100% { box-shadow: 0 0 10px rgba(57, 255, 20, 0.3), inset 0 0 7px rgba(57, 255, 20, 0.15); }
+          50% { box-shadow: 0 0 26px rgba(57, 255, 20, 0.65), inset 0 0 16px rgba(57, 255, 20, 0.3); }
+        }
+        .animate-core-glow { animation: core-glow 2s ease-in-out infinite; }
+        
+        @keyframes mic-pulse {
+          0%, 100% { box-shadow: 0 0 8px rgba(255, 34, 68, 0.4); }
+          50% { box-shadow: 0 0 22px rgba(255, 34, 68, 0.8); }
+        }
+        .animate-mic-pulse { animation: mic-pulse 1s ease-in-out infinite; }
+        
+        @keyframes voice-wave {
+          0%, 100% { transform: scaleY(1); }
+          50% { transform: scaleY(1.5); }
+        }
+        .animate-voice-wave { animation: voice-wave 0.5s ease-in-out infinite; }
+        
+        .scrollbar-thin::-webkit-scrollbar { width: 2px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(0, 212, 255, 0.3); }
+      `}</style>
     </div>
   );
 }
