@@ -437,8 +437,8 @@ export default function Dashboard({ user, onLogout }) {
                       <div className="font-orbitron text-[10px] font-bold text-slate-200/90">{item.count}</div>
                       <div className="flex items-end" style={{ height: '95px' }}>
                         {i === 0 ? (
-                          <div className="w-[20px] flex items-center justify-center h-full">
-                            <span className="font-orbitron text-[16px] font-black text-red-500" style={{ textShadow: '0 0 8px rgba(255,34,68,0.6)' }}>X</span>
+                          <div className="w-[20px] flex items-end justify-center h-full">
+                            <span className="font-orbitron text-[16px] font-black text-red-500 leading-none" style={{ textShadow: '0 0 8px rgba(255,34,68,0.6)' }}>X</span>
                           </div>
                         ) : (
                           <div
