@@ -118,6 +118,12 @@ export default function Dashboard({ user, onLogout }) {
     { id: 'SVC-0035', loc: 'Seattle Waterfront', status: 'open' },
     { id: 'SVC-0034', loc: 'Denver Union Sta.', status: 'enroute' },
     { id: 'SVC-0033', loc: 'Boston South Sta.', status: 'open' },
+    { id: 'SVC-0032', loc: 'Phoenix Sky Harbor', status: 'dispatched' },
+    { id: 'SVC-0031', loc: 'San Diego Conv.', status: 'open' },
+    { id: 'SVC-0030', loc: 'Houston Galleria', status: 'complete' },
+    { id: 'SVC-0029', loc: 'Nashville Intl', status: 'enroute' },
+    { id: 'SVC-0028', loc: 'Orlando MCO', status: 'open' },
+    { id: 'SVC-0027', loc: 'Portland Union Sta.', status: 'dispatched' },
   ];
 
   useEffect(() => {
