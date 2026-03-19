@@ -101,11 +101,12 @@ export default function Dashboard({ user, onLogout }) {
   };
 
   const cameraCellular = [
-    { bars: 0, count: 45, label: 'X' },
-    { bars: 1, count: 85, label: '1' },
-    { bars: 2, count: 220, label: '2' },
-    { bars: 3, count: 650, label: '3' },
-    { bars: 4, count: 2300, label: '4' },
+    { bars: 0, count: 33, label: 'X' },
+    { bars: 1, count: 52, label: '1' },
+    { bars: 2, count: 115, label: '2' },
+    { bars: 3, count: 280, label: '3' },
+    { bars: 4, count: 620, label: '4' },
+    { bars: 5, count: 2200, label: '5' },
   ];
 
   const tickets = [
@@ -420,14 +421,15 @@ export default function Dashboard({ user, onLogout }) {
               <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
               <div className="panel-glow" />
               <div className="plabel">Camera Cellular</div>
-              <div className="flex items-end justify-center gap-[12px] flex-1 pb-[10px]">
+              <div className="flex items-end justify-center gap-[10px] flex-1 pb-[10px]">
                 {cameraCellular.map((item, i) => {
-                  const barHeights = [0, 25, 45, 68, 95];
+                  const barHeights = [0, 15, 30, 50, 72, 95];
                   const barColors = [
                     '', 
                     'bg-gradient-to-t from-red-500/40 to-red-400',
                     'bg-gradient-to-t from-orange-500/40 to-orange-400',
                     'bg-gradient-to-t from-yellow-500/40 to-yellow-400',
+                    'bg-gradient-to-t from-cyan-500/40 to-cyan-400',
                     'bg-gradient-to-t from-green-500/40 to-green-400',
                   ];
                   return (
@@ -435,13 +437,13 @@ export default function Dashboard({ user, onLogout }) {
                       <div className="font-orbitron text-[10px] font-bold text-slate-200/90">{item.count}</div>
                       <div className="flex items-end" style={{ height: '95px' }}>
                         {i === 0 ? (
-                          <div className="w-[22px] flex items-center justify-center h-full">
+                          <div className="w-[20px] flex items-center justify-center h-full">
                             <span className="font-orbitron text-[16px] font-black text-red-500" style={{ textShadow: '0 0 8px rgba(255,34,68,0.6)' }}>X</span>
                           </div>
                         ) : (
                           <div
-                            className={`w-[22px] rounded-t-sm ${barColors[i]}`}
-                            style={{ height: `${barHeights[i]}%`, boxShadow: i === 4 ? '0 0 8px rgba(57,255,20,0.3)' : 'none' }}
+                            className={`w-[20px] rounded-t-sm ${barColors[i]}`}
+                            style={{ height: `${barHeights[i]}%`, boxShadow: i === 5 ? '0 0 8px rgba(57,255,20,0.3)' : 'none' }}
                           />
                         )}
                       </div>
