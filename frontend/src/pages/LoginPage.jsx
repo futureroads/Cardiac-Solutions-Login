@@ -281,8 +281,8 @@ const AEDCursor = ({ position, isClicking }) => {
 
 export default function LoginPage({ onLogin }) {
   const [isRegister, setIsRegister] = useState(false);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState(() => localStorage.getItem("saved_username") || "");
+  const [password, setPassword] = useState(() => localStorage.getItem("saved_password") || "");
   const [name, setName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -366,6 +366,10 @@ export default function LoginPage({ onLogin }) {
       // Start heartbeat animation on success
       setIsBeating(true);
       
+      // Save credentials for next login
+      localStorage.setItem("saved_username", username);
+      localStorage.setItem("saved_password", password);
+
       setTimeout(() => {
         toast.success(isRegister ? "Account created successfully!" : "Access granted!");
         onLogin(response.data.access_token, response.data.user);
