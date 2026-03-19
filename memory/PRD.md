@@ -27,6 +27,7 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - [x] BACK button on login screen
 - [x] Custom logo on heart and login screens
 - [x] JWT authentication with 6 hardcoded users (Lew, Stark, Tony, Tracey, Nate, Jon)
+- [x] User email addresses added (Lew: c130usmc@gmail.com, Stark: iq.ai.solutions@gmail.com)
 - [x] JARVIS-style dashboard (v11 layout from user HTML)
 - [x] Dashboard panels: System Status, % Ready, Status Breakdown, Status Changes vs Yesterday
 - [x] AI Recommendations panel with INFO/ACT/WARN badges
@@ -34,7 +35,8 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - [x] Camera Battery panel - 90% ring gauge + Dead/1/4/1/2/3/4/Full breakdown
 - [x] Camera Cellular panel - signal meter bar graph with counts
 - [x] Service Tickets panel with status badges
-- [x] Voice Query panel (UI only)
+- [x] Voice Query panel (compact, single-row layout)
+- [x] Send Overview panel - emails dashboard summary to logged-in user's email
 - [x] Bottom bar with key metrics
 - [x] Red "glow" effect on text, heart icon, EKG line
 - [x] Removed "Made with Emergent" watermark
@@ -42,7 +44,7 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 
 ## Tech Stack
 - Frontend: React 19 + Framer Motion + Tailwind CSS
-- Backend: FastAPI (Python)
+- Backend: FastAPI (Python) + Resend (email)
 - Database: MongoDB (currently unused, data is mocked)
 - Authentication: JWT with hardcoded user dictionary
 
@@ -53,20 +55,21 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - GET `/api/dashboard/stats` - Get AED statistics
 - GET `/api/dashboard/subscribers` - Get subscriber list
 - GET `/api/dashboard/devices` - Get device list
+- POST `/api/dashboard/send-overview` - Email dashboard overview to current user
 
 ## Key Files
 - `/app/frontend/src/pages/Dashboard.jsx` - Main JARVIS dashboard
 - `/app/frontend/src/pages/LoginPage.jsx` - Multi-stage login experience
-- `/app/backend/server.py` - All backend logic, auth, API routes
+- `/app/backend/server.py` - All backend logic, auth, API routes, email
 - `/app/frontend/src/App.js` - Routing between login and dashboard
 
 ## Prioritized Backlog
 
 ### P1 (High Priority)
+- Set up Resend API key for real email delivery (currently mocked)
 - Wire dashboard to backend APIs (currently uses frontend mock data)
 - Migrate hardcoded users to MongoDB
 - Refactor LoginPage.jsx (~650 lines) into smaller components
-- Real-time device status from cameras
 
 ### P2 (Medium Priority)
 - Individual device detail view
@@ -82,8 +85,8 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - Dark/light theme toggle
 
 ## Credentials
-- Lew / Lew123
-- Stark / Stark123
+- Lew / Lew123 (email: c130usmc@gmail.com)
+- Stark / Stark123 (email: iq.ai.solutions@gmail.com)
 - Tony / Tony123
 - Tracey / Tracey123
 - Nate / Nate123
@@ -92,3 +95,4 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 ## Notes
 - All backend data is MOCKED (hardcoded users, static AED stats)
 - Dashboard currently uses inline mock data, not connected to backend API
+- Email sending requires RESEND_API_KEY in backend/.env (currently not set, mocked success)

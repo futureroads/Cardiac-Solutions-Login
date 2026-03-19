@@ -1,11 +1,38 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { LogOut, Mic } from "lucide-react";
+import { LogOut, Mic, Mail, Loader2 } from "lucide-react";
+
+const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 export default function Dashboard({ user, onLogout }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isListening, setIsListening] = useState(false);
+  const [sendingOverview, setSendingOverview] = useState(false);
+
+  const handleSendOverview = async () => {
+    setSendingOverview(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/api/dashboard/send-overview`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || "Overview email sent!");
+      } else {
+        toast.error(data.detail || "Failed to send overview");
+      }
+    } catch (err) {
+      toast.error("Failed to send overview email");
+    } finally {
+      setSendingOverview(false);
+    }
+  };
 
   // Mock data
   const stats = {
@@ -427,29 +454,51 @@ export default function Dashboard({ user, onLogout }) {
             </div>
           </div>
 
-          {/* Voice Query */}
-          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
+          {/* Voice Query (compact) */}
+          <div className="panel relative p-[8px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">Voice Query</div>
-            <div className="flex flex-col items-center gap-[10px] py-[8px]">
-              <div className="flex items-center gap-[2px] h-[20px]">
-                {[4, 8, 14, 10, 18, 12, 20, 14, 10, 16, 8, 5].map((h, i) => (
+            <div className="flex items-center gap-[10px] py-[4px]">
+              <div className="flex items-center gap-[2px] h-[16px]">
+                {[4, 8, 12, 8, 14, 10, 16, 12, 8, 5].map((h, i) => (
                   <div key={i} className={`w-[2px] rounded-sm ${isListening ? 'bg-red-500 animate-voice-wave' : 'bg-cyan-500/30'}`} style={{ height: h, animationDelay: `${i * 0.1}s` }} />
                 ))}
               </div>
               <button 
                 onClick={() => setIsListening(!isListening)}
-                className={`w-[52px] h-[52px] rounded-full border flex items-center justify-center transition-all ${isListening ? 'border-red-500 bg-red-500/10 animate-mic-pulse' : 'border-cyan-500/50 bg-[rgba(0,40,70,0.8)] hover:border-cyan-400 hover:shadow-[0_0_16px_rgba(0,212,255,0.35)]'}`}
+                className={`w-[36px] h-[36px] rounded-full border flex items-center justify-center transition-all flex-shrink-0 ${isListening ? 'border-red-500 bg-red-500/10 animate-mic-pulse' : 'border-cyan-500/50 bg-[rgba(0,40,70,0.8)] hover:border-cyan-400 hover:shadow-[0_0_16px_rgba(0,212,255,0.35)]'}`}
               >
-                <Mic className={`w-[18px] h-[18px] ${isListening ? 'text-red-500' : 'text-cyan-400'}`} />
+                <Mic className={`w-[14px] h-[14px] ${isListening ? 'text-red-500' : 'text-cyan-400'}`} />
               </button>
-              <div className={`font-orbitron text-[8px] font-bold tracking-[0.18em] ${isListening ? 'text-red-500 animate-blink' : 'text-cyan-500/60'}`}>
+              <div className={`font-orbitron text-[7px] font-bold tracking-[0.18em] ${isListening ? 'text-red-500 animate-blink' : 'text-cyan-500/60'}`}>
                 {isListening ? 'LISTENING' : 'READY'}
               </div>
-              <div className="text-[9px] text-cyan-500/70 text-center max-w-[160px]">
-                Press mic to query JARVIS
+            </div>
+          </div>
+
+          {/* Send Overview */}
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden" data-testid="send-overview-panel">
+            <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+            <div className="panel-glow" />
+            <div className="plabel">Send Overview</div>
+            <div className="flex flex-col items-center gap-[8px] py-[6px]">
+              <div className="text-[9px] text-cyan-500/70 text-center leading-relaxed">
+                Email a summary of the current dashboard data to your registered address.
               </div>
+              <button
+                onClick={handleSendOverview}
+                disabled={sendingOverview}
+                data-testid="send-overview-btn"
+                className="font-orbitron text-[9px] font-bold tracking-[0.15em] px-[18px] py-[8px] border border-cyan-500 bg-cyan-500/10 text-cyan-400 rounded-sm hover:bg-cyan-500/20 hover:shadow-[0_0_14px_rgba(0,212,255,0.4)] transition-all flex items-center gap-[8px] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {sendingOverview ? (
+                  <Loader2 className="w-[14px] h-[14px] animate-spin" />
+                ) : (
+                  <Mail className="w-[14px] h-[14px]" />
+                )}
+                {sendingOverview ? 'SENDING...' : 'SEND OVERVIEW'}
+              </button>
             </div>
           </div>
         </div>

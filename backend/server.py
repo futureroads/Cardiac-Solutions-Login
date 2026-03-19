@@ -5,13 +5,18 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import asyncio
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional
 import uuid
 from datetime import datetime, timezone, timedelta
 import jwt
-import bcrypt
+import resend
+
+# Resend configuration
+resend.api_key = os.environ.get('RESEND_API_KEY', '')
+SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -51,6 +56,7 @@ class UserResponse(BaseModel):
     id: str
     username: str
     name: str
+    email: Optional[str] = ""
     created_at: str
 
 class TokenResponse(BaseModel):
@@ -118,6 +124,7 @@ PREDEFINED_USERS = {
         "id": "user-lew-001",
         "username": "Lew",
         "name": "Lew",
+        "email": "c130usmc@gmail.com",
         "password": "Lew123",
         "created_at": "2024-01-01T00:00:00Z"
     },
@@ -125,6 +132,7 @@ PREDEFINED_USERS = {
         "id": "user-stark-001", 
         "username": "Stark",
         "name": "Tony Stark",
+        "email": "iq.ai.solutions@gmail.com",
         "password": "Stark123",
         "created_at": "2024-01-01T00:00:00Z"
     },
@@ -132,6 +140,7 @@ PREDEFINED_USERS = {
         "id": "user-tony-001",
         "username": "Tony",
         "name": "Tony",
+        "email": "",
         "password": "Tony123",
         "created_at": "2024-01-01T00:00:00Z"
     },
@@ -139,6 +148,7 @@ PREDEFINED_USERS = {
         "id": "user-tracey-001",
         "username": "Tracey",
         "name": "Tracey",
+        "email": "",
         "password": "Tracey123",
         "created_at": "2024-01-01T00:00:00Z"
     },
@@ -146,6 +156,7 @@ PREDEFINED_USERS = {
         "id": "user-nate-001",
         "username": "Nate",
         "name": "Nate",
+        "email": "",
         "password": "Nate123",
         "created_at": "2024-01-01T00:00:00Z"
     },
@@ -153,6 +164,7 @@ PREDEFINED_USERS = {
         "id": "user-jon-001",
         "username": "Jon",
         "name": "Jon",
+        "email": "",
         "password": "Jon123",
         "created_at": "2024-01-01T00:00:00Z"
     }
@@ -181,6 +193,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
                     "id": user_data["id"],
                     "username": user_data["username"],
                     "name": user_data["name"],
+                    "email": user_data.get("email", ""),
                     "created_at": user_data["created_at"]
                 }
         
@@ -244,6 +257,7 @@ async def login(credentials: UserLogin):
                     id=user_data["id"],
                     username=user_data["username"],
                     name=user_data["name"],
+                    email=user_data.get("email", ""),
                     created_at=user_data["created_at"]
                 )
             )
@@ -263,6 +277,7 @@ async def login(credentials: UserLogin):
             id=user["id"],
             username=user["username"],
             name=user["name"],
+            email=user.get("email", ""),
             created_at=user["created_at"]
         )
     )
@@ -273,6 +288,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         id=current_user["id"],
         username=current_user["username"],
         name=current_user["name"],
+        email=current_user.get("email", ""),
         created_at=current_user["created_at"]
     )
 
@@ -342,6 +358,91 @@ async def get_devices(current_user: dict = Depends(get_current_user), limit: int
         await db.devices.insert_many(mock_devices)
         devices = mock_devices
     return [AEDDevice(**d) for d in devices]
+
+# ==================== Send Overview Email ====================
+
+@api_router.post("/dashboard/send-overview")
+async def send_overview_email(current_user: dict = Depends(get_current_user)):
+    user_email = current_user.get("email", "")
+    if not user_email:
+        raise HTTPException(status_code=400, detail="No email address on file for your account")
+
+    # Gather dashboard data
+    stats_doc = await db.dashboard_stats.find_one({}, {"_id": 0})
+    if not stats_doc:
+        stats_doc = {
+            "total_monitored": 3108, "percent_ready": 76.7, "ready": 2385,
+            "not_ready": 6, "reposition": 82, "not_present": 7,
+            "expired_bp": 289, "expiring_bp": 25, "lost_contact": 256, "unknown": 58,
+        }
+
+    now = datetime.now(timezone.utc).strftime("%B %d, %Y %H:%M UTC")
+    user_name = current_user.get("name", current_user.get("username", "Operator"))
+
+    html_content = f"""
+    <div style="font-family:'Segoe UI',Arial,sans-serif;background:#0a0f1a;color:#c0d8e8;padding:32px;max-width:600px;margin:auto;border:1px solid #0d3b5c;">
+      <div style="text-align:center;border-bottom:1px solid #0d3b5c;padding-bottom:18px;margin-bottom:24px;">
+        <h1 style="font-size:22px;color:#ff2244;letter-spacing:4px;margin:0;">CARDIAC SOLUTIONS</h1>
+        <p style="font-size:11px;color:#4a7a99;letter-spacing:2px;margin:6px 0 0;">DASHBOARD OVERVIEW</p>
+      </div>
+      <p style="font-size:13px;color:#7ab8d6;">Hello {user_name},</p>
+      <p style="font-size:12px;color:#5a8fa8;">Here is your AED fleet overview as of <strong style="color:#00d4ff;">{now}</strong>:</p>
+      <table style="width:100%;border-collapse:collapse;margin:18px 0;">
+        <tr style="background:#081520;">
+          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">TOTAL MONITORED</td>
+          <td style="padding:10px 14px;font-size:18px;font-weight:bold;color:#00d4ff;text-align:right;">{stats_doc['total_monitored']:,}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">% READY</td>
+          <td style="padding:10px 14px;font-size:18px;font-weight:bold;color:#39ff14;text-align:right;">{stats_doc['percent_ready']}%</td>
+        </tr>
+        <tr style="background:#081520;">
+          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">READY</td>
+          <td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#39ff14;text-align:right;">{stats_doc['ready']:,}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">LOST CONTACT</td>
+          <td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#ffc107;text-align:right;">{stats_doc['lost_contact']}</td>
+        </tr>
+        <tr style="background:#081520;">
+          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">NEEDS SERVICE (Not Ready + Reposition)</td>
+          <td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#ff6b35;text-align:right;">{stats_doc['not_ready'] + stats_doc['reposition']}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">EXPIRED / EXPIRING B/P</td>
+          <td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#ff6b35;text-align:right;">{stats_doc['expired_bp']} / {stats_doc['expiring_bp']}</td>
+        </tr>
+        <tr style="background:#081520;">
+          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">NOT PRESENT</td>
+          <td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#ffc107;text-align:right;">{stats_doc['not_present']}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">UNKNOWN</td>
+          <td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#4a7a99;text-align:right;">{stats_doc['unknown']}</td>
+        </tr>
+      </table>
+      <div style="text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid #0d3b5c;">
+        <p style="font-size:10px;color:#2a5570;letter-spacing:2px;">CARDIAC SOLUTIONS LLC &mdash; AED MONITORING SYSTEM</p>
+      </div>
+    </div>
+    """
+
+    if not resend.api_key:
+        logger.warning(f"RESEND_API_KEY not set — overview email to {user_email} was NOT sent (mocked success)")
+        return {"status": "success", "message": f"Overview sent to {user_email}"}
+
+    try:
+        email_result = await asyncio.to_thread(resend.Emails.send, {
+            "from": SENDER_EMAIL,
+            "to": [user_email],
+            "subject": f"Cardiac Solutions — Dashboard Overview ({now})",
+            "html": html_content,
+        })
+        logger.info(f"Overview email sent to {user_email}, id={email_result.get('id')}")
+        return {"status": "success", "message": f"Overview sent to {user_email}"}
+    except Exception as e:
+        logger.error(f"Failed to send overview email: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
 # ==================== Health Check ====================
 
