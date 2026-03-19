@@ -464,8 +464,8 @@ export default function Dashboard({ user, onLogout }) {
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">Send Overview</div>
-            <div className="flex flex-col items-center gap-[6px] py-[4px]">
-              <div className="text-[8px] text-cyan-500/50 tracking-wider">Email me an overview of this data</div>
+            <div className="flex flex-col items-center gap-[8px] py-[8px]">
+              <div className="text-[9px] text-cyan-500/50 tracking-wider">Email me an overview of this data</div>
               <button
                 onClick={handleSendOverview}
                 disabled={sendingOverview}
@@ -483,11 +483,11 @@ export default function Dashboard({ user, onLogout }) {
           </div>
 
           {/* Voice Query */}
-          <div className="panel relative p-[8px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">Voice Query</div>
-            <div className="flex items-center gap-[10px] py-[4px]">
+            <div className="flex items-center justify-center gap-[10px] py-[8px]">
               <div className="flex items-center gap-[2px] h-[16px]">
                 {[4, 8, 12, 8, 14, 10, 16, 12, 8, 5].map((h, i) => (
                   <div key={i} className={`w-[2px] rounded-sm ${isListening ? 'bg-red-500 animate-voice-wave' : 'bg-cyan-500/30'}`} style={{ height: h, animationDelay: `${i * 0.1}s` }} />
