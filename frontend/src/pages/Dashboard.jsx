@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { LogOut, Mic, Mail, Loader2 } from "lucide-react";
+import { LogOut, Mic, Mail, Loader2, Play, Pause } from "lucide-react";
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 export default function Dashboard({ user, onLogout }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isListening, setIsListening] = useState(false);
+  const [aiScrollPaused, setAiScrollPaused] = useState(false);
   const [sendingOverview, setSendingOverview] = useState(false);
 
   const handleSendOverview = async () => {
@@ -296,10 +297,18 @@ export default function Dashboard({ user, onLogout }) {
           <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
-            <div className="plabel">Decision Intelligence — AI Recommendations</div>
+            <div className="plabel">Decision Intelligence — AI Recommendations
+              <button
+                onClick={() => setAiScrollPaused(!aiScrollPaused)}
+                data-testid="ai-scroll-toggle"
+                className="ml-auto flex-shrink-0 w-[18px] h-[18px] flex items-center justify-center rounded-sm border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 transition-colors"
+              >
+                {aiScrollPaused ? <Play className="w-[10px] h-[10px] text-cyan-400" /> : <Pause className="w-[10px] h-[10px] text-cyan-400" />}
+              </button>
+            </div>
             <div className="max-h-[220px] overflow-hidden relative">
               <div className="ai-scroll-container">
-                <div className="ai-scroll-content">
+                <div className={`ai-scroll-content ${aiScrollPaused ? 'ai-scroll-paused' : ''}`}>
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
                     <div key={i} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
                       <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-cyan-500/15 text-cyan-400'}`}>
@@ -547,6 +556,9 @@ export default function Dashboard({ user, onLogout }) {
           animation: ai-scroll 25s linear infinite;
         }
         .ai-scroll-container:hover .ai-scroll-content {
+          animation-play-state: paused;
+        }
+        .ai-scroll-content.ai-scroll-paused {
           animation-play-state: paused;
         }
         @keyframes ai-scroll {
