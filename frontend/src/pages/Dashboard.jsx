@@ -305,7 +305,7 @@ export default function Dashboard({ user, onLogout }) {
               >
                 {aiScrollPaused ? <Play className="w-[16px] h-[16px] text-cyan-400" /> : <Pause className="w-[16px] h-[16px] text-cyan-400" />}
               </button>
-              <span className="text-[7px] text-cyan-500/50 tracking-wider">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
+              <span className="text-[9px] text-cyan-500/60 tracking-wider font-orbitron font-bold">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
             <div className="max-h-[220px] overflow-hidden relative">
