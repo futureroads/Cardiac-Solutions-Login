@@ -129,7 +129,7 @@ export default function Dashboard({ user, onLogout }) {
   const formatDate = (date) => {
     const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    return `${days[date.getDay()]} ${months[date.getMonth()]} ${String(date.getDate()).padStart(2, '0')} ${date.getFullYear()}`;
+    return `${days[date.getDay()]}  ${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
   };
 
   const getStatusBadge = (status) => {
@@ -186,7 +186,7 @@ export default function Dashboard({ user, onLogout }) {
           <div className="flex items-center gap-4">
             <div className="flex flex-col items-end gap-[2px]">
               <div className="font-orbitron text-[13px] font-bold tracking-wider">{formatTime(currentTime)}</div>
-              <div className="font-orbitron text-[8px] tracking-[0.18em] text-cyan-500/50">{formatDate(currentTime)}</div>
+              <div className="font-orbitron text-[10px] tracking-[0.12em] text-cyan-500/65">{formatDate(currentTime)}</div>
             </div>
             <button onClick={onLogout} className="text-red-500 hover:text-red-400 transition-colors" data-testid="logout-btn">
               <LogOut className="w-4 h-4" />
