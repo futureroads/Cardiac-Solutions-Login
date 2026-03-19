@@ -459,7 +459,8 @@ export default function Dashboard({ user, onLogout }) {
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">Send Overview</div>
-            <div className="flex justify-center py-[4px]">
+            <div className="flex flex-col items-center gap-[4px] py-[4px]">
+              <div className="text-[8px] text-cyan-500/50 tracking-wider">Email me an overview of this data</div>
               <button
                 onClick={handleSendOverview}
                 disabled={sendingOverview}
