@@ -454,6 +454,28 @@ export default function Dashboard({ user, onLogout }) {
             </div>
           </div>
 
+          {/* Send Overview */}
+          <div className="panel relative p-[8px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden" data-testid="send-overview-panel">
+            <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+            <div className="panel-glow" />
+            <div className="plabel">Send Overview</div>
+            <div className="flex justify-center py-[4px]">
+              <button
+                onClick={handleSendOverview}
+                disabled={sendingOverview}
+                data-testid="send-overview-btn"
+                className="font-orbitron text-[8px] font-bold tracking-[0.15em] px-[14px] py-[5px] border border-cyan-500 bg-cyan-500/10 text-cyan-400 rounded-sm hover:bg-cyan-500/20 hover:shadow-[0_0_14px_rgba(0,212,255,0.4)] transition-all flex items-center gap-[6px] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {sendingOverview ? (
+                  <Loader2 className="w-[12px] h-[12px] animate-spin" />
+                ) : (
+                  <Mail className="w-[12px] h-[12px]" />
+                )}
+                {sendingOverview ? 'SENDING...' : 'SEND'}
+              </button>
+            </div>
+          </div>
+
           {/* Voice Query (compact) */}
           <div className="panel relative p-[8px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
@@ -474,31 +496,6 @@ export default function Dashboard({ user, onLogout }) {
               <div className={`font-orbitron text-[7px] font-bold tracking-[0.18em] ${isListening ? 'text-red-500 animate-blink' : 'text-cyan-500/60'}`}>
                 {isListening ? 'LISTENING' : 'READY'}
               </div>
-            </div>
-          </div>
-
-          {/* Send Overview */}
-          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden" data-testid="send-overview-panel">
-            <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
-            <div className="panel-glow" />
-            <div className="plabel">Send Overview</div>
-            <div className="flex flex-col items-center gap-[8px] py-[6px]">
-              <div className="text-[9px] text-cyan-500/70 text-center leading-relaxed">
-                Email a summary of the current dashboard data to your registered address.
-              </div>
-              <button
-                onClick={handleSendOverview}
-                disabled={sendingOverview}
-                data-testid="send-overview-btn"
-                className="font-orbitron text-[9px] font-bold tracking-[0.15em] px-[18px] py-[8px] border border-cyan-500 bg-cyan-500/10 text-cyan-400 rounded-sm hover:bg-cyan-500/20 hover:shadow-[0_0_14px_rgba(0,212,255,0.4)] transition-all flex items-center gap-[8px] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {sendingOverview ? (
-                  <Loader2 className="w-[14px] h-[14px] animate-spin" />
-                ) : (
-                  <Mail className="w-[14px] h-[14px]" />
-                )}
-                {sendingOverview ? 'SENDING...' : 'SEND OVERVIEW'}
-              </button>
             </div>
           </div>
         </div>
