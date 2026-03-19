@@ -297,15 +297,15 @@ export default function Dashboard({ user, onLogout }) {
           <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
-            <div className="absolute top-[8px] right-[10px] z-20 flex flex-col items-center gap-[2px]">
+            <div className="absolute top-[8px] right-[10px] z-20 flex flex-col items-center gap-[3px]">
               <button
                 onClick={() => setAiScrollPaused(!aiScrollPaused)}
                 data-testid="ai-scroll-toggle"
-                className="w-[20px] h-[20px] flex items-center justify-center rounded-sm border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 transition-colors"
+                className="w-[30px] h-[30px] flex items-center justify-center rounded-sm border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 transition-colors"
               >
-                {aiScrollPaused ? <Play className="w-[10px] h-[10px] text-cyan-400" /> : <Pause className="w-[10px] h-[10px] text-cyan-400" />}
+                {aiScrollPaused ? <Play className="w-[16px] h-[16px] text-cyan-400" /> : <Pause className="w-[16px] h-[16px] text-cyan-400" />}
               </button>
-              <span className="text-[6px] text-cyan-500/40 tracking-wider">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
+              <span className="text-[7px] text-cyan-500/50 tracking-wider">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
             <div className="max-h-[220px] overflow-hidden relative">
