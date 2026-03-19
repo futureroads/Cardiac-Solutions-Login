@@ -15,67 +15,80 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 3. **Field Service Engineers** - Track reposition and maintenance needs
 
 ## Core Requirements
-- JWT-based email/password authentication
-- Animated login page with EKG heart visualization
-- Custom AED electrode pad cursor
-- Dashboard with real-time AED status monitoring
-- Subscriber table with sort/filter capabilities
-- Dark theme with cyan/neon accents
+- JWT-based username/password authentication (6 hardcoded users)
+- Animated login page with EKG heart visualization and sound
+- Multi-stage login flow: heart click -> EKG animation -> login form
+- JARVIS-style dashboard with real-time AED status monitoring
+- Dark theme with cyan/neon accents, red branding for Cardiac Solutions
 
-## What's Been Implemented (Dec 2025)
+## What's Been Implemented
 - [x] Login page with animated SVG heart and EKG line
-- [x] Custom AED pad cursor that clamps on mouse click
-- [x] Shock effect (brightness flash) on authentication
-- [x] JWT authentication (register/login)
-- [x] Dashboard with 10 status cards (Total Monitored, % Ready, Ready, Not Ready, Reposition, Not Present, Expired B/P, Expiring B/P, Lost Contact, Unknown)
-- [x] Subscriber table with 8 mock subscribers
-- [x] Sort by alphabetical/total/ready/not ready
-- [x] Filter by status dropdown
-- [x] Holographic grid background
-- [x] Glassmorphic UI components
-- [x] Rajdhani + Exo 2 typography
-- [x] HUD corner decorations
+- [x] Multi-stage login: heart -> 5s EKG animation with MP3 sound -> login form
+- [x] BACK button on login screen
+- [x] Custom logo on heart and login screens
+- [x] JWT authentication with 6 hardcoded users (Lew, Stark, Tony, Tracey, Nate, Jon)
+- [x] JARVIS-style dashboard (v11 layout from user HTML)
+- [x] Dashboard panels: System Status, % Ready, Status Breakdown, Status Changes vs Yesterday
+- [x] AI Recommendations panel with INFO/ACT/WARN badges
+- [x] Customer Notifications panel (compact) with SEND EMAIL buttons
+- [x] Camera Battery panel - 90% ring gauge + Dead/1/4/1/2/3/4/Full breakdown
+- [x] Camera Cellular panel - signal meter bar graph with counts
+- [x] Service Tickets panel with status badges
+- [x] Voice Query panel (UI only)
+- [x] Bottom bar with key metrics
+- [x] Red "glow" effect on text, heart icon, EKG line
+- [x] Removed "Made with Emergent" watermark
+- [x] Custom social media link previews
 
 ## Tech Stack
 - Frontend: React 19 + Framer Motion + Tailwind CSS
-- Backend: FastAPI + Motor (async MongoDB driver)
-- Database: MongoDB
-- Authentication: JWT with bcrypt password hashing
+- Backend: FastAPI (Python)
+- Database: MongoDB (currently unused, data is mocked)
+- Authentication: JWT with hardcoded user dictionary
 
 ## API Endpoints
-- POST `/api/auth/register` - Register new user
 - POST `/api/auth/login` - Authenticate user
+- POST `/api/auth/register` - Register new user
 - GET `/api/auth/me` - Get current user
 - GET `/api/dashboard/stats` - Get AED statistics
 - GET `/api/dashboard/subscribers` - Get subscriber list
 - GET `/api/dashboard/devices` - Get device list
 
+## Key Files
+- `/app/frontend/src/pages/Dashboard.jsx` - Main JARVIS dashboard
+- `/app/frontend/src/pages/LoginPage.jsx` - Multi-stage login experience
+- `/app/backend/server.py` - All backend logic, auth, API routes
+- `/app/frontend/src/App.js` - Routing between login and dashboard
+
 ## Prioritized Backlog
 
-### P0 (Critical)
-- All core features implemented ✅
-
 ### P1 (High Priority)
+- Wire dashboard to backend APIs (currently uses frontend mock data)
+- Migrate hardcoded users to MongoDB
+- Refactor LoginPage.jsx (~650 lines) into smaller components
 - Real-time device status from cameras
-- Individual device detail view
-- Alert/notification system for critical issues
-- Device location map view
 
 ### P2 (Medium Priority)
+- Individual device detail view
+- Alert/notification system for critical issues
 - Export data to CSV functionality
 - Historical trend charts
 - User management (admin roles)
-- Device maintenance scheduling
 
 ### P3 (Nice to Have)
+- Device location map view
 - Mobile responsive optimizations
 - Sound effects (charging whine, heartbeat beep)
 - Dark/light theme toggle
-- Multi-language support
 
-## Next Tasks
-1. Implement real camera integration for live AED monitoring
-2. Add notification center with push alerts
-3. Build device detail page with camera feed
-4. Create export functionality for CSV reports
-5. Add interactive map showing AED locations
+## Credentials
+- Lew / Lew123
+- Stark / Stark123
+- Tony / Tony123
+- Tracey / Tracey123
+- Nate / Nate123
+- Jon / Jon123
+
+## Notes
+- All backend data is MOCKED (hardcoded users, static AED stats)
+- Dashboard currently uses inline mock data, not connected to backend API

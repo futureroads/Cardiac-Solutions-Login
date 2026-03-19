@@ -61,6 +61,25 @@ export default function Dashboard({ user, onLogout }) {
     },
   ];
 
+  const cameraBattery = {
+    overall: 90,
+    levels: [
+      { label: 'Dead', count: 66, pct: 2 },
+      { label: '1/4', count: 99, pct: 3 },
+      { label: '1/2', count: 165, pct: 5 },
+      { label: '3/4', count: 495, pct: 15 },
+      { label: 'Full', count: 2475, pct: 75 },
+    ]
+  };
+
+  const cameraCellular = [
+    { bars: 0, count: 45, label: 'X' },
+    { bars: 1, count: 85, label: '1' },
+    { bars: 2, count: 220, label: '2' },
+    { bars: 3, count: 650, label: '3' },
+    { bars: 4, count: 2300, label: '4' },
+  ];
+
   const tickets = [
     { id: 'SVC-0042', loc: 'Tampa Intl Airport', status: 'open' },
     { id: 'SVC-0041', loc: 'Miami Central Mall', status: 'dispatched' },
@@ -258,48 +277,124 @@ export default function Dashboard({ user, onLogout }) {
             </div>
           </div>
 
-          {/* Customer Notifications */}
-          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1 flex flex-col">
+          {/* Customer Notifications (compact) */}
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden" data-testid="customer-notifications-panel">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">Customer Notifications</div>
-            <div className="flex gap-[14px] mb-[10px] pb-[10px] border-b border-cyan-500/10">
+            <div className="flex gap-[14px] mb-[8px] pb-[8px] border-b border-cyan-500/10">
               <div className="flex flex-col items-center gap-[2px]">
-                <div className="font-orbitron text-[14px] font-black text-yellow-400">{stats.pendingNotifs}</div>
+                <div className="font-orbitron text-[13px] font-black text-yellow-400">{stats.pendingNotifs}</div>
                 <div className="text-[7px] tracking-wider text-cyan-500/45 uppercase">Pending</div>
               </div>
               <div className="flex flex-col items-center gap-[2px]">
-                <div className="font-orbitron text-[14px] font-black text-green-400">{stats.sentToday}</div>
+                <div className="font-orbitron text-[13px] font-black text-green-400">{stats.sentToday}</div>
                 <div className="text-[7px] tracking-wider text-cyan-500/45 uppercase">Sent Today</div>
               </div>
               <div className="flex flex-col items-center gap-[2px]">
-                <div className="font-orbitron text-[14px] font-black text-orange-400">{stats.devicesAffected}</div>
+                <div className="font-orbitron text-[13px] font-black text-orange-400">{stats.devicesAffected}</div>
                 <div className="text-[7px] tracking-wider text-cyan-500/45 uppercase">Devices</div>
               </div>
             </div>
-            <div className="flex flex-col gap-[8px]">
+            <div className="flex flex-col gap-[6px] max-h-[140px] overflow-y-auto scrollbar-thin">
               {notifications.map((notif, i) => (
-                <div key={i} className="bg-cyan-500/5 border border-cyan-500/15 border-l-[3px] border-l-yellow-400 p-[9px]">
-                  <div className="flex justify-between items-center mb-[5px]">
-                    <span className="text-[11px] font-bold text-slate-200/95">{notif.customer}</span>
+                <div key={i} className="bg-cyan-500/5 border border-cyan-500/15 border-l-[3px] border-l-yellow-400 p-[7px]">
+                  <div className="flex justify-between items-center mb-[3px]">
+                    <span className="text-[10px] font-bold text-slate-200/95">{notif.customer}</span>
                     <span className="font-orbitron text-[7px] text-cyan-500/35 tracking-wider">{notif.time}</span>
                   </div>
-                  <div className="text-[8px] text-cyan-500/50 mb-[6px]">{notif.contacts}</div>
-                  <div className="flex flex-wrap gap-[4px] mb-[8px]">
+                  <div className="flex flex-wrap gap-[3px] mb-[5px]">
                     {notif.devices.map((dev, j) => (
-                      <span key={j} className={`font-orbitron text-[7px] font-bold px-[6px] py-[2px] rounded-sm ${getTagType(dev.type)}`}>
+                      <span key={j} className={`font-orbitron text-[7px] font-bold px-[5px] py-[1px] rounded-sm ${getTagType(dev.type)}`}>
                         {dev.id} · {dev.issue}
                       </span>
                     ))}
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-[8px] text-cyan-500/35">{notif.devices.length} devices · owner + contact</span>
-                    <button className="font-orbitron text-[7px] font-bold tracking-wider px-[12px] py-[5px] border border-yellow-400 bg-yellow-500/10 text-yellow-400 rounded-sm hover:bg-yellow-500/20 hover:shadow-[0_0_10px_rgba(255,204,0,0.35)] transition-all">
+                    <span className="text-[7px] text-cyan-500/35">{notif.devices.length} devices</span>
+                    <button className="font-orbitron text-[7px] font-bold tracking-wider px-[10px] py-[3px] border border-yellow-400 bg-yellow-500/10 text-yellow-400 rounded-sm hover:bg-yellow-500/20 hover:shadow-[0_0_10px_rgba(255,204,0,0.35)] transition-all">
                       SEND EMAIL
                     </button>
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Camera Battery & Camera Cellular */}
+          <div className="flex gap-[7px] flex-1">
+            {/* Camera Battery */}
+            <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1 flex flex-col" data-testid="camera-battery-panel">
+              <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+              <div className="panel-glow" />
+              <div className="plabel">Camera Battery</div>
+              <div className="flex flex-col items-center flex-1 justify-center gap-[8px]">
+                <div className="relative w-[80px] h-[80px] flex items-center justify-center">
+                  <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 80 80">
+                    <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(0,212,255,0.12)" strokeWidth="5" />
+                    <circle cx="40" cy="40" r="34" fill="none" stroke="#39ff14" strokeWidth="5" strokeLinecap="round"
+                      strokeDasharray={`${cameraBattery.overall * 2.136} ${213.6 - cameraBattery.overall * 2.136}`}
+                      className="drop-shadow-[0_0_6px_rgba(57,255,20,0.5)]" />
+                  </svg>
+                  <span className="font-orbitron text-[20px] font-black text-green-400" style={{ textShadow: '0 0 12px rgba(57,255,20,0.5)' }}>
+                    {cameraBattery.overall}%
+                  </span>
+                </div>
+                <div className="w-full grid grid-cols-5 gap-[3px] mt-[4px]">
+                  {cameraBattery.levels.map((level, i) => {
+                    const colors = [
+                      'text-red-400 bg-red-500/15 border-red-500/30',
+                      'text-orange-400 bg-orange-500/15 border-orange-500/30',
+                      'text-yellow-400 bg-yellow-500/15 border-yellow-500/30',
+                      'text-cyan-400 bg-cyan-500/15 border-cyan-500/30',
+                      'text-green-400 bg-green-500/15 border-green-500/30',
+                    ];
+                    return (
+                      <div key={i} className={`flex flex-col items-center gap-[2px] p-[4px] border rounded-sm ${colors[i]}`}>
+                        <div className="font-orbitron text-[10px] font-black">{level.count}</div>
+                        <div className="text-[7px] tracking-wider opacity-70">{level.pct}%</div>
+                        <div className="text-[6px] tracking-wider opacity-50 uppercase whitespace-nowrap">{level.label}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Camera Cellular */}
+            <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1 flex flex-col" data-testid="camera-cellular-panel">
+              <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+              <div className="panel-glow" />
+              <div className="plabel">Camera Cellular</div>
+              <div className="flex items-end justify-center gap-[12px] flex-1 pb-[10px]">
+                {cameraCellular.map((item, i) => {
+                  const barHeights = [0, 25, 45, 68, 95];
+                  const barColors = [
+                    '', 
+                    'bg-gradient-to-t from-red-500/40 to-red-400',
+                    'bg-gradient-to-t from-orange-500/40 to-orange-400',
+                    'bg-gradient-to-t from-yellow-500/40 to-yellow-400',
+                    'bg-gradient-to-t from-green-500/40 to-green-400',
+                  ];
+                  return (
+                    <div key={i} className="flex flex-col items-center gap-[4px]">
+                      <div className="font-orbitron text-[10px] font-bold text-slate-200/90">{item.count}</div>
+                      <div className="flex items-end" style={{ height: '95px' }}>
+                        {i === 0 ? (
+                          <div className="w-[22px] flex items-center justify-center h-full">
+                            <span className="font-orbitron text-[16px] font-black text-red-500" style={{ textShadow: '0 0 8px rgba(255,34,68,0.6)' }}>X</span>
+                          </div>
+                        ) : (
+                          <div
+                            className={`w-[22px] rounded-t-sm ${barColors[i]}`}
+                            style={{ height: `${barHeights[i]}%`, boxShadow: i === 4 ? '0 0 8px rgba(57,255,20,0.3)' : 'none' }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
