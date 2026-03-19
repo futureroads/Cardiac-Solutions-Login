@@ -174,8 +174,13 @@ export default function Dashboard({ user, onLogout }) {
         
         {/* TOP BAR */}
         <div className="col-span-3 flex items-center justify-between px-[18px] py-[7px] border border-cyan-500/30 bg-[rgba(0,18,32,0.93)]" style={{ clipPath: 'polygon(0 0, 100% 0, 98.5% 100%, 1.5% 100%)' }}>
-          <div className="font-orbitron text-[13px] font-black tracking-[0.25em] text-red-500 animate-logo-pulse">
-            CARDIAC SOLUTIONS
+          <div className="flex flex-col">
+            <div className="font-orbitron text-[13px] font-black tracking-[0.25em] text-red-500 animate-logo-pulse">
+              CARDIAC SOLUTIONS
+            </div>
+            <div className="font-orbitron text-[9px] font-bold tracking-[0.2em] text-cyan-400">
+              COMMAND CENTER
+            </div>
           </div>
           <div className="flex gap-[18px] items-center text-[9px] tracking-wider">
             <span className="flex items-center gap-1">
