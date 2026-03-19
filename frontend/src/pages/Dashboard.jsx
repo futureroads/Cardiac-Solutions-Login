@@ -292,15 +292,20 @@ export default function Dashboard({ user, onLogout }) {
             <div className="panel-glow" />
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
             <div className="max-h-[220px] overflow-hidden relative">
-              {aiRecommendations.map((rec, i) => (
-                <div key={i} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
-                  <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-cyan-500/15 text-cyan-400'}`}>
-                    {rec.type}
-                  </span>
-                  <span className="text-[11px] text-slate-200/90 leading-relaxed">{rec.msg}</span>
+              <div className="ai-scroll-container">
+                <div className="ai-scroll-content">
+                  {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
+                    <div key={i} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
+                      <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-cyan-500/15 text-cyan-400'}`}>
+                        {rec.type}
+                      </span>
+                      <span className="text-[11px] text-slate-200/90 leading-relaxed">{rec.msg}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              <div className="absolute bottom-0 left-0 right-0 h-[32px] bg-gradient-to-t from-[rgba(0,18,32,0.93)] to-transparent pointer-events-none" />
+              </div>
+              <div className="absolute top-0 left-0 right-0 h-[16px] bg-gradient-to-b from-[rgba(0,18,32,0.93)] to-transparent pointer-events-none z-10" />
+              <div className="absolute bottom-0 left-0 right-0 h-[32px] bg-gradient-to-t from-[rgba(0,18,32,0.93)] to-transparent pointer-events-none z-10" />
             </div>
           </div>
 
@@ -527,6 +532,21 @@ export default function Dashboard({ user, onLogout }) {
 
       <style jsx>{`
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=swap');
+        
+        .ai-scroll-container {
+          overflow: hidden;
+          height: 100%;
+        }
+        .ai-scroll-content {
+          animation: ai-scroll 25s linear infinite;
+        }
+        .ai-scroll-container:hover .ai-scroll-content {
+          animation-play-state: paused;
+        }
+        @keyframes ai-scroll {
+          0% { transform: translateY(0); }
+          100% { transform: translateY(-50%); }
+        }
         
         .jarvis-dash {
           background: #020c15;
