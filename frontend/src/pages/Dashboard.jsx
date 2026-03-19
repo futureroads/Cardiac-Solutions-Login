@@ -460,12 +460,12 @@ export default function Dashboard({ user, onLogout }) {
           </div>
 
           {/* Send Overview */}
-          <div className="panel relative p-[8px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden" data-testid="send-overview-panel">
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1 flex flex-col" data-testid="send-overview-panel">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">Send Overview</div>
-            <div className="flex flex-col items-center gap-[8px] py-[4px]">
-              <div className="text-[8px] text-cyan-500/50 tracking-wider">Email me an overview of this data</div>
+            <div className="flex flex-col items-center justify-center gap-[10px] flex-1">
+              <div className="text-[9px] text-cyan-500/50 tracking-wider">Email me an overview of this data</div>
               <button
                 onClick={handleSendOverview}
                 disabled={sendingOverview}
@@ -482,24 +482,24 @@ export default function Dashboard({ user, onLogout }) {
             </div>
           </div>
 
-          {/* Voice Query (compact) */}
-          <div className="panel relative p-[8px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
+          {/* Voice Query */}
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1 flex flex-col">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">Voice Query</div>
-            <div className="flex items-center gap-[10px] py-[4px]">
-              <div className="flex items-center gap-[2px] h-[16px]">
-                {[4, 8, 12, 8, 14, 10, 16, 12, 8, 5].map((h, i) => (
+            <div className="flex flex-col items-center justify-center gap-[10px] flex-1">
+              <div className="flex items-center gap-[2px] h-[20px]">
+                {[4, 8, 14, 10, 18, 12, 20, 14, 10, 16, 8, 5].map((h, i) => (
                   <div key={i} className={`w-[2px] rounded-sm ${isListening ? 'bg-red-500 animate-voice-wave' : 'bg-cyan-500/30'}`} style={{ height: h, animationDelay: `${i * 0.1}s` }} />
                 ))}
               </div>
               <button 
                 onClick={() => setIsListening(!isListening)}
-                className={`w-[36px] h-[36px] rounded-full border flex items-center justify-center transition-all flex-shrink-0 ${isListening ? 'border-red-500 bg-red-500/10 animate-mic-pulse' : 'border-cyan-500/50 bg-[rgba(0,40,70,0.8)] hover:border-cyan-400 hover:shadow-[0_0_16px_rgba(0,212,255,0.35)]'}`}
+                className={`w-[44px] h-[44px] rounded-full border flex items-center justify-center transition-all flex-shrink-0 ${isListening ? 'border-red-500 bg-red-500/10 animate-mic-pulse' : 'border-cyan-500/50 bg-[rgba(0,40,70,0.8)] hover:border-cyan-400 hover:shadow-[0_0_16px_rgba(0,212,255,0.35)]'}`}
               >
-                <Mic className={`w-[14px] h-[14px] ${isListening ? 'text-red-500' : 'text-cyan-400'}`} />
+                <Mic className={`w-[16px] h-[16px] ${isListening ? 'text-red-500' : 'text-cyan-400'}`} />
               </button>
-              <div className={`font-orbitron text-[7px] font-bold tracking-[0.18em] ${isListening ? 'text-red-500 animate-blink' : 'text-cyan-500/60'}`}>
+              <div className={`font-orbitron text-[8px] font-bold tracking-[0.18em] ${isListening ? 'text-red-500 animate-blink' : 'text-cyan-500/60'}`}>
                 {isListening ? 'LISTENING' : 'READY'}
               </div>
             </div>
