@@ -701,7 +701,7 @@ export default function Dashboard({ user, onLogout }) {
               <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
               <div className="panel-glow" />
               <div className="plabel">Camera Battery</div>
-              <div className="flex flex-col items-center flex-1 justify-center gap-[8px]">
+              <div className="flex flex-col items-center justify-start gap-[8px] pt-[4px]">
                 <div className="w-full grid grid-cols-5 gap-[3px]">
                   {cameraBattery.levels.map((level, i) => {
                     const colors = [
@@ -728,7 +728,7 @@ export default function Dashboard({ user, onLogout }) {
               <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
               <div className="panel-glow" />
               <div className="plabel">Camera Cellular</div>
-              <div className="flex items-end justify-center gap-[10px] flex-1 pb-[10px]">
+              <div className="flex items-end justify-center gap-[10px] pt-[8px] pb-[10px]">
                 {cameraCellular.map((item, i) => {
                   const barHeights = [0, 15, 30, 50, 72, 95];
                   const barColors = [
