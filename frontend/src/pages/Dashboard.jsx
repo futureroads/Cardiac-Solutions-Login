@@ -836,6 +836,7 @@ export default function Dashboard({ user, onLogout }) {
         </>)}
 
         {/* BOTTOM BAR */}
+        {viewMode === 'detailed' && (
         <div className="col-span-3 flex gap-[7px]">
           {[
             { label: 'Total\nDevices', value: stats.total.toLocaleString(), size: '13px' },
@@ -857,6 +858,7 @@ export default function Dashboard({ user, onLogout }) {
             </div>
           ))}
         </div>
+        )}
       </div>
 
       <style jsx>{`
