@@ -10,7 +10,13 @@ export default function Dashboard({ user, onLogout }) {
   const [isListening, setIsListening] = useState(false);
   const [aiScrollPaused, setAiScrollPaused] = useState(false);
   const [sendingOverview, setSendingOverview] = useState(false);
-  const [viewMode, setViewMode] = useState('detailed'); // 'simple' or 'detailed'
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem("dashboard_view") || 'detailed');
+
+  const toggleViewMode = () => {
+    const newMode = viewMode === 'simple' ? 'detailed' : 'simple';
+    setViewMode(newMode);
+    localStorage.setItem("dashboard_view", newMode);
+  };
 
   const handleSendOverview = async () => {
     setSendingOverview(true);
@@ -188,7 +194,7 @@ export default function Dashboard({ user, onLogout }) {
           <div className="flex items-center gap-[6px]" data-testid="view-mode-toggle">
             <span className={`font-orbitron text-[7px] font-bold tracking-wider transition-colors ${viewMode === 'simple' ? 'text-cyan-400' : 'text-cyan-500/35'}`}>SIMPLE</span>
             <button
-              onClick={() => setViewMode(viewMode === 'simple' ? 'detailed' : 'simple')}
+              onClick={toggleViewMode}
               className="relative w-[32px] h-[16px] rounded-full border border-cyan-500/40 bg-[rgba(0,40,70,0.6)] transition-all hover:border-cyan-400/60"
             >
               <div className={`absolute top-[2px] w-[10px] h-[10px] rounded-full transition-all duration-300 ${viewMode === 'detailed' ? 'left-[18px] bg-cyan-400 shadow-[0_0_8px_rgba(0,212,255,0.6)]' : 'left-[2px] bg-cyan-500/60 shadow-[0_0_6px_rgba(0,212,255,0.3)]'}`} />
