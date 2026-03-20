@@ -563,8 +563,8 @@ export default function Dashboard({ user, onLogout }) {
                   {[
                     { start: 0, end: 40, color: '#ff2244' },
                     { start: 40, end: 70, color: '#facc15' },
-                    { start: 70, end: 80, color: '#ff6b35' },
-                    { start: 80, end: 90, color: '#00d4ff' },
+                    { start: 70, end: 80, color: '#66ff66' },
+                    { start: 80, end: 90, color: '#66ff66' },
                     { start: 90, end: 100, color: '#22b814' },
                   ].map((zone, i) => {
                     const startAngle = Math.PI + (zone.start / 100) * Math.PI;
