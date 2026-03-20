@@ -791,7 +791,7 @@ export default function Dashboard({ user, onLogout }) {
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">Service Summary</div>
-            <div className="flex flex-col gap-[4px] pt-[4px]">
+            <div className="flex flex-col gap-[5px] pt-[4px]">
               {[
                 { label: 'Needs Attention', value: stats.lost + stats.service, color: 'text-red-400', bg: 'bg-red-500/15', border: 'border-l-red-500' },
                 { label: 'Open', value: tickets.filter(t => t.status === 'open').length, color: 'text-white', bg: 'bg-white/5', border: 'border-l-white' },
@@ -802,9 +802,9 @@ export default function Dashboard({ user, onLogout }) {
                 { label: 'Completed', value: tickets.filter(t => t.status === 'complete').length, color: 'text-cyan-300', bg: 'bg-cyan-500/8', border: 'border-l-cyan-300' },
                 { label: 'Confirmed', value: 1, color: 'text-blue-600', bg: 'bg-blue-500/8', border: 'border-l-blue-600' },
               ].map((item, i) => (
-                <div key={i} className={`flex items-center justify-between px-[8px] py-[5px] ${item.bg} border-l-2 ${item.border}`}>
-                  <span className="text-[9px] text-slate-200/90 tracking-wider">{item.label}</span>
-                  <span className={`font-orbitron text-[12px] font-black ${item.color}`}>{item.value}</span>
+                <div key={i} className={`flex items-center justify-between px-[9px] py-[7px] ${item.bg} border-l-2 ${item.border}`}>
+                  <span className="text-[10px] text-slate-200/90 tracking-wider">{item.label}</span>
+                  <span className={`font-orbitron text-[13px] font-black ${item.color}`}>{item.value}</span>
                 </div>
               ))}
             </div>
