@@ -580,7 +580,7 @@ export default function Dashboard({ user, onLogout }) {
                   {(() => {
                     const pct = Math.round(parseFloat(pctReady));
                     const zones = [
-                      { start: 0, end: 40, color: '#ffff00' },
+                      { start: 0, end: 40, color: '#22b814' },
                       { start: 40, end: 60, color: '#22b814' },
                       { start: 60, end: 70, color: '#22b814' },
                       { start: 70, end: 80, color: '#22b814' },
