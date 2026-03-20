@@ -674,45 +674,21 @@ export default function Dashboard({ user, onLogout }) {
             </div>
           </div>
 
-          {/* Customer Notifications (compact) */}
+          {/* Customer Summary */}
           <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
-            <div className="plabel">Customer Notifications</div>
-            <div className="flex gap-[14px] mb-[8px] pb-[8px] border-b border-cyan-500/10">
-              <div className="flex flex-col items-center gap-[2px]">
-                <div className="font-orbitron text-[13px] font-black text-yellow-400">{stats.pendingNotifs}</div>
-                <div className="text-[7px] tracking-wider text-cyan-500/45 uppercase">Pending</div>
-              </div>
-              <div className="flex flex-col items-center gap-[2px]">
-                <div className="font-orbitron text-[13px] font-black text-green-400">{stats.sentToday}</div>
-                <div className="text-[7px] tracking-wider text-cyan-500/45 uppercase">Sent Today</div>
-              </div>
-              <div className="flex flex-col items-center gap-[2px]">
-                <div className="font-orbitron text-[13px] font-black text-orange-400">{stats.devicesAffected}</div>
-                <div className="text-[7px] tracking-wider text-cyan-500/45 uppercase">Devices</div>
-              </div>
-            </div>
-            <div className="flex flex-col gap-[6px] max-h-[140px] overflow-y-auto scrollbar-thin">
-              {notifications.map((notif, i) => (
-                <div key={i} className="bg-cyan-500/5 border border-cyan-500/15 border-l-[3px] border-l-yellow-400 p-[7px]">
-                  <div className="flex justify-between items-center mb-[3px]">
-                    <span className="text-[10px] font-bold text-slate-200/95">{notif.customer}</span>
-                    <span className="font-orbitron text-[7px] text-cyan-500/35 tracking-wider">{notif.time}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-[3px] mb-[5px]">
-                    {notif.devices.map((dev, j) => (
-                      <span key={j} className={`font-orbitron text-[7px] font-bold px-[5px] py-[1px] rounded-sm ${getTagType(dev.type)}`}>
-                        {dev.id} · {dev.issue}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-[7px] text-cyan-500/35">{notif.devices.length} devices</span>
-                    <button className="font-orbitron text-[7px] font-bold tracking-wider px-[10px] py-[3px] border border-yellow-400 bg-yellow-500/10 text-yellow-400 rounded-sm hover:bg-yellow-500/20 hover:shadow-[0_0_10px_rgba(255,204,0,0.35)] transition-all">
-                      SEND EMAIL
-                    </button>
-                  </div>
+            <div className="plabel">Customer Summary</div>
+            <div className="grid grid-cols-4 gap-[8px] pt-[6px]">
+              {[
+                { label: 'Total Subscribers', value: 46, color: 'text-cyan-400' },
+                { label: 'Total AEDs', value: '3,078', color: 'text-cyan-400' },
+                { label: 'Action Issues', value: 843, color: 'text-yellow-400' },
+                { label: 'Resolved', value: 12, color: 'text-green-400' },
+              ].map((item, i) => (
+                <div key={i} className="flex flex-col items-center gap-[4px] py-[6px] bg-cyan-500/5 border border-cyan-500/15 rounded-sm">
+                  <div className={`font-orbitron text-[18px] font-black ${item.color}`}>{item.value}</div>
+                  <div className="text-[7px] tracking-wider text-cyan-500/50 uppercase text-center">{item.label}</div>
                 </div>
               ))}
             </div>
