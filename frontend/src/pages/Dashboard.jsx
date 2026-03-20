@@ -702,18 +702,7 @@ export default function Dashboard({ user, onLogout }) {
               <div className="panel-glow" />
               <div className="plabel">Camera Battery</div>
               <div className="flex flex-col items-center flex-1 justify-center gap-[8px]">
-                <div className="relative w-[80px] h-[80px] flex items-center justify-center">
-                  <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 80 80">
-                    <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(0,212,255,0.12)" strokeWidth="5" />
-                    <circle cx="40" cy="40" r="34" fill="none" stroke="#39ff14" strokeWidth="5" strokeLinecap="round"
-                      strokeDasharray={`${cameraBattery.overall * 2.136} ${213.6 - cameraBattery.overall * 2.136}`}
-                      className="drop-shadow-[0_0_6px_rgba(57,255,20,0.5)]" />
-                  </svg>
-                  <span className="font-orbitron text-[20px] font-black text-green-400" style={{ textShadow: '0 0 12px rgba(57,255,20,0.5)' }}>
-                    {cameraBattery.overall}%
-                  </span>
-                </div>
-                <div className="w-full grid grid-cols-5 gap-[3px] mt-[4px]">
+                <div className="w-full grid grid-cols-5 gap-[3px]">
                   {cameraBattery.levels.map((level, i) => {
                     const colors = [
                       'text-red-400 bg-red-500/15 border-red-500/30',
