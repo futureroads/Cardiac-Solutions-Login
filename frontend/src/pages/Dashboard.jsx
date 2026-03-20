@@ -646,7 +646,7 @@ export default function Dashboard({ user, onLogout }) {
             <div className="plabel">Customer Notifications</div>
             <div className="grid grid-cols-2 gap-[6px] pt-[6px]">
               {[
-                { label: 'Total Subscribers', value: 46, color: 'text-cyan-400' },
+                { label: 'Total Subscribers', value: 46, color: 'text-white' },
                 { label: 'Total AEDs', value: '3,078', color: 'text-cyan-400' },
                 { label: 'Action Issues', value: 843, color: 'text-yellow-400' },
                 { label: 'Resolved', value: 12, color: 'text-green-400' },
