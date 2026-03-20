@@ -10,6 +10,7 @@ export default function Dashboard({ user, onLogout }) {
   const [isListening, setIsListening] = useState(false);
   const [aiScrollPaused, setAiScrollPaused] = useState(false);
   const [sendingOverview, setSendingOverview] = useState(false);
+  const [viewMode, setViewMode] = useState('detailed'); // 'simple' or 'detailed'
 
   const handleSendOverview = async () => {
     setSendingOverview(true);
@@ -183,6 +184,17 @@ export default function Dashboard({ user, onLogout }) {
               COMMAND CENTER
             </div>
           </div>
+          {/* View Mode Toggle */}
+          <div className="flex items-center gap-[10px]" data-testid="view-mode-toggle">
+            <span className={`font-orbitron text-[9px] font-bold tracking-wider transition-colors ${viewMode === 'simple' ? 'text-cyan-400' : 'text-cyan-500/35'}`}>SIMPLE</span>
+            <button
+              onClick={() => setViewMode(viewMode === 'simple' ? 'detailed' : 'simple')}
+              className="relative w-[44px] h-[22px] rounded-full border border-cyan-500/40 bg-[rgba(0,40,70,0.6)] transition-all hover:border-cyan-400/60"
+            >
+              <div className={`absolute top-[2px] w-[16px] h-[16px] rounded-full transition-all duration-300 ${viewMode === 'detailed' ? 'left-[24px] bg-cyan-400 shadow-[0_0_8px_rgba(0,212,255,0.6)]' : 'left-[2px] bg-cyan-500/60 shadow-[0_0_6px_rgba(0,212,255,0.3)]'}`} />
+            </button>
+            <span className={`font-orbitron text-[9px] font-bold tracking-wider transition-colors ${viewMode === 'detailed' ? 'text-cyan-400' : 'text-cyan-500/35'}`}>DETAILED</span>
+          </div>
           <div className="flex gap-[18px] items-center text-[9px] tracking-wider">
             <span className="flex items-center gap-1">
               <span className="w-[5px] h-[5px] rounded-full bg-green-400 animate-blink" />
@@ -207,6 +219,7 @@ export default function Dashboard({ user, onLogout }) {
           </div>
         </div>
 
+        {viewMode === 'detailed' ? (<>
         {/* LEFT COLUMN */}
         <div className="flex flex-col gap-[7px]">
           {/* System Status */}
@@ -529,6 +542,137 @@ export default function Dashboard({ user, onLogout }) {
             </div>
           </div>
         </div>
+        </>) : (
+        /* SIMPLE DASHBOARD */
+        <div className="col-span-3 flex flex-col gap-[10px]">
+          {/* Top Stats Row */}
+          <div className="grid grid-cols-4 gap-[10px]">
+            {[
+              { label: 'Total Monitored', value: stats.total.toLocaleString(), color: 'cyan' },
+              { label: 'Ready', value: stats.ready.toLocaleString(), color: 'green' },
+              { label: 'Lost Contact', value: stats.lost, color: 'yellow' },
+              { label: 'Needs Service', value: stats.service, color: 'orange' },
+            ].map((item, i) => (
+              <div key={i} className="panel relative p-[16px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 flex flex-col items-center justify-center gap-[6px]">
+                <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+                <div className="panel-glow" />
+                <div className={`font-orbitron text-[28px] font-black ${item.color === 'green' ? 'text-green-400' : item.color === 'yellow' ? 'text-yellow-400' : item.color === 'orange' ? 'text-orange-400' : 'text-cyan-400'}`} style={{ textShadow: `0 0 12px ${item.color === 'green' ? 'rgba(57,255,20,0.4)' : item.color === 'yellow' ? 'rgba(255,204,0,0.4)' : item.color === 'orange' ? 'rgba(255,107,53,0.4)' : 'rgba(0,212,255,0.4)'}` }}>
+                  {item.value}
+                </div>
+                <div className="font-orbitron text-[9px] tracking-[0.15em] text-cyan-500/50 uppercase">{item.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* % Ready + Camera Battery + Camera Cellular */}
+          <div className="grid grid-cols-3 gap-[10px]">
+            {/* % Ready */}
+            <div className="panel relative p-[16px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 flex flex-col items-center justify-center gap-[8px]">
+              <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+              <div className="panel-glow" />
+              <div className="plabel">Fleet Readiness</div>
+              <div className="relative w-[100px] h-[100px] flex items-center justify-center">
+                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(0,212,255,0.1)" strokeWidth="6" />
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#39ff14" strokeWidth="6" strokeLinecap="round"
+                    strokeDasharray={`${pctReady * 2.639} ${263.9 - pctReady * 2.639}`}
+                    className="drop-shadow-[0_0_8px_rgba(57,255,20,0.5)]" />
+                </svg>
+                <span className="font-orbitron text-[22px] font-black text-green-400" style={{ textShadow: '0 0 14px rgba(57,255,20,0.5)' }}>
+                  {pctReady}%
+                </span>
+              </div>
+            </div>
+
+            {/* Camera Battery */}
+            <div className="panel relative p-[16px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 flex flex-col items-center justify-center gap-[8px]">
+              <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+              <div className="panel-glow" />
+              <div className="plabel">Camera Battery</div>
+              <div className="relative w-[100px] h-[100px] flex items-center justify-center">
+                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(0,212,255,0.1)" strokeWidth="6" />
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#39ff14" strokeWidth="6" strokeLinecap="round"
+                    strokeDasharray={`${cameraBattery.overall * 2.639} ${263.9 - cameraBattery.overall * 2.639}`}
+                    className="drop-shadow-[0_0_8px_rgba(57,255,20,0.5)]" />
+                </svg>
+                <span className="font-orbitron text-[22px] font-black text-green-400" style={{ textShadow: '0 0 14px rgba(57,255,20,0.5)' }}>
+                  {cameraBattery.overall}%
+                </span>
+              </div>
+            </div>
+
+            {/* Camera Cellular */}
+            <div className="panel relative p-[16px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 flex flex-col items-center justify-center gap-[8px]">
+              <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+              <div className="panel-glow" />
+              <div className="plabel">Camera Cellular</div>
+              <div className="flex items-end justify-center gap-[14px] pt-[10px]">
+                {cameraCellular.map((item, i) => {
+                  const barHeights = [0, 15, 30, 50, 72, 95];
+                  const barColors = ['', 'bg-red-400', 'bg-orange-400', 'bg-yellow-400', 'bg-cyan-400', 'bg-green-400'];
+                  return (
+                    <div key={i} className="flex flex-col items-center gap-[4px]">
+                      <div className="font-orbitron text-[10px] font-bold text-slate-200/90">{item.count}</div>
+                      <div className="flex items-end" style={{ height: '70px' }}>
+                        {i === 0 ? (
+                          <div className="w-[18px] flex items-end justify-center h-full">
+                            <span className="font-orbitron text-[14px] font-black text-red-500 leading-none" style={{ textShadow: '0 0 8px rgba(255,34,68,0.6)' }}>X</span>
+                          </div>
+                        ) : (
+                          <div className={`w-[18px] rounded-t-sm ${barColors[i]}`} style={{ height: `${barHeights[i]}%` }} />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Alerts + Send Overview Row */}
+          <div className="grid grid-cols-[1fr_280px] gap-[10px]">
+            <div className="panel relative p-[16px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30">
+              <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+              <div className="panel-glow" />
+              <div className="plabel">Alerts</div>
+              <div className="flex gap-[20px] items-center pt-[4px]">
+                <div className="flex flex-col items-center gap-[4px]">
+                  <span className="font-orbitron text-[24px] font-black text-yellow-400" style={{ textShadow: '0 0 10px rgba(255,204,0,0.4)' }}>{stats.alerts}</span>
+                  <span className="text-[8px] text-cyan-500/50 tracking-wider uppercase">Active Alerts</span>
+                </div>
+                <div className="flex flex-col items-center gap-[4px]">
+                  <span className="font-orbitron text-[24px] font-black text-orange-400" style={{ textShadow: '0 0 10px rgba(255,107,53,0.4)' }}>{stats.dispatch}</span>
+                  <span className="text-[8px] text-cyan-500/50 tracking-wider uppercase">Dispatched</span>
+                </div>
+                <div className="flex flex-col items-center gap-[4px]">
+                  <span className="font-orbitron text-[24px] font-black text-cyan-400" style={{ textShadow: '0 0 10px rgba(0,212,255,0.4)' }}>{stats.pendingNotifs}</span>
+                  <span className="text-[8px] text-cyan-500/50 tracking-wider uppercase">Pending Notifs</span>
+                </div>
+                <div className="flex flex-col items-center gap-[4px]">
+                  <span className="font-orbitron text-[24px] font-black text-cyan-400" style={{ textShadow: '0 0 10px rgba(0,212,255,0.4)' }}>{stats.openTickets}</span>
+                  <span className="text-[8px] text-cyan-500/50 tracking-wider uppercase">Open Tickets</span>
+                </div>
+              </div>
+            </div>
+            <div className="panel relative p-[16px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 flex flex-col items-center justify-center gap-[10px]">
+              <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+              <div className="panel-glow" />
+              <div className="plabel">Send Overview</div>
+              <div className="text-[9px] text-cyan-500/50 tracking-wider">Email me an overview of this data</div>
+              <button
+                onClick={handleSendOverview}
+                disabled={sendingOverview}
+                data-testid="send-overview-btn-simple"
+                className="font-orbitron text-[9px] font-bold tracking-[0.15em] px-[16px] py-[6px] border border-cyan-500 bg-cyan-500/10 text-cyan-400 rounded-sm hover:bg-cyan-500/20 hover:shadow-[0_0_14px_rgba(0,212,255,0.4)] transition-all flex items-center gap-[6px] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {sendingOverview ? <Loader2 className="w-[12px] h-[12px] animate-spin" /> : <Mail className="w-[12px] h-[12px]" />}
+                {sendingOverview ? 'SENDING...' : 'SEND'}
+              </button>
+            </div>
+          </div>
+        </div>
+        )}
 
         {/* BOTTOM BAR */}
         <div className="col-span-3 flex gap-[7px]">
