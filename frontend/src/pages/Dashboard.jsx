@@ -799,29 +799,27 @@ export default function Dashboard({ user, onLogout }) {
 
         {/* SIMPLE - RIGHT COLUMN */}
         <div className="flex flex-col gap-[7px]">
-          {/* Service Tickets */}
+          {/* Service Summary */}
           <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
-            <div className="plabel">Service Tickets</div>
-            <div className="flex flex-col gap-[5px] overflow-y-auto scrollbar-thin" style={{ maxHeight: 'calc(100% - 30px)' }}>
-              {tickets.map((ticket, i) => {
-                const badge = getStatusBadge(ticket.status);
-                const borderColors = {
-                  open: 'border-l-red-500',
-                  dispatched: 'border-l-cyan-400',
-                  enroute: 'border-l-yellow-400',
-                  onsite: 'border-l-orange-400',
-                  complete: 'border-l-green-400',
-                };
-                return (
-                  <div key={i} className={`flex items-center gap-[8px] px-[8px] py-[7px] bg-cyan-500/5 border-l-2 ${borderColors[ticket.status]} cursor-pointer hover:bg-cyan-500/10 transition-colors`}>
-                    <span className="font-orbitron text-[8px] font-bold text-cyan-500/70 min-w-[52px]">{ticket.id}</span>
-                    <span className="flex-1 text-[10px] text-slate-200/95 truncate max-w-[95px]">{ticket.loc}</span>
-                    <span className={`font-orbitron text-[7px] font-bold px-[6px] py-[3px] rounded-sm ${badge.class}`}>{badge.label}</span>
-                  </div>
-                );
-              })}
+            <div className="plabel">Service Summary</div>
+            <div className="flex flex-col gap-[6px] pt-[4px]">
+              {[
+                { label: 'Needs Attention', value: stats.lost + stats.service, color: 'text-red-400', bg: 'bg-red-500/15', border: 'border-l-red-500' },
+                { label: 'Open', value: tickets.filter(t => t.status === 'open').length, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-l-red-400' },
+                { label: 'Dispatched', value: tickets.filter(t => t.status === 'dispatched').length, color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-l-cyan-400' },
+                { label: 'Dispatch Acknowledged', value: 2, color: 'text-cyan-300', bg: 'bg-cyan-500/8', border: 'border-l-cyan-300' },
+                { label: 'En Route', value: tickets.filter(t => t.status === 'enroute').length, color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-l-yellow-400' },
+                { label: 'On Site', value: tickets.filter(t => t.status === 'onsite').length, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-l-orange-400' },
+                { label: 'Completed', value: tickets.filter(t => t.status === 'complete').length, color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-l-green-400' },
+                { label: 'Confirmed', value: 1, color: 'text-green-300', bg: 'bg-green-500/8', border: 'border-l-green-300' },
+              ].map((item, i) => (
+                <div key={i} className={`flex items-center justify-between px-[10px] py-[8px] ${item.bg} border-l-2 ${item.border}`}>
+                  <span className="text-[10px] text-slate-200/90 tracking-wider">{item.label}</span>
+                  <span className={`font-orbitron text-[14px] font-black ${item.color}`}>{item.value}</span>
+                </div>
+              ))}
             </div>
           </div>
 
