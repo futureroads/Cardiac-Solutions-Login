@@ -698,7 +698,7 @@ export default function Dashboard({ user, onLogout }) {
               <span className="text-[9px] text-cyan-500/60 tracking-wider font-orbitron font-bold">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
-            <div className="max-h-[220px] overflow-hidden relative">
+            <div className="flex-1 overflow-hidden relative">
               <div className="ai-scroll-container">
                 <div className={`ai-scroll-content ${aiScrollPaused ? 'ai-scroll-paused' : ''}`}>
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
