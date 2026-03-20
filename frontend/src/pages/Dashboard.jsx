@@ -557,13 +557,16 @@ export default function Dashboard({ user, onLogout }) {
             <div className="panel-glow" />
             <div className="plabel">System Status</div>
             <div className="flex flex-col items-center py-[10px]">
-              <div className="relative w-[105px] h-[105px]">
-                <div className="absolute inset-0 rounded-full border border-cyan-500/30 animate-spin-slow" />
-                <div className="absolute inset-[9px] rounded-full border border-cyan-500/45 border-t-cyan-400 animate-spin-reverse" />
-                <div className="absolute inset-[19px] rounded-full border border-cyan-500/20 border-l-cyan-400 border-r-cyan-400 animate-spin-medium" />
-                <div className="absolute inset-[34px] rounded-full bg-[rgba(0,35,70,0.95)] border border-cyan-500/65 flex items-center justify-center animate-core-glow">
-                  <span className="font-orbitron text-[15px] font-black text-green-400">{Math.round(parseFloat(pctReady))}%</span>
-                </div>
+              <div className="relative w-[105px] h-[105px] flex items-center justify-center">
+                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 105 105">
+                  <circle cx="52.5" cy="52.5" r="46" fill="none" stroke="rgba(0,212,255,0.12)" strokeWidth="5" />
+                  <circle cx="52.5" cy="52.5" r="46" fill="none" stroke="#39ff14" strokeWidth="5" strokeLinecap="round"
+                    strokeDasharray={`${Math.round(parseFloat(pctReady)) * 2.89} ${289 - Math.round(parseFloat(pctReady)) * 2.89}`}
+                    className="drop-shadow-[0_0_6px_rgba(57,255,20,0.5)]" />
+                </svg>
+                <span className="font-orbitron text-[22px] font-black text-green-400" style={{ textShadow: '0 0 12px rgba(57,255,20,0.5)' }}>
+                  {Math.round(parseFloat(pctReady))}%
+                </span>
               </div>
               <div className="font-orbitron text-[9px] font-bold text-green-400 mt-[6px] tracking-wider">{stats.ready.toLocaleString()} READY</div>
             </div>
