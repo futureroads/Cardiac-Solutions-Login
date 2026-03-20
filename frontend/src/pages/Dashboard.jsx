@@ -565,7 +565,7 @@ export default function Dashboard({ user, onLogout }) {
                     { start: 40, end: 70, color: '#facc15' },
                     { start: 70, end: 80, color: '#ff6b35' },
                     { start: 80, end: 90, color: '#00d4ff' },
-                    { start: 90, end: 100, color: '#39ff14' },
+                    { start: 90, end: 100, color: '#22b814' },
                   ].map((zone, i) => {
                     const startAngle = Math.PI + (zone.start / 100) * Math.PI;
                     const endAngle = Math.PI + (zone.end / 100) * Math.PI;
@@ -583,7 +583,7 @@ export default function Dashboard({ user, onLogout }) {
                       { start: 40, end: 70, color: '#facc15' },
                       { start: 70, end: 80, color: '#ff6b35' },
                       { start: 80, end: 90, color: '#00d4ff' },
-                      { start: 90, end: 100, color: '#39ff14' },
+                      { start: 90, end: 100, color: '#22b814' },
                     ];
                     return zones.map((zone, i) => {
                       if (pct <= zone.start) return null;
