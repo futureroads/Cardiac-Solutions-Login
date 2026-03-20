@@ -561,11 +561,11 @@ export default function Dashboard({ user, onLogout }) {
                 <svg className="absolute top-0 left-0 w-full" viewBox="0 0 120 70" style={{ height: '70px' }}>
                   {/* Colored zone arcs */}
                   {[
-                    { start: 0, end: 40, color: '#ff2244' },
-                    { start: 40, end: 60, color: '#facc15' },
-                    { start: 60, end: 70, color: '#66ff66' },
-                    { start: 70, end: 80, color: '#66ff66' },
-                    { start: 80, end: 90, color: '#66ff66' },
+                    { start: 0, end: 40, color: '#22b814' },
+                    { start: 40, end: 60, color: '#22b814' },
+                    { start: 60, end: 70, color: '#22b814' },
+                    { start: 70, end: 80, color: '#22b814' },
+                    { start: 80, end: 90, color: '#22b814' },
                     { start: 90, end: 100, color: '#22b814' },
                   ].map((zone, i) => {
                     const startAngle = Math.PI + (zone.start / 100) * Math.PI;
@@ -580,11 +580,11 @@ export default function Dashboard({ user, onLogout }) {
                   {(() => {
                     const pct = Math.round(parseFloat(pctReady));
                     const zones = [
-                      { start: 0, end: 40, color: '#ff2244' },
-                      { start: 40, end: 60, color: '#facc15' },
-                      { start: 60, end: 70, color: '#66ff66' },
-                      { start: 70, end: 80, color: '#ff6b35' },
-                      { start: 80, end: 90, color: '#00d4ff' },
+                      { start: 0, end: 40, color: '#22b814' },
+                      { start: 40, end: 60, color: '#22b814' },
+                      { start: 60, end: 70, color: '#22b814' },
+                      { start: 70, end: 80, color: '#22b814' },
+                      { start: 80, end: 90, color: '#22b814' },
                       { start: 90, end: 100, color: '#22b814' },
                     ];
                     return zones.map((zone, i) => {
