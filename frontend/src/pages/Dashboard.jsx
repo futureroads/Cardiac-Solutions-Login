@@ -695,9 +695,9 @@ export default function Dashboard({ user, onLogout }) {
           </div>
 
           {/* Camera Battery & Camera Cellular */}
-          <div className="flex gap-[7px] flex-1">
+          <div className="flex gap-[7px]">
             {/* Camera Battery */}
-            <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1 flex flex-col">
+            <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1">
               <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
               <div className="panel-glow" />
               <div className="plabel">Camera Battery</div>
@@ -724,7 +724,7 @@ export default function Dashboard({ user, onLogout }) {
             </div>
 
             {/* Camera Cellular */}
-            <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1 flex flex-col">
+            <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1">
               <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
               <div className="panel-glow" />
               <div className="plabel">Camera Cellular</div>
