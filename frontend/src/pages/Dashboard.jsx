@@ -574,7 +574,7 @@ export default function Dashboard({ user, onLogout }) {
                     const y1 = 65 + 50 * Math.sin(startAngle);
                     const x2 = 60 + 50 * Math.cos(endAngle);
                     const y2 = 65 + 50 * Math.sin(endAngle);
-                    return <path key={i} d={`M ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2}`} fill="none" stroke={zone.color} strokeWidth="6" strokeLinecap="butt" opacity="0.25" />;
+                    return <path key={i} d={`M ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2}`} fill="none" stroke={zone.color} strokeWidth="6" strokeLinecap="butt" opacity="0.5" />;
                   })}
                   {/* Active arc up to current value */}
                   {(() => {
