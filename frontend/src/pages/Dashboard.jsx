@@ -728,7 +728,7 @@ export default function Dashboard({ user, onLogout }) {
               <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
               <div className="panel-glow" />
               <div className="plabel">Camera Cellular</div>
-              <div className="flex items-end justify-center gap-[10px] pt-[8px] pb-[10px]">
+              <div className="flex items-end justify-center gap-[8px] pt-[4px]">
                 {cameraCellular.map((item, i) => {
                   const barHeights = [0, 15, 30, 50, 72, 95];
                   const barColors = [
@@ -740,16 +740,16 @@ export default function Dashboard({ user, onLogout }) {
                     'bg-gradient-to-t from-green-500/40 to-green-400',
                   ];
                   return (
-                    <div key={i} className="flex flex-col items-center gap-[4px]">
-                      <div className="font-orbitron text-[10px] font-bold text-slate-200/90">{item.count}</div>
-                      <div className="flex items-end" style={{ height: '95px' }}>
+                    <div key={i} className="flex flex-col items-center gap-[3px]">
+                      <div className="font-orbitron text-[9px] font-bold text-slate-200/90">{item.count}</div>
+                      <div className="flex items-end" style={{ height: '55px' }}>
                         {i === 0 ? (
-                          <div className="w-[20px] flex items-end justify-center h-full">
-                            <span className="font-orbitron text-[16px] font-black text-red-500 leading-none" style={{ textShadow: '0 0 8px rgba(255,34,68,0.6)' }}>X</span>
+                          <div className="w-[16px] flex items-end justify-center h-full">
+                            <span className="font-orbitron text-[12px] font-black text-red-500 leading-none" style={{ textShadow: '0 0 8px rgba(255,34,68,0.6)' }}>X</span>
                           </div>
                         ) : (
                           <div
-                            className={`w-[20px] rounded-t-sm ${barColors[i]}`}
+                            className={`w-[16px] rounded-t-sm ${barColors[i]}`}
                             style={{ height: `${barHeights[i]}%`, boxShadow: i === 5 ? '0 0 8px rgba(57,255,20,0.3)' : 'none' }}
                           />
                         )}
