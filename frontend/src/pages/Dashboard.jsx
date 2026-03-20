@@ -812,8 +812,8 @@ export default function Dashboard({ user, onLogout }) {
                 { label: 'Dispatch Acknowledged', value: 2, color: 'text-green-600', bg: 'bg-green-500/8', border: 'border-l-green-600' },
                 { label: 'En Route', value: tickets.filter(t => t.status === 'enroute').length, color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-l-yellow-400' },
                 { label: 'On Site', value: tickets.filter(t => t.status === 'onsite').length, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-l-orange-400' },
-                { label: 'Completed', value: tickets.filter(t => t.status === 'complete').length, color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-l-green-400' },
-                { label: 'Confirmed', value: 1, color: 'text-green-300', bg: 'bg-green-500/8', border: 'border-l-green-300' },
+                { label: 'Completed', value: tickets.filter(t => t.status === 'complete').length, color: 'text-cyan-300', bg: 'bg-cyan-500/8', border: 'border-l-cyan-300' },
+                { label: 'Confirmed', value: 1, color: 'text-blue-600', bg: 'bg-blue-500/8', border: 'border-l-blue-600' },
               ].map((item, i) => (
                 <div key={i} className={`flex items-center justify-between px-[10px] py-[8px] ${item.bg} border-l-2 ${item.border}`}>
                   <span className="text-[10px] text-slate-200/90 tracking-wider">{item.label}</span>
