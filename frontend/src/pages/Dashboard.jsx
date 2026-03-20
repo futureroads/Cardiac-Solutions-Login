@@ -638,6 +638,26 @@ export default function Dashboard({ user, onLogout }) {
               })()}
             </div>
           </div>
+
+          {/* Customer Notifications */}
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
+            <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+            <div className="panel-glow" />
+            <div className="plabel">Customer Notifications</div>
+            <div className="grid grid-cols-2 gap-[6px] pt-[6px]">
+              {[
+                { label: 'Total Subscribers', value: 46, color: 'text-cyan-400' },
+                { label: 'Total AEDs', value: '3,078', color: 'text-cyan-400' },
+                { label: 'Action Issues', value: 843, color: 'text-yellow-400' },
+                { label: 'Resolved', value: 12, color: 'text-green-400' },
+              ].map((item, i) => (
+                <div key={i} className="flex flex-col items-center gap-[3px] py-[5px] bg-cyan-500/5 border border-cyan-500/15 rounded-sm">
+                  <div className={`font-orbitron text-[14px] font-black ${item.color}`}>{item.value}</div>
+                  <div className="text-[6px] tracking-wider text-cyan-500/50 uppercase text-center">{item.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* SIMPLE - CENTER COLUMN */}
@@ -671,26 +691,6 @@ export default function Dashboard({ user, onLogout }) {
               </div>
               <div className="absolute top-0 left-0 right-0 h-[16px] bg-gradient-to-b from-[rgba(0,18,32,0.93)] to-transparent pointer-events-none z-10" />
               <div className="absolute bottom-0 left-0 right-0 h-[32px] bg-gradient-to-t from-[rgba(0,18,32,0.93)] to-transparent pointer-events-none z-10" />
-            </div>
-          </div>
-
-          {/* Customer Summary */}
-          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
-            <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
-            <div className="panel-glow" />
-            <div className="plabel">Customer Summary</div>
-            <div className="grid grid-cols-4 gap-[8px] pt-[6px]">
-              {[
-                { label: 'Total Subscribers', value: 46, color: 'text-cyan-400' },
-                { label: 'Total AEDs', value: '3,078', color: 'text-cyan-400' },
-                { label: 'Action Issues', value: 843, color: 'text-yellow-400' },
-                { label: 'Resolved', value: 12, color: 'text-green-400' },
-              ].map((item, i) => (
-                <div key={i} className="flex flex-col items-center gap-[4px] py-[6px] bg-cyan-500/5 border border-cyan-500/15 rounded-sm">
-                  <div className={`font-orbitron text-[18px] font-black ${item.color}`}>{item.value}</div>
-                  <div className="text-[7px] tracking-wider text-cyan-500/50 uppercase text-center">{item.label}</div>
-                </div>
-              ))}
             </div>
           </div>
 
