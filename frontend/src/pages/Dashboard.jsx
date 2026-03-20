@@ -562,8 +562,8 @@ export default function Dashboard({ user, onLogout }) {
                   {/* Colored zone arcs */}
                   {[
                     { start: 0, end: 40, color: '#ff2244' },
-                    { start: 40, end: 60, color: '#facc15' },
-                    { start: 60, end: 70, color: '#facc15' },
+                    { start: 40, end: 60, color: '#ffff00' },
+                    { start: 60, end: 70, color: '#ffff00' },
                     { start: 70, end: 80, color: '#22b814' },
                     { start: 80, end: 90, color: '#22b814' },
                     { start: 90, end: 100, color: '#22b814' },
@@ -574,7 +574,7 @@ export default function Dashboard({ user, onLogout }) {
                     const y1 = 65 + 50 * Math.sin(startAngle);
                     const x2 = 60 + 50 * Math.cos(endAngle);
                     const y2 = 65 + 50 * Math.sin(endAngle);
-                    return <path key={i} d={`M ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2}`} fill="none" stroke={zone.color} strokeWidth="6" strokeLinecap="butt" opacity="0.5" />;
+                    return <path key={i} d={`M ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2}`} fill="none" stroke={zone.color} strokeWidth="8" strokeLinecap="butt" opacity="0.5" />;
                   })}
                   {/* Active arc up to current value */}
                   {(() => {
@@ -596,7 +596,7 @@ export default function Dashboard({ user, onLogout }) {
                       const y1 = 65 + 50 * Math.sin(startAngle);
                       const x2 = 60 + 50 * Math.cos(endAngle);
                       const y2 = 65 + 50 * Math.sin(endAngle);
-                      return <path key={`active-${i}`} d={`M ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2}`} fill="none" stroke={zone.color} strokeWidth="6" strokeLinecap="butt" style={{ filter: `drop-shadow(0 0 4px ${zone.color})` }} />;
+                      return <path key={`active-${i}`} d={`M ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2}`} fill="none" stroke={zone.color} strokeWidth="8" strokeLinecap="butt" style={{ filter: `drop-shadow(0 0 4px ${zone.color})` }} />;
                     });
                   })()}
                   {/* Tick marks */}
