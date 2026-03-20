@@ -561,7 +561,7 @@ export default function Dashboard({ user, onLogout }) {
                 <svg className="absolute top-0 left-0 w-full" viewBox="0 0 120 70" style={{ height: '70px' }}>
                   {/* Colored zone arcs */}
                   {[
-                    { start: 0, end: 40, color: '#22b814' },
+                    { start: 0, end: 40, color: '#ff2244' },
                     { start: 40, end: 60, color: '#22b814' },
                     { start: 60, end: 70, color: '#22b814' },
                     { start: 70, end: 80, color: '#22b814' },
@@ -580,7 +580,7 @@ export default function Dashboard({ user, onLogout }) {
                   {(() => {
                     const pct = Math.round(parseFloat(pctReady));
                     const zones = [
-                      { start: 0, end: 40, color: '#22b814' },
+                      { start: 0, end: 40, color: '#ff2244' },
                       { start: 40, end: 60, color: '#22b814' },
                       { start: 60, end: 70, color: '#22b814' },
                       { start: 70, end: 80, color: '#22b814' },
