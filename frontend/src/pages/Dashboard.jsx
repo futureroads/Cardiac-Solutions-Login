@@ -557,18 +557,71 @@ export default function Dashboard({ user, onLogout }) {
             <div className="panel-glow" />
             <div className="plabel">System Status</div>
             <div className="flex flex-col items-center py-[10px]">
-              <div className="relative w-[105px] h-[105px] flex items-center justify-center">
-                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 105 105">
-                  <circle cx="52.5" cy="52.5" r="46" fill="none" stroke="rgba(0,212,255,0.12)" strokeWidth="5" />
-                  <circle cx="52.5" cy="52.5" r="46" fill="none" stroke="#39ff14" strokeWidth="5" strokeLinecap="round"
-                    strokeDasharray={`${Math.round(parseFloat(pctReady)) * 2.89} ${289 - Math.round(parseFloat(pctReady)) * 2.89}`}
-                    className="drop-shadow-[0_0_6px_rgba(57,255,20,0.5)]" />
+              <div className="relative w-[120px] h-[75px] flex items-end justify-center overflow-hidden">
+                <svg className="absolute top-0 left-0 w-full" viewBox="0 0 120 70" style={{ height: '70px' }}>
+                  {/* Colored zone arcs */}
+                  {[
+                    { start: 0, end: 60, color: '#ff2244' },
+                    { start: 60, end: 70, color: '#facc15' },
+                    { start: 70, end: 80, color: '#ff6b35' },
+                    { start: 80, end: 90, color: '#00d4ff' },
+                    { start: 90, end: 100, color: '#39ff14' },
+                  ].map((zone, i) => {
+                    const startAngle = Math.PI + (zone.start / 100) * Math.PI;
+                    const endAngle = Math.PI + (zone.end / 100) * Math.PI;
+                    const x1 = 60 + 50 * Math.cos(startAngle);
+                    const y1 = 65 + 50 * Math.sin(startAngle);
+                    const x2 = 60 + 50 * Math.cos(endAngle);
+                    const y2 = 65 + 50 * Math.sin(endAngle);
+                    return <path key={i} d={`M ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2}`} fill="none" stroke={zone.color} strokeWidth="6" strokeLinecap="butt" opacity="0.25" />;
+                  })}
+                  {/* Active arc up to current value */}
+                  {(() => {
+                    const pct = Math.round(parseFloat(pctReady));
+                    const zones = [
+                      { start: 0, end: 60, color: '#ff2244' },
+                      { start: 60, end: 70, color: '#facc15' },
+                      { start: 70, end: 80, color: '#ff6b35' },
+                      { start: 80, end: 90, color: '#00d4ff' },
+                      { start: 90, end: 100, color: '#39ff14' },
+                    ];
+                    return zones.map((zone, i) => {
+                      if (pct <= zone.start) return null;
+                      const fillEnd = Math.min(pct, zone.end);
+                      const startAngle = Math.PI + (zone.start / 100) * Math.PI;
+                      const endAngle = Math.PI + (fillEnd / 100) * Math.PI;
+                      const x1 = 60 + 50 * Math.cos(startAngle);
+                      const y1 = 65 + 50 * Math.sin(startAngle);
+                      const x2 = 60 + 50 * Math.cos(endAngle);
+                      const y2 = 65 + 50 * Math.sin(endAngle);
+                      return <path key={`active-${i}`} d={`M ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2}`} fill="none" stroke={zone.color} strokeWidth="6" strokeLinecap="butt" style={{ filter: `drop-shadow(0 0 4px ${zone.color})` }} />;
+                    });
+                  })()}
+                  {/* Tick marks */}
+                  {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => {
+                    const angle = Math.PI + (tick / 100) * Math.PI;
+                    const x1 = 60 + 44 * Math.cos(angle);
+                    const y1 = 65 + 44 * Math.sin(angle);
+                    const x2 = 60 + 56 * Math.cos(angle);
+                    const y2 = 65 + 56 * Math.sin(angle);
+                    return <line key={tick} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(0,212,255,0.3)" strokeWidth="1" />;
+                  })}
+                  {/* Needle */}
+                  {(() => {
+                    const pct = Math.round(parseFloat(pctReady));
+                    const angle = Math.PI + (pct / 100) * Math.PI;
+                    const nx = 60 + 38 * Math.cos(angle);
+                    const ny = 65 + 38 * Math.sin(angle);
+                    return <line x1="60" y1="65" x2={nx} y2={ny} stroke="#ffffff" strokeWidth="2" strokeLinecap="round" style={{ filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.6))' }} />;
+                  })()}
+                  {/* Center dot */}
+                  <circle cx="60" cy="65" r="3" fill="#ffffff" style={{ filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.5))' }} />
                 </svg>
-                <span className="font-orbitron text-[22px] font-black text-green-400" style={{ textShadow: '0 0 12px rgba(57,255,20,0.5)' }}>
-                  {Math.round(parseFloat(pctReady))}%
-                </span>
               </div>
-              <div className="font-orbitron text-[9px] font-bold text-green-400 mt-[6px] tracking-wider">{stats.ready.toLocaleString()} READY</div>
+              <span className="font-orbitron text-[22px] font-black text-green-400 mt-[4px]" style={{ textShadow: '0 0 12px rgba(57,255,20,0.5)' }}>
+                {Math.round(parseFloat(pctReady))}%
+              </span>
+              <div className="font-orbitron text-[9px] font-bold text-green-400 mt-[4px] tracking-wider">{stats.ready.toLocaleString()} READY</div>
             </div>
           </div>
         </div>
