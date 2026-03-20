@@ -620,10 +620,22 @@ export default function Dashboard({ user, onLogout }) {
                   <circle cx="60" cy="65" r="3" fill="#ffffff" style={{ filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.5))' }} />
                 </svg>
               </div>
-              <span className="font-orbitron text-[22px] font-black text-green-400 mt-[4px]" style={{ textShadow: '0 0 12px rgba(57,255,20,0.5)' }}>
-                {Math.round(parseFloat(pctReady))}%
-              </span>
-              <div className="font-orbitron text-[9px] font-bold text-green-400 mt-[4px] tracking-wider">{stats.ready.toLocaleString()} READY</div>
+              {(() => {
+                const pct = Math.round(parseFloat(pctReady));
+                const color = pct < 40 ? '#ff2244' : pct < 70 ? '#ffff00' : '#22b814';
+                return (
+                  <span className="font-orbitron text-[22px] font-black mt-[4px]" style={{ color, textShadow: `0 0 12px ${color}80` }}>
+                    {pct}%
+                  </span>
+                );
+              })()}
+              {(() => {
+                const pct = Math.round(parseFloat(pctReady));
+                const color = pct < 40 ? '#ff2244' : pct < 70 ? '#ffff00' : '#22b814';
+                return (
+                  <div className="font-orbitron text-[9px] font-bold mt-[4px] tracking-wider" style={{ color }}>{stats.ready.toLocaleString()} READY</div>
+                );
+              })()}
             </div>
           </div>
         </div>
