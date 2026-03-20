@@ -596,7 +596,7 @@ export default function Dashboard({ user, onLogout }) {
                       const y1 = 65 + 50 * Math.sin(startAngle);
                       const x2 = 60 + 50 * Math.cos(endAngle);
                       const y2 = 65 + 50 * Math.sin(endAngle);
-                      return <path key={`active-${i}`} d={`M ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2}`} fill="none" stroke={zone.color} strokeWidth="8" strokeLinecap="butt" style={{ filter: `drop-shadow(0 0 4px ${zone.color})` }} />;
+                      return <path key={`active-${i}`} d={`M ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2}`} fill="none" stroke={zone.color} strokeWidth="8" strokeLinecap="butt" />;
                     });
                   })()}
                   {/* Tick marks */}
