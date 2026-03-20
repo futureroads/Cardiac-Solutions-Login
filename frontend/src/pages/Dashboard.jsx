@@ -649,7 +649,7 @@ export default function Dashboard({ user, onLogout }) {
                 { label: 'Total Subscribers', value: 46, color: 'text-white' },
                 { label: 'Total AEDs', value: '3,078', color: 'text-cyan-400' },
                 { label: 'Action Issues', value: 843, color: 'text-yellow-400' },
-                { label: 'Resolved', value: 12, color: 'text-green-400' },
+                { label: 'Resolved', value: 12, color: 'text-green-600' },
               ].map((item, i) => (
                 <div key={i} className="flex flex-col items-center gap-[3px] py-[5px] bg-cyan-500/5 border border-cyan-500/15 rounded-sm">
                   <div className={`font-orbitron text-[14px] font-black ${item.color}`}>{item.value}</div>
