@@ -809,7 +809,7 @@ export default function Dashboard({ user, onLogout }) {
                 { label: 'Needs Attention', value: stats.lost + stats.service, color: 'text-red-400', bg: 'bg-red-500/15', border: 'border-l-red-500' },
                 { label: 'Open', value: tickets.filter(t => t.status === 'open').length, color: 'text-white', bg: 'bg-white/5', border: 'border-l-white' },
                 { label: 'Dispatched', value: tickets.filter(t => t.status === 'dispatched').length, color: 'text-green-300', bg: 'bg-green-500/8', border: 'border-l-green-300' },
-                { label: 'Dispatch Acknowledged', value: 2, color: 'text-cyan-300', bg: 'bg-cyan-500/8', border: 'border-l-cyan-300' },
+                { label: 'Dispatch Acknowledged', value: 2, color: 'text-green-600', bg: 'bg-green-500/8', border: 'border-l-green-600' },
                 { label: 'En Route', value: tickets.filter(t => t.status === 'enroute').length, color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-l-yellow-400' },
                 { label: 'On Site', value: tickets.filter(t => t.status === 'onsite').length, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-l-orange-400' },
                 { label: 'Completed', value: tickets.filter(t => t.status === 'complete').length, color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-l-green-400' },
