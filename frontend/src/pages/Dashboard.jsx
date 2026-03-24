@@ -685,7 +685,7 @@ export default function Dashboard({ user, onLogout }) {
         {/* SIMPLE - CENTER COLUMN */}
         <div className="flex flex-col gap-[7px]">
           {/* AI Recommendations */}
-          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden" style={{ height: 'calc(100% - 130px)' }}>
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="absolute top-[8px] right-[10px] z-20 flex flex-col items-center gap-[3px]">
@@ -698,7 +698,7 @@ export default function Dashboard({ user, onLogout }) {
               <span className="text-[9px] text-cyan-500/60 tracking-wider font-orbitron font-bold">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
-            <div className="overflow-hidden relative" style={{ height: '260px' }}>
+            <div className="overflow-hidden relative" style={{ height: 'calc(100% - 25px)' }}>
               <div className="ai-scroll-container">
                 <div className={`ai-scroll-content ${aiScrollPaused ? 'ai-scroll-paused' : ''}`}>
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
