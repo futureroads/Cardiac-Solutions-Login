@@ -22,10 +22,11 @@ SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
+# MongoDB connection - lazy init to prevent crash on DNS SRV resolution
 mongo_url = os.environ.get('MONGO_URL', '')
-client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=10000)
-db = client[os.environ.get('DB_NAME', 'cardiac_solutions')]
+db_name = os.environ.get('DB_NAME', 'cardiac_solutions')
+client = None
+db = None
 
 # JWT Configuration
 JWT_SECRET = os.environ.get('JWT_SECRET', '')
@@ -270,10 +271,13 @@ _seed_done = False
 
 async def ensure_seeded():
     """Lazy seed: retry seeding if startup seed was skipped or failed."""
-    global _seed_done
+    global client, db, _seed_done
     if _seed_done:
         return
     try:
+        if db is None:
+            client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=10000)
+            db = client[db_name]
         count = await db.users.count_documents({})
         if count == 0:
             logger.info("No users found — running lazy seed")
@@ -289,8 +293,10 @@ async def ensure_seeded():
 
 @app.on_event("startup")
 async def startup():
-    global _seed_done
+    global client, db, _seed_done
     try:
+        client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=10000)
+        db = client[db_name]
         await db.users.create_index("username", unique=True)
         await db.users.create_index("id", unique=True)
         await seed_users()
@@ -579,12 +585,19 @@ async def health_root():
 @app.get("/api/debug/status")
 async def debug_status():
     """Diagnostic endpoint — check MongoDB connectivity and user count."""
+    if db is None:
+        return {
+            "db_connected": False,
+            "error": "MongoDB client not initialized",
+            "seed_done": _seed_done,
+            "mongo_url_set": bool(mongo_url),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
     try:
         count = await db.users.count_documents({})
-        db_name = db.name
         return {
             "db_connected": True,
-            "db_name": db_name,
+            "db_name": db.name,
             "user_count": count,
             "seed_done": _seed_done,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -618,4 +631,5 @@ app.add_middleware(
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    client.close()
+    if client:
+        client.close()
