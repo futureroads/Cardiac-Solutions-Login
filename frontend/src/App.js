@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
+import CommandCenterHub from "./pages/CommandCenterHub";
 import { Toaster } from "./components/ui/sonner";
 
 function App() {
@@ -50,8 +51,16 @@ function App() {
             path="/" 
             element={
               isAuthenticated ? 
-                <Navigate to="/dashboard" replace /> : 
+                <Navigate to="/hub" replace /> : 
                 <LoginPage onLogin={handleLogin} />
+            } 
+          />
+          <Route 
+            path="/hub" 
+            element={
+              isAuthenticated ? 
+                <CommandCenterHub user={user} onLogout={handleLogout} /> : 
+                <Navigate to="/" replace />
             } 
           />
           <Route 
@@ -59,6 +68,14 @@ function App() {
             element={
               isAuthenticated ? 
                 <Dashboard user={user} onLogout={handleLogout} /> : 
+                <Navigate to="/" replace />
+            } 
+          />
+          <Route 
+            path="*" 
+            element={
+              isAuthenticated ? 
+                <Navigate to="/hub" replace /> : 
                 <Navigate to="/" replace />
             } 
           />
