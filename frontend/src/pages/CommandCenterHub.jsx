@@ -195,6 +195,12 @@ function ModuleCard({ module, index, onNavigate }) {
 export default function CommandCenterHub({ user, onLogout }) {
   const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [powering, setPowering] = useState(true);
+
+  useEffect(() => {
+    const id = setTimeout(() => setPowering(false), 1800);
+    return () => clearTimeout(id);
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -202,6 +208,51 @@ export default function CommandCenterHub({ user, onLogout }) {
   }, []);
 
   const operatorName = user?.username?.toUpperCase() || "ADMIN";
+
+  if (powering) {
+    return (
+      <div
+        data-testid="hub-powering-up"
+        className="min-h-screen flex flex-col items-center justify-center"
+        style={{ background: "#000" }}
+      >
+        {/* Thin red line above text */}
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: 60 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          className="h-[1px] mb-4"
+          style={{ background: "#ef4444" }}
+        />
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+          className="font-tech text-sm tracking-[0.25em]"
+          style={{ color: "#06b6d4" }}
+        >
+          COMMAND CENTER HUB POWERING UP
+        </motion.p>
+        {/* Subtle pulsing dots */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 1, 0] }}
+          transition={{ duration: 1, repeat: 1, delay: 0.4 }}
+          className="flex gap-1.5 mt-3"
+        >
+          {[0, 1, 2].map((i) => (
+            <motion.span
+              key={i}
+              className="w-1 h-1 rounded-full"
+              style={{ background: "#ef4444" }}
+              animate={{ opacity: [0.3, 1, 0.3] }}
+              transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
+            />
+          ))}
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div
