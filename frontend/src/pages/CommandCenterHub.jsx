@@ -56,7 +56,7 @@ const modules = [
   {
     id: 5,
     title: "DASHBOARD",
-    status: "LIVE",
+    status: "IN DEV",
     icon: LayoutDashboard,
     route: "/dashboard",
     description:
@@ -68,25 +68,26 @@ const modules = [
 function ModuleCard({ module, index, onNavigate }) {
   const Icon = module.icon;
   const isLive = module.status === "LIVE";
+  const hasRoute = !!module.route;
   const statusColor = isLive ? "#22c55e" : "#eab308";
 
   return (
     <motion.div
       data-testid={`module-card-${module.id}`}
       initial={{ opacity: 0, y: 30 }}
-      animate={{ opacity: isLive ? 1 : 0.6, y: 0 }}
+      animate={{ opacity: hasRoute ? 1 : 0.6, y: 0 }}
       transition={{ delay: 0.3 + index * 0.1, duration: 0.5 }}
-      onClick={() => isLive && module.route && onNavigate(module.route)}
+      onClick={() => hasRoute && onNavigate(module.route)}
       className="relative group"
       style={{
-        cursor: isLive ? "pointer" : "not-allowed",
+        cursor: hasRoute ? "pointer" : "not-allowed",
       }}
     >
       <div
         className="relative overflow-hidden rounded-sm border transition-all duration-300"
         style={{
           background: "rgba(10, 15, 28, 0.85)",
-          borderColor: isLive
+          borderColor: hasRoute
             ? "rgba(6, 182, 212, 0.15)"
             : "rgba(148, 163, 184, 0.1)",
           minHeight: "260px",
@@ -103,7 +104,7 @@ function ModuleCard({ module, index, onNavigate }) {
         />
 
         {/* Hover glow */}
-        {isLive && (
+        {hasRoute && (
           <div
             className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
             style={{
@@ -178,7 +179,7 @@ function ModuleCard({ module, index, onNavigate }) {
         </div>
 
         {/* Bottom hover bar */}
-        {isLive && (
+        {hasRoute && (
           <div
             className="absolute bottom-0 left-0 right-0 h-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-500"
             style={{
@@ -339,6 +340,18 @@ export default function CommandCenterHub({ user, onLogout }) {
           >
             OPERATOR: {operatorName}
           </div>
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-sm border font-tech text-[11px] tracking-[0.1em] hover:bg-red-500/10 transition-colors"
+            style={{
+              borderColor: "rgba(239, 68, 68, 0.3)",
+              color: "#ef4444",
+            }}
+            data-testid="header-logout"
+          >
+            <LogOut size={12} />
+            LOGOUT
+          </button>
         </div>
       </header>
 
