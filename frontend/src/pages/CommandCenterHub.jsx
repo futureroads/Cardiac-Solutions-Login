@@ -74,13 +74,12 @@ function ModuleCard({ module, index, onNavigate }) {
     <motion.div
       data-testid={`module-card-${module.id}`}
       initial={{ opacity: 0, y: 30 }}
-      animate={{ opacity: 1, y: 0 }}
+      animate={{ opacity: isLive ? 1 : 0.6, y: 0 }}
       transition={{ delay: 0.3 + index * 0.1, duration: 0.5 }}
       onClick={() => isLive && module.route && onNavigate(module.route)}
       className="relative group"
       style={{
         cursor: isLive ? "pointer" : "not-allowed",
-        opacity: isLive ? 1 : 0.6,
       }}
     >
       <div
