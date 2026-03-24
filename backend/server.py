@@ -16,9 +16,9 @@ import bcrypt
 
 print("[SERVER] Module loading started", flush=True)
 
-# Load .env first
+# Load .env first (override=False so platform env vars take precedence)
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / '.env', override=False)
 
 # Resend - optional import
 try:
@@ -29,13 +29,15 @@ except ImportError:
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 
 # MongoDB connection - lazy init to prevent crash on DNS SRV resolution
-mongo_url = os.environ.get('MONGO_URL', '')
-db_name = os.environ.get('DB_NAME', 'cardiac_solutions')
+mongo_url = os.environ.get('MONGO_URL')
+db_name = os.environ.get('DB_NAME')
 client = None
 db = None
 
+print(f"[SERVER] MONGO_URL set: {bool(mongo_url)}, DB_NAME: {db_name}", flush=True)
+
 # JWT Configuration
-JWT_SECRET = os.environ.get('JWT_SECRET', '')
+JWT_SECRET = os.environ.get('JWT_SECRET')
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
@@ -239,8 +241,9 @@ SEED_USERS = [
 
 async def seed_users():
     """Seed predefined users into MongoDB on startup."""
-    try:
-        for seed in SEED_USERS:
+    seeded = 0
+    for seed in SEED_USERS:
+        try:
             existing = await db.users.find_one({"username": seed["username"]})
             if not existing:
                 doc = {
@@ -256,6 +259,7 @@ async def seed_users():
                     "created_at": seed["created_at"],
                 }
                 await db.users.insert_one(doc)
+                seeded += 1
                 logger.info(f"Seeded user: {seed['username']}")
             else:
                 update_fields = {}
@@ -270,20 +274,41 @@ async def seed_users():
                 if update_fields:
                     await db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
                     logger.info(f"Updated seed user fields: {seed['username']}")
-    except Exception as e:
-        logger.error(f"Failed to seed users: {e}")
+        except Exception as e:
+            logger.error(f"Failed to seed user {seed['username']}: {e}")
+    logger.info(f"Seeding complete: {seeded} new users added")
 
 _seed_done = False
 
+async def init_db():
+    """Initialize MongoDB connection with retry logic."""
+    global client, db
+    for attempt in range(3):
+        try:
+            logger.info(f"MongoDB connection attempt {attempt + 1}/3")
+            client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=10000)
+            db = client[db_name]
+            # Test the connection
+            await client.admin.command('ping')
+            logger.info(f"MongoDB connected to database: {db_name}")
+            return True
+        except Exception as e:
+            logger.error(f"MongoDB connection attempt {attempt + 1} failed: {e}")
+            if attempt < 2:
+                await asyncio.sleep(2)
+    return False
+
 async def ensure_seeded():
     """Lazy seed: retry seeding if startup seed was skipped or failed."""
-    global client, db, _seed_done
+    global _seed_done
     if _seed_done:
         return
     try:
         if db is None:
-            client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=10000)
-            db = client[db_name]
+            connected = await init_db()
+            if not connected:
+                logger.error("ensure_seeded: Could not connect to MongoDB")
+                return
         count = await db.users.count_documents({})
         if count == 0:
             logger.info("No users found — running lazy seed")
@@ -299,17 +324,20 @@ async def ensure_seeded():
 
 @app.on_event("startup")
 async def startup():
-    global client, db, _seed_done
-    try:
-        client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=10000)
-        db = client[db_name]
-        await db.users.create_index("username", unique=True)
-        await db.users.create_index("id", unique=True)
-        await seed_users()
-        _seed_done = True
-        logger.info("Database seeded and indexes created")
-    except Exception as e:
-        logger.error(f"Startup DB init failed (will retry on first request): {e}")
+    global _seed_done
+    connected = await init_db()
+    if connected:
+        try:
+            await db.users.create_index("username", unique=True)
+            await db.users.create_index("id", unique=True)
+            await seed_users()
+            _seed_done = True
+            count = await db.users.count_documents({})
+            logger.info(f"Startup complete: {count} users in database")
+        except Exception as e:
+            logger.error(f"Startup seeding failed (will retry on first request): {e}")
+    else:
+        logger.error("Startup DB connection failed — will retry on first request")
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
@@ -337,6 +365,10 @@ async def require_admin(current_user: dict = Depends(get_current_user)):
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
     await ensure_seeded()
+    if db is None:
+        logger.error("Login failed: database not connected")
+        raise HTTPException(status_code=503, detail="Database not available. Please try again.")
+    
     user = await db.users.find_one({"username": credentials.username}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=401, detail="Invalid username or password")
@@ -590,31 +622,31 @@ async def health_root():
 
 @app.get("/api/debug/status")
 async def debug_status():
-    """Diagnostic endpoint — check MongoDB connectivity and user count."""
+    """Diagnostic endpoint — check MongoDB connectivity and user count. No auth required."""
+    info = {
+        "mongo_url_set": bool(mongo_url),
+        "db_name": db_name,
+        "jwt_secret_set": bool(JWT_SECRET),
+        "seed_done": _seed_done,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
     if db is None:
-        return {
-            "db_connected": False,
-            "error": "MongoDB client not initialized",
-            "seed_done": _seed_done,
-            "mongo_url_set": bool(mongo_url),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
+        info["db_connected"] = False
+        info["error"] = "MongoDB client not initialized"
+        return info
     try:
+        await client.admin.command('ping')
         count = await db.users.count_documents({})
-        return {
-            "db_connected": True,
-            "db_name": db.name,
-            "user_count": count,
-            "seed_done": _seed_done,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
+        usernames = []
+        async for u in db.users.find({}, {"_id": 0, "username": 1}).limit(20):
+            usernames.append(u.get("username", "?"))
+        info["db_connected"] = True
+        info["user_count"] = count
+        info["usernames"] = usernames
     except Exception as e:
-        return {
-            "db_connected": False,
-            "error": str(e),
-            "seed_done": _seed_done,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
+        info["db_connected"] = False
+        info["error"] = str(e)
+    return info
 
 @api_router.get("/")
 async def root():
@@ -624,16 +656,16 @@ async def root():
 async def health():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
-# Include the router in the main app
-app.include_router(api_router)
-
+# CORS - add before router to ensure all responses get headers
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include the router in the main app
+app.include_router(api_router)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
