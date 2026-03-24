@@ -627,6 +627,7 @@ async def debug_status():
         "jwt_secret_set": bool(JWT_SECRET),
         "seed_done": _seed_done,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "build": "v3-resync",
     }
     if db is None:
         info["db_connected"] = False
@@ -645,6 +646,34 @@ async def debug_status():
         info["db_connected"] = False
         info["error"] = str(e)
     return info
+
+@app.get("/api/debug/test-login")
+async def debug_test_login():
+    """Test login for seed user Lew — returns diagnostic info, no actual token."""
+    result = {"build": "v3-resync"}
+    if db is None:
+        result["error"] = "DB not connected"
+        return result
+    try:
+        user = await db.users.find_one({"username": "Lew"}, {"_id": 0})
+        if not user:
+            result["error"] = "User 'Lew' not found in database"
+            result["user_count"] = await db.users.count_documents({})
+            return result
+        result["user_found"] = True
+        result["has_password_hash"] = "password_hash" in user
+        result["hash_prefix"] = user.get("password_hash", "")[:7] if user.get("password_hash") else "NONE"
+        result["fields"] = list(user.keys())
+        # Test password verification
+        try:
+            pw_ok = verify_password("Lew123", user.get("password_hash", ""))
+            result["password_verify"] = pw_ok
+        except Exception as e:
+            result["password_verify"] = False
+            result["verify_error"] = str(e)
+    except Exception as e:
+        result["error"] = str(e)
+    return result
 
 @api_router.get("/")
 async def root():
