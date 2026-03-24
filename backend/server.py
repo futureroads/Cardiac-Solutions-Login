@@ -154,7 +154,7 @@ SEED_USERS = [
         "phone": "",
         "role": "admin",
         "department": "Admin",
-        "allowed_modules": ALL_MODULE_IDS + ["user_access"],
+        "allowed_modules": ALL_MODULE_IDS + ["user_access", "backend"],
         "plain_password": "@@U1s9m6c7@@",
         "created_at": "2024-01-01T00:00:00Z"
     },

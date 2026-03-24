@@ -11,6 +11,7 @@ import {
   BookOpen,
   Headphones,
   Users,
+  Server,
 } from "lucide-react";
 
 const ALL_MODULES = [
@@ -72,6 +73,16 @@ const ALL_MODULES = [
     route: "/user-access",
     description:
       "Add, edit, and remove authorized users. Control which modules each operator can access from their hub.",
+    badgeCount: null,
+  },
+  {
+    moduleKey: "backend",
+    title: "BACKEND",
+    status: "ADMIN",
+    icon: Server,
+    route: "/backend",
+    description:
+      "Monitor and control backend processes, system health, database status, and server performance metrics.",
     badgeCount: null,
   },
 ];
