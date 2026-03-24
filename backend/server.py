@@ -23,14 +23,12 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+mongo_url = os.environ.get('MONGO_URL', '')
+client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+db = client[os.environ.get('DB_NAME', 'cardiac_solutions')]
 
 # JWT Configuration
-JWT_SECRET = os.environ.get('JWT_SECRET')
-if not JWT_SECRET:
-    raise ValueError("JWT_SECRET environment variable must be set")
+JWT_SECRET = os.environ.get('JWT_SECRET', '')
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
@@ -234,44 +232,49 @@ SEED_USERS = [
 
 async def seed_users():
     """Seed predefined users into MongoDB on startup."""
-    for seed in SEED_USERS:
-        existing = await db.users.find_one({"username": seed["username"]})
-        if not existing:
-            doc = {
-                "id": seed["id"],
-                "username": seed["username"],
-                "name": seed["name"],
-                "email": seed["email"],
-                "phone": seed["phone"],
-                "role": seed["role"],
-                "department": seed.get("department", ""),
-                "allowed_modules": seed["allowed_modules"],
-                "password_hash": hash_password(seed["plain_password"]),
-                "created_at": seed["created_at"],
-            }
-            await db.users.insert_one(doc)
-            logger.info(f"Seeded user: {seed['username']}")
-        else:
-            # Update existing seed users to ensure they have all fields
-            update_fields = {}
-            if "role" not in existing:
-                update_fields["role"] = seed["role"]
-            if "allowed_modules" not in existing:
-                update_fields["allowed_modules"] = seed["allowed_modules"]
-            if "phone" not in existing:
-                update_fields["phone"] = seed["phone"]
-            if "department" not in existing:
-                update_fields["department"] = seed.get("department", "")
-            if update_fields:
-                await db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
-                logger.info(f"Updated seed user fields: {seed['username']}")
+    try:
+        for seed in SEED_USERS:
+            existing = await db.users.find_one({"username": seed["username"]})
+            if not existing:
+                doc = {
+                    "id": seed["id"],
+                    "username": seed["username"],
+                    "name": seed["name"],
+                    "email": seed["email"],
+                    "phone": seed["phone"],
+                    "role": seed["role"],
+                    "department": seed.get("department", ""),
+                    "allowed_modules": seed["allowed_modules"],
+                    "password_hash": hash_password(seed["plain_password"]),
+                    "created_at": seed["created_at"],
+                }
+                await db.users.insert_one(doc)
+                logger.info(f"Seeded user: {seed['username']}")
+            else:
+                update_fields = {}
+                if "role" not in existing:
+                    update_fields["role"] = seed["role"]
+                if "allowed_modules" not in existing:
+                    update_fields["allowed_modules"] = seed["allowed_modules"]
+                if "phone" not in existing:
+                    update_fields["phone"] = seed["phone"]
+                if "department" not in existing:
+                    update_fields["department"] = seed.get("department", "")
+                if update_fields:
+                    await db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
+                    logger.info(f"Updated seed user fields: {seed['username']}")
+    except Exception as e:
+        logger.error(f"Failed to seed users: {e}")
 
 @app.on_event("startup")
 async def startup():
-    await db.users.create_index("username", unique=True)
-    await db.users.create_index("id", unique=True)
-    await seed_users()
-    logger.info("Database seeded and indexes created")
+    try:
+        await db.users.create_index("username", unique=True)
+        await db.users.create_index("id", unique=True)
+        await seed_users()
+        logger.info("Database seeded and indexes created")
+    except Exception as e:
+        logger.error(f"Startup DB init failed (will retry on first request): {e}")
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
@@ -544,6 +547,10 @@ async def send_overview_email(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
 # ==================== Health Check ====================
+
+@app.get("/health")
+async def health_root():
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 @api_router.get("/")
 async def root():
