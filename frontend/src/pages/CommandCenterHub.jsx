@@ -383,25 +383,6 @@ export default function CommandCenterHub({ user, onLogout }) {
           </p>
         </motion.div>
 
-        {/* SELECT MODULE label */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
-          className="w-full max-w-[1200px] mb-6 flex items-center gap-3"
-        >
-          <div
-            className="w-8 h-[1px]"
-            style={{ background: "#ef4444" }}
-          />
-          <p
-            className="font-tech text-[11px] tracking-[0.2em]"
-            style={{ color: "#ef4444" }}
-          >
-            SELECT MODULE
-          </p>
-        </motion.div>
-
         {/* Module cards grid */}
         <div
           className="w-full max-w-[1200px] grid gap-5"
