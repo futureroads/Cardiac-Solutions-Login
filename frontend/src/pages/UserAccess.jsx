@@ -58,6 +58,7 @@ export default function UserAccess() {
       const res = await fetch(`${API_URL}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error("Failed to fetch users");
       const data = await res.json();
+      data.sort((a, b) => a.username.localeCompare(b.username, undefined, { sensitivity: "base" }));
       setUsers(data);
     } catch {
       toast.error("Failed to load users");
