@@ -10,15 +10,17 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - Dashboard for AED monitoring
 
 ## User Personas
-1. **AED Technicians** - Monitor device status, check battery/pads expiry
-2. **Healthcare Facility Managers** - Overview of subscriber AED fleet
-3. **Field Service Engineers** - Track reposition and maintenance needs
+1. **System Admin (futureroads)** - Manages user access, controls module visibility per user
+2. **AED Technicians** - Monitor device status, check battery/pads expiry
+3. **Healthcare Facility Managers** - Overview of subscriber AED fleet
+4. **Field Service Engineers** - Track reposition and maintenance needs
 
 ## Core Requirements
-- JWT-based username/password authentication (6 hardcoded users)
+- JWT-based username/password authentication with MongoDB user storage
+- Admin role with "User Access" module for user CRUD + module assignment
 - Animated login page with EKG heart visualization and sound
 - Multi-stage login flow: heart click -> EKG animation -> login form
-- Command Center Hub as post-login landing page with module navigation
+- Command Center Hub as post-login landing page with module-based access control
 - JARVIS-style dashboard accessible from hub
 - Dark theme with cyan/neon accents, red branding for Cardiac Solutions
 
@@ -27,44 +29,46 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - [x] Multi-stage login: heart -> 5s EKG animation with MP3 sound -> login form
 - [x] BACK button on login screen
 - [x] Custom logo on heart and login screens
-- [x] JWT authentication with 6 hardcoded users (Lew, Stark, Tony, Tracey, Nate, Jon)
-- [x] User email addresses added (Lew: c130usmc@gmail.com, Stark: iq.ai.solutions@gmail.com)
-- [x] **Command Center Hub** - Post-login landing page with 5 module cards (Daily Report, Notifications, Service Tickets, Survival Path, Dashboard)
-- [x] Module cards with LIVE/IN DEV status badges, icons, descriptions
-- [x] Hub header with branding, SYSTEM ONLINE status, OPERATOR badge
-- [x] Hub footer with copyright, version, documentation, support, logout
-- [x] Routing: / → /hub (authenticated), /hub, /dashboard, catch-all redirect
-- [x] JARVIS-style dashboard (v11 layout from user HTML) - accessible via Dashboard module card
-- [x] Dashboard panels: System Status, % Ready, Status Breakdown, Status Changes vs Yesterday
-- [x] AI Recommendations panel with INFO/ACT/WARN badges
-- [x] Customer Notifications panel (compact) with SEND EMAIL buttons
-- [x] Camera Battery panel - 90% ring gauge + Dead/1/4/1/2/3/4/Full breakdown
-- [x] Camera Cellular panel - signal meter bar graph with counts
-- [x] Service Tickets panel with status badges
-- [x] Voice Query panel (compact, single-row layout)
-- [x] Send Overview panel - emails dashboard summary to logged-in user's email
-- [x] Red "glow" effect on text, heart icon, EKG line
-- [x] Removed "Made with Emergent" watermark
-- [x] Custom social media link previews
+- [x] **MongoDB user storage** with bcrypt hashed passwords (migrated from hardcoded)
+- [x] 7 seeded users on startup (1 admin + 6 regular users)
+- [x] **Role-based access control** (admin/user roles)
+- [x] **Module-based hub filtering** - users only see cards they have access to
+- [x] **Command Center Hub** with "Powering Up" splash screen
+- [x] Hub header with pulsing red heart, SYSTEM ONLINE, OPERATOR badge, LOGOUT button
+- [x] **User Access admin page** - Add/Edit/Delete users with Username, Password, Email, Phone, Role, Module Access
+- [x] Module selection checkboxes for assigning card visibility per user
+- [x] System admin (futureroads) cannot be deleted
+- [x] Non-admin users redirected away from /user-access
+- [x] JARVIS-style dashboard accessible via Dashboard module card
+- [x] Dashboard panels: System Status, AI Recommendations, Service Tickets, etc.
+- [x] Send Overview email feature (MOCKED)
 
 ## Tech Stack
 - Frontend: React 19 + Framer Motion + Tailwind CSS
-- Backend: FastAPI (Python) + Resend (email)
-- Database: MongoDB (currently unused, data is mocked)
-- Authentication: JWT with hardcoded user dictionary
+- Backend: FastAPI (Python) + bcrypt + PyJWT + Motor (async MongoDB)
+- Database: MongoDB (users collection with roles + allowed_modules)
+- Authentication: JWT with MongoDB-backed users
 
 ## API Endpoints
-- POST `/api/token` - Authenticate user (returns JWT)
-- GET `/api/users/me` - Get current user profile
-- GET `/api/aed-data` - Get mock AED statistics
-- POST `/api/send-overview` - Email dashboard overview (MOCKED)
+- POST `/api/auth/login` - Authenticate user (returns JWT + user with role/modules)
+- GET `/api/auth/me` - Get current user profile
+- GET `/api/admin/users` - List all users (admin only)
+- POST `/api/admin/users` - Create user (admin only)
+- PUT `/api/admin/users/{id}` - Update user (admin only)
+- DELETE `/api/admin/users/{id}` - Delete user (admin only)
+- GET `/api/admin/modules` - List available modules (admin only)
+- GET `/api/dashboard/stats` - Get AED statistics (mocked)
+- GET `/api/dashboard/subscribers` - Get subscriber list (mocked)
+- GET `/api/dashboard/devices` - Get device list (mocked)
+- POST `/api/dashboard/send-overview` - Email dashboard overview (mocked)
 
 ## Key Files
-- `/app/frontend/src/pages/CommandCenterHub.jsx` - **NEW** Command Center Hub (post-login landing)
-- `/app/frontend/src/pages/Dashboard.jsx` - JARVIS dashboard (Module #5)
-- `/app/frontend/src/pages/LoginPage.jsx` - Multi-stage login experience
-- `/app/frontend/src/App.js` - Routing (/, /hub, /dashboard, catch-all)
-- `/app/backend/server.py` - All backend logic, auth, API routes, email
+- `/app/frontend/src/pages/CommandCenterHub.jsx` - Hub with module filtering
+- `/app/frontend/src/pages/UserAccess.jsx` - Admin user management page
+- `/app/frontend/src/pages/Dashboard.jsx` - JARVIS dashboard
+- `/app/frontend/src/pages/LoginPage.jsx` - Multi-stage login
+- `/app/frontend/src/App.js` - Routing with admin guard
+- `/app/backend/server.py` - All backend logic, auth, admin CRUD, seeding
 
 ## Prioritized Backlog
 
@@ -75,25 +79,20 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 ### P1 (High Priority)
 - Set up Resend API key for real email delivery (currently mocked)
 - Wire dashboard to backend APIs (currently uses frontend mock data)
-- Migrate hardcoded users to MongoDB
-- Refactor LoginPage.jsx (~650 lines) into smaller components
 
 ### P2 (Medium Priority)
 - Build Service Tickets module page (Module #3)
 - Build Survival Path module page (Module #4)
-- Individual device detail view
-- Alert/notification system for critical issues
 - Export data to CSV functionality
 - Historical trend charts
-- User management (admin roles)
 
 ### P3 (Nice to Have)
 - Device location map view
 - Mobile responsive optimizations
-- Sound effects (charging whine, heartbeat beep)
-- Dark/light theme toggle
+- Refactor LoginPage.jsx into smaller components
 
 ## Credentials
+- **Admin**: futureroads / @@U1s9m6c7@@ (role: admin, all modules + user_access)
 - Lew / Lew123 (email: c130usmc@gmail.com)
 - Stark / Stark123 (email: iq.ai.solutions@gmail.com)
 - Tony / Tony123
@@ -101,7 +100,11 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - Nate / Nate123
 - Jon / Jon123
 
+## Module IDs
+- daily_report, notifications, service_tickets, dashboard, survival_path, user_access (admin only)
+
 ## Notes
-- All backend data is MOCKED (hardcoded users, static AED stats)
-- Dashboard currently uses inline mock data, not connected to backend API
-- Email sending requires RESEND_API_KEY in backend/.env (currently not set, mocked success)
+- Dashboard data is MOCKED (stats, subscribers, devices)
+- Email sending requires RESEND_API_KEY in backend/.env (currently mocked)
+- Users are stored in MongoDB with bcrypt password hashes
+- Admin user (user-admin-001) cannot be deleted via API
