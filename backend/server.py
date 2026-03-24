@@ -13,14 +13,20 @@ import uuid
 from datetime import datetime, timezone, timedelta
 import jwt
 import bcrypt
-import resend
 
-# Resend configuration
-resend.api_key = os.environ.get('RESEND_API_KEY', '')
-SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
+print("[SERVER] Module loading started", flush=True)
 
+# Load .env first
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# Resend - optional import
+try:
+    import resend
+    resend.api_key = os.environ.get('RESEND_API_KEY', '')
+except ImportError:
+    resend = None
+SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 
 # MongoDB connection - lazy init to prevent crash on DNS SRV resolution
 mongo_url = os.environ.get('MONGO_URL', '')
