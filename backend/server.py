@@ -16,9 +16,9 @@ import bcrypt
 
 print("[SERVER] Module loading started", flush=True)
 
-# Load .env first (override=False so platform env vars take precedence)
+# Load .env first
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env', override=False)
+load_dotenv(ROOT_DIR / '.env')
 
 # Resend - optional import
 try:
@@ -29,15 +29,13 @@ except ImportError:
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 
 # MongoDB connection - lazy init to prevent crash on DNS SRV resolution
-mongo_url = os.environ.get('MONGO_URL')
-db_name = os.environ.get('DB_NAME')
+mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
+db_name = os.environ.get('DB_NAME', 'test_database')
 client = None
 db = None
 
-print(f"[SERVER] MONGO_URL set: {bool(mongo_url)}, DB_NAME: {db_name}", flush=True)
-
 # JWT Configuration
-JWT_SECRET = os.environ.get('JWT_SECRET')
+JWT_SECRET = os.environ.get('JWT_SECRET', 'cardiac-solutions-jwt-fallback')
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
@@ -278,35 +276,15 @@ async def seed_users():
 
 _seed_done = False
 
-async def init_db():
-    """Initialize MongoDB connection with retry logic."""
-    global client, db
-    for attempt in range(3):
-        try:
-            logger.info(f"MongoDB connection attempt {attempt + 1}/3")
-            client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=10000)
-            db = client[db_name]
-            # Test the connection
-            await client.admin.command('ping')
-            logger.info(f"MongoDB connected to database: {db_name}")
-            return True
-        except Exception as e:
-            logger.error(f"MongoDB connection attempt {attempt + 1} failed: {e}")
-            if attempt < 2:
-                await asyncio.sleep(2)
-    return False
-
 async def ensure_seeded():
-    """Lazy seed: retry seeding if startup seed was skipped or failed."""
-    global _seed_done
+    """Lazy seed: connect and seed if not done yet."""
+    global client, db, _seed_done
     if _seed_done:
         return
     try:
         if db is None:
-            connected = await init_db()
-            if not connected:
-                logger.error("ensure_seeded: Could not connect to MongoDB")
-                return
+            client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+            db = client[db_name]
         count = await db.users.count_documents({})
         if count == 0:
             logger.info("No users found — running lazy seed")
@@ -315,27 +293,24 @@ async def ensure_seeded():
                 await db.users.create_index("id", unique=True)
             except Exception:
                 pass
-            await seed_users()
+        await seed_users()
         _seed_done = True
     except Exception as e:
         logger.error(f"ensure_seeded failed: {e}")
 
 @app.on_event("startup")
 async def startup():
-    global _seed_done
-    connected = await init_db()
-    if connected:
-        try:
-            await db.users.create_index("username", unique=True)
-            await db.users.create_index("id", unique=True)
-            await seed_users()
-            _seed_done = True
-            count = await db.users.count_documents({})
-            logger.info(f"Startup complete: {count} users in database")
-        except Exception as e:
-            logger.error(f"Startup seeding failed (will retry on first request): {e}")
-    else:
-        logger.error("Startup DB connection failed — will retry on first request")
+    global client, db, _seed_done
+    try:
+        client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+        db = client[db_name]
+        await db.users.create_index("username", unique=True)
+        await db.users.create_index("id", unique=True)
+        await seed_users()
+        _seed_done = True
+        logger.info("Startup complete")
+    except Exception as e:
+        logger.error(f"Startup DB init failed (will retry on first request): {e}")
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:

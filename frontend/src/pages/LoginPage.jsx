@@ -303,11 +303,11 @@ export default function LoginPage({ onLogin }) {
   useEffect(() => {
     const checkServer = async () => {
       try {
-        const res = await axios.get(`${API}/debug/test-login`, { timeout: 8000 });
-        if (res.data?.password_verify === true) {
+        const res = await axios.get(`${API}/health`, { timeout: 5000 });
+        if (res.data?.status === "healthy") {
           setServerStatus("online");
         } else {
-          setServerStatus("db-issue");
+          setServerStatus("offline");
         }
       } catch {
         setServerStatus("offline");
@@ -690,13 +690,11 @@ export default function LoginPage({ onLogin }) {
                   <div className="mt-4 flex items-center justify-center gap-2" data-testid="server-status">
                     <div className={`w-2 h-2 rounded-full ${
                       serverStatus === "online" ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]" :
-                      serverStatus === "db-issue" ? "bg-yellow-500 shadow-[0_0_6px_rgba(234,179,8,0.6)]" :
                       serverStatus === "offline" ? "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" :
                       "bg-yellow-500 animate-pulse"
                     }`} />
                     <span className="text-[10px] font-tech text-slate-600 tracking-wider">
-                      {serverStatus === "online" ? "SYSTEM READY" :
-                       serverStatus === "db-issue" ? "DATABASE SYNC ISSUE" :
+                      {serverStatus === "online" ? "SERVER ONLINE" :
                        serverStatus === "offline" ? "SERVER OFFLINE" :
                        "CONNECTING..."}
                     </span>
