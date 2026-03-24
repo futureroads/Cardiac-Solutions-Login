@@ -24,7 +24,7 @@ load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
 mongo_url = os.environ.get('MONGO_URL', '')
-client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=10000)
 db = client[os.environ.get('DB_NAME', 'cardiac_solutions')]
 
 # JWT Configuration
@@ -273,16 +273,19 @@ async def ensure_seeded():
     global _seed_done
     if _seed_done:
         return
-    count = await db.users.count_documents({})
-    if count == 0:
-        logger.info("No users found — running lazy seed")
-        try:
-            await db.users.create_index("username", unique=True)
-            await db.users.create_index("id", unique=True)
-        except Exception:
-            pass
-        await seed_users()
-    _seed_done = True
+    try:
+        count = await db.users.count_documents({})
+        if count == 0:
+            logger.info("No users found — running lazy seed")
+            try:
+                await db.users.create_index("username", unique=True)
+                await db.users.create_index("id", unique=True)
+            except Exception:
+                pass
+            await seed_users()
+        _seed_done = True
+    except Exception as e:
+        logger.error(f"ensure_seeded failed: {e}")
 
 @app.on_event("startup")
 async def startup():
@@ -572,6 +575,27 @@ async def send_overview_email(current_user: dict = Depends(get_current_user)):
 @app.get("/health")
 async def health_root():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+@app.get("/api/debug/status")
+async def debug_status():
+    """Diagnostic endpoint — check MongoDB connectivity and user count."""
+    try:
+        count = await db.users.count_documents({})
+        db_name = db.name
+        return {
+            "db_connected": True,
+            "db_name": db_name,
+            "user_count": count,
+            "seed_done": _seed_done,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        return {
+            "db_connected": False,
+            "error": str(e),
+            "seed_done": _seed_done,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
 
 @api_router.get("/")
 async def root():
