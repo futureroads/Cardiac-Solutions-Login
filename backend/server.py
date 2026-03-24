@@ -266,12 +266,32 @@ async def seed_users():
     except Exception as e:
         logger.error(f"Failed to seed users: {e}")
 
+_seed_done = False
+
+async def ensure_seeded():
+    """Lazy seed: retry seeding if startup seed was skipped or failed."""
+    global _seed_done
+    if _seed_done:
+        return
+    count = await db.users.count_documents({})
+    if count == 0:
+        logger.info("No users found — running lazy seed")
+        try:
+            await db.users.create_index("username", unique=True)
+            await db.users.create_index("id", unique=True)
+        except Exception:
+            pass
+        await seed_users()
+    _seed_done = True
+
 @app.on_event("startup")
 async def startup():
+    global _seed_done
     try:
         await db.users.create_index("username", unique=True)
         await db.users.create_index("id", unique=True)
         await seed_users()
+        _seed_done = True
         logger.info("Database seeded and indexes created")
     except Exception as e:
         logger.error(f"Startup DB init failed (will retry on first request): {e}")
@@ -301,6 +321,7 @@ async def require_admin(current_user: dict = Depends(get_current_user)):
 
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
+    await ensure_seeded()
     user = await db.users.find_one({"username": credentials.username}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=401, detail="Invalid username or password")
