@@ -7,11 +7,12 @@ import os
 import logging
 import asyncio
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
 from datetime import datetime, timezone, timedelta
 import jwt
+import bcrypt
 import resend
 
 # Resend configuration
@@ -33,6 +34,16 @@ if not JWT_SECRET:
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# All available module IDs
+ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path"]
+
 # Create the main app
 app = FastAPI(title="Cardiac Solutions API")
 
@@ -43,11 +54,6 @@ security = HTTPBearer()
 
 # ==================== Models ====================
 
-class UserCreate(BaseModel):
-    username: str
-    password: str
-    name: Optional[str] = None
-
 class UserLogin(BaseModel):
     username: str
     password: str
@@ -57,6 +63,9 @@ class UserResponse(BaseModel):
     username: str
     name: str
     email: Optional[str] = ""
+    phone: Optional[str] = ""
+    role: Optional[str] = "user"
+    allowed_modules: Optional[List[str]] = []
     created_at: str
 
 class TokenResponse(BaseModel):
@@ -64,19 +73,33 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     user: UserResponse
 
+class AdminUserCreate(BaseModel):
+    username: str
+    password: str
+    email: Optional[str] = ""
+    phone: Optional[str] = ""
+    role: Optional[str] = "user"
+    allowed_modules: Optional[List[str]] = []
+
+class AdminUserUpdate(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    role: Optional[str] = None
+    allowed_modules: Optional[List[str]] = None
+
 class AEDDevice(BaseModel):
-    model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     subscriber: str
     location: str
-    status: str  # ready, not_ready, reposition, not_present, expired_bp, expiring_bp, lost_contact, unknown
+    status: str
     last_check: str
     battery_level: int
     pads_expiry: str
-    camera_status: str  # online, offline
+    camera_status: str
 
 class Subscriber(BaseModel):
-    model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     total: int
@@ -118,87 +141,133 @@ def create_token(user_id: str, username: str) -> str:
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-# Pre-defined users
-PREDEFINED_USERS = {
-    "Lew": {
+# Seed users to run on startup
+SEED_USERS = [
+    {
+        "id": "user-admin-001",
+        "username": "futureroads",
+        "name": "System Admin",
+        "email": "",
+        "phone": "",
+        "role": "admin",
+        "allowed_modules": ALL_MODULE_IDS + ["user_access"],
+        "plain_password": "@@U1s9m6c7@@",
+        "created_at": "2024-01-01T00:00:00Z"
+    },
+    {
         "id": "user-lew-001",
         "username": "Lew",
         "name": "Lew",
         "email": "c130usmc@gmail.com",
-        "password": "Lew123",
+        "phone": "",
+        "role": "user",
+        "allowed_modules": ALL_MODULE_IDS,
+        "plain_password": "Lew123",
         "created_at": "2024-01-01T00:00:00Z"
     },
-    "Stark": {
-        "id": "user-stark-001", 
+    {
+        "id": "user-stark-001",
         "username": "Stark",
         "name": "Tony Stark",
         "email": "iq.ai.solutions@gmail.com",
-        "password": "Stark123",
+        "phone": "",
+        "role": "user",
+        "allowed_modules": ALL_MODULE_IDS,
+        "plain_password": "Stark123",
         "created_at": "2024-01-01T00:00:00Z"
     },
-    "Tony": {
+    {
         "id": "user-tony-001",
         "username": "Tony",
         "name": "Tony",
         "email": "",
-        "password": "Tony123",
+        "phone": "",
+        "role": "user",
+        "allowed_modules": ALL_MODULE_IDS,
+        "plain_password": "Tony123",
         "created_at": "2024-01-01T00:00:00Z"
     },
-    "Tracey": {
+    {
         "id": "user-tracey-001",
         "username": "Tracey",
         "name": "Tracey",
         "email": "",
-        "password": "Tracey123",
+        "phone": "",
+        "role": "user",
+        "allowed_modules": ALL_MODULE_IDS,
+        "plain_password": "Tracey123",
         "created_at": "2024-01-01T00:00:00Z"
     },
-    "Nate": {
+    {
         "id": "user-nate-001",
         "username": "Nate",
         "name": "Nate",
         "email": "",
-        "password": "Nate123",
+        "phone": "",
+        "role": "user",
+        "allowed_modules": ALL_MODULE_IDS,
+        "plain_password": "Nate123",
         "created_at": "2024-01-01T00:00:00Z"
     },
-    "Jon": {
+    {
         "id": "user-jon-001",
         "username": "Jon",
         "name": "Jon",
         "email": "",
-        "password": "Jon123",
+        "phone": "",
+        "role": "user",
+        "allowed_modules": ALL_MODULE_IDS,
+        "plain_password": "Jon123",
         "created_at": "2024-01-01T00:00:00Z"
-    }
-}
+    },
+]
+
+async def seed_users():
+    """Seed predefined users into MongoDB on startup."""
+    for seed in SEED_USERS:
+        existing = await db.users.find_one({"username": seed["username"]})
+        if not existing:
+            doc = {
+                "id": seed["id"],
+                "username": seed["username"],
+                "name": seed["name"],
+                "email": seed["email"],
+                "phone": seed["phone"],
+                "role": seed["role"],
+                "allowed_modules": seed["allowed_modules"],
+                "password_hash": hash_password(seed["plain_password"]),
+                "created_at": seed["created_at"],
+            }
+            await db.users.insert_one(doc)
+            logger.info(f"Seeded user: {seed['username']}")
+        else:
+            # Update existing seed users to ensure they have all fields
+            update_fields = {}
+            if "role" not in existing:
+                update_fields["role"] = seed["role"]
+            if "allowed_modules" not in existing:
+                update_fields["allowed_modules"] = seed["allowed_modules"]
+            if "phone" not in existing:
+                update_fields["phone"] = seed["phone"]
+            if update_fields:
+                await db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
+                logger.info(f"Updated seed user fields: {seed['username']}")
+
+@app.on_event("startup")
+async def startup():
+    await db.users.create_index("username", unique=True)
+    await db.users.create_index("id", unique=True)
+    await seed_users()
+    logger.info("Database seeded and indexes created")
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
-        # Allow demo token for demo mode
-        if credentials.credentials == "demo-token":
-            return {
-                "id": "demo",
-                "username": "demo",
-                "name": "Demo User",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-        
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
-        
-        # Check predefined users first
-        for username, user_data in PREDEFINED_USERS.items():
-            if user_data["id"] == user_id:
-                return {
-                    "id": user_data["id"],
-                    "username": user_data["username"],
-                    "name": user_data["name"],
-                    "email": user_data.get("email", ""),
-                    "created_at": user_data["created_at"]
-                }
-        
-        # Then check database
-        user = await db.users.find_one({"id": user_id}, {"_id": 0})
+
+        user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
         if user is None:
             raise HTTPException(status_code=401, detail="User not found")
         return user
@@ -207,78 +276,35 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-# ==================== Auth Routes ====================
+async def require_admin(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 
-@api_router.post("/auth/register", response_model=TokenResponse)
-async def register(user_data: UserCreate):
-    # Check if username exists in predefined users
-    if user_data.username in PREDEFINED_USERS:
-        raise HTTPException(status_code=400, detail="Username already exists")
-    
-    # Check if user exists in database
-    existing = await db.users.find_one({"username": user_data.username})
-    if existing:
-        raise HTTPException(status_code=400, detail="Username already registered")
-    
-    # Create user
-    user_id = str(uuid.uuid4())
-    user_doc = {
-        "id": user_id,
-        "username": user_data.username,
-        "name": user_data.name or user_data.username,
-        "password_hash": hash_password(user_data.password),
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.users.insert_one(user_doc)
-    
-    # Generate token
-    token = create_token(user_id, user_data.username)
-    
-    return TokenResponse(
-        access_token=token,
-        user=UserResponse(
-            id=user_id,
-            username=user_data.username,
-            name=user_doc["name"],
-            created_at=user_doc["created_at"]
-        )
-    )
+# ==================== Auth Routes ====================
 
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
-    # Check predefined users first
-    if credentials.username in PREDEFINED_USERS:
-        user_data = PREDEFINED_USERS[credentials.username]
-        if credentials.password == user_data["password"]:
-            token = create_token(user_data["id"], user_data["username"])
-            return TokenResponse(
-                access_token=token,
-                user=UserResponse(
-                    id=user_data["id"],
-                    username=user_data["username"],
-                    name=user_data["name"],
-                    email=user_data.get("email", ""),
-                    created_at=user_data["created_at"]
-                )
-            )
-        else:
-            raise HTTPException(status_code=401, detail="Invalid username or password")
-    
-    # Check database users
     user = await db.users.find_one({"username": credentials.username}, {"_id": 0})
-    if not user or not verify_password(credentials.password, user["password_hash"]):
+    if not user:
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    
+
+    if not verify_password(credentials.password, user.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
     token = create_token(user["id"], user["username"])
-    
+
     return TokenResponse(
         access_token=token,
         user=UserResponse(
             id=user["id"],
             username=user["username"],
-            name=user["name"],
+            name=user.get("name", user["username"]),
             email=user.get("email", ""),
-            created_at=user["created_at"]
+            phone=user.get("phone", ""),
+            role=user.get("role", "user"),
+            allowed_modules=user.get("allowed_modules", []),
+            created_at=user.get("created_at", ""),
         )
     )
 
@@ -287,19 +313,103 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     return UserResponse(
         id=current_user["id"],
         username=current_user["username"],
-        name=current_user["name"],
+        name=current_user.get("name", current_user["username"]),
         email=current_user.get("email", ""),
-        created_at=current_user["created_at"]
+        phone=current_user.get("phone", ""),
+        role=current_user.get("role", "user"),
+        allowed_modules=current_user.get("allowed_modules", []),
+        created_at=current_user.get("created_at", ""),
     )
+
+# ==================== Admin User Management ====================
+
+@api_router.get("/admin/users")
+async def list_users(admin: dict = Depends(require_admin)):
+    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
+    return users
+
+@api_router.post("/admin/users")
+async def create_user(data: AdminUserCreate, admin: dict = Depends(require_admin)):
+    existing = await db.users.find_one({"username": data.username})
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+    user_id = f"user-{uuid.uuid4().hex[:8]}"
+    doc = {
+        "id": user_id,
+        "username": data.username,
+        "name": data.username,
+        "email": data.email or "",
+        "phone": data.phone or "",
+        "role": data.role or "user",
+        "allowed_modules": data.allowed_modules or [],
+        "password_hash": hash_password(data.password),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.users.insert_one(doc)
+    doc.pop("_id", None)
+    doc.pop("password_hash", None)
+    return doc
+
+@api_router.put("/admin/users/{user_id}")
+async def update_user(user_id: str, data: AdminUserUpdate, admin: dict = Depends(require_admin)):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    update = {}
+    if data.username is not None:
+        # Check uniqueness
+        clash = await db.users.find_one({"username": data.username, "id": {"$ne": user_id}})
+        if clash:
+            raise HTTPException(status_code=400, detail="Username already exists")
+        update["username"] = data.username
+        update["name"] = data.username
+    if data.password is not None and data.password != "":
+        update["password_hash"] = hash_password(data.password)
+    if data.email is not None:
+        update["email"] = data.email
+    if data.phone is not None:
+        update["phone"] = data.phone
+    if data.role is not None:
+        update["role"] = data.role
+    if data.allowed_modules is not None:
+        update["allowed_modules"] = data.allowed_modules
+
+    if update:
+        await db.users.update_one({"id": user_id}, {"$set": update})
+
+    updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    return updated
+
+@api_router.delete("/admin/users/{user_id}")
+async def delete_user(user_id: str, admin: dict = Depends(require_admin)):
+    # Prevent deleting yourself
+    if user_id == "user-admin-001":
+        raise HTTPException(status_code=400, detail="Cannot delete the system admin")
+
+    result = await db.users.delete_one({"id": user_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"status": "deleted"}
+
+@api_router.get("/admin/modules")
+async def list_modules(admin: dict = Depends(require_admin)):
+    """Return list of available modules for assignment."""
+    return [
+        {"id": "daily_report", "title": "Daily Report"},
+        {"id": "notifications", "title": "Notifications"},
+        {"id": "service_tickets", "title": "Service Tickets"},
+        {"id": "dashboard", "title": "Dashboard"},
+        {"id": "survival_path", "title": "Survival Path"},
+    ]
 
 # ==================== Dashboard Routes ====================
 
 @api_router.get("/dashboard/stats", response_model=DashboardStats)
 async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
-    # Return mock data for now - in production, aggregate from AED devices
     stats = await db.dashboard_stats.find_one({}, {"_id": 0})
     if not stats:
-        # Create default stats
         stats = {
             "total_monitored": 3108,
             "percent_ready": 76.7,
@@ -321,7 +431,6 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
 async def get_subscribers(current_user: dict = Depends(get_current_user)):
     subscribers = await db.subscribers.find({}, {"_id": 0}).to_list(100)
     if not subscribers:
-        # Create mock subscribers
         mock_subscribers = [
             {"id": str(uuid.uuid4()), "name": "Baton Rouge Airport", "total": 4, "ready": 0, "not_ready": 0, "reposition": 0, "not_present": 0, "expired_bp": 4, "expiring_bp": 0, "lost_contact": 0, "unknown": 0},
             {"id": str(uuid.uuid4()), "name": "Birmingham Airport Authority", "total": 38, "ready": 34, "not_ready": 0, "reposition": 0, "not_present": 0, "expired_bp": 1, "expiring_bp": 1, "lost_contact": 2, "unknown": 0},
@@ -340,7 +449,6 @@ async def get_subscribers(current_user: dict = Depends(get_current_user)):
 async def get_devices(current_user: dict = Depends(get_current_user), limit: int = 50):
     devices = await db.devices.find({}, {"_id": 0}).to_list(limit)
     if not devices:
-        # Create mock devices
         locations = ["Main Lobby", "Floor 2 East", "Cafeteria", "Gym", "Pool Area", "Conference Room A", "Emergency Exit 1"]
         statuses = ["ready", "ready", "ready", "ready", "not_ready", "reposition", "lost_contact"]
         mock_devices = []
@@ -367,7 +475,6 @@ async def send_overview_email(current_user: dict = Depends(get_current_user)):
     if not user_email:
         raise HTTPException(status_code=400, detail="No email address on file for your account")
 
-    # Gather dashboard data
     stats_doc = await db.dashboard_stats.find_one({}, {"_id": 0})
     if not stats_doc:
         stats_doc = {
@@ -386,43 +493,17 @@ async def send_overview_email(current_user: dict = Depends(get_current_user)):
         <p style="font-size:11px;color:#4a7a99;letter-spacing:2px;margin:6px 0 0;">DASHBOARD OVERVIEW</p>
       </div>
       <p style="font-size:13px;color:#7ab8d6;">Hello {user_name},</p>
-      <p style="font-size:12px;color:#5a8fa8;">Here is your AED fleet overview as of <strong style="color:#00d4ff;">{now}</strong>:</p>
+      <p style="font-size:12px;color:#5a8fa8;">Here is your AED system overview as of <strong style="color:#00d4ff;">{now}</strong>:</p>
       <table style="width:100%;border-collapse:collapse;margin:18px 0;">
-        <tr style="background:#081520;">
-          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">TOTAL MONITORED</td>
-          <td style="padding:10px 14px;font-size:18px;font-weight:bold;color:#00d4ff;text-align:right;">{stats_doc['total_monitored']:,}</td>
-        </tr>
-        <tr>
-          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">% READY</td>
-          <td style="padding:10px 14px;font-size:18px;font-weight:bold;color:#39ff14;text-align:right;">{stats_doc['percent_ready']}%</td>
-        </tr>
-        <tr style="background:#081520;">
-          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">READY</td>
-          <td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#39ff14;text-align:right;">{stats_doc['ready']:,}</td>
-        </tr>
-        <tr>
-          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">LOST CONTACT</td>
-          <td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#ffc107;text-align:right;">{stats_doc['lost_contact']}</td>
-        </tr>
-        <tr style="background:#081520;">
-          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">NEEDS SERVICE (Not Ready + Reposition)</td>
-          <td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#ff6b35;text-align:right;">{stats_doc['not_ready'] + stats_doc['reposition']}</td>
-        </tr>
-        <tr>
-          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">EXPIRED / EXPIRING B/P</td>
-          <td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#ff6b35;text-align:right;">{stats_doc['expired_bp']} / {stats_doc['expiring_bp']}</td>
-        </tr>
-        <tr style="background:#081520;">
-          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">NOT PRESENT</td>
-          <td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#ffc107;text-align:right;">{stats_doc['not_present']}</td>
-        </tr>
-        <tr>
-          <td style="padding:10px 14px;font-size:11px;color:#4a7a99;letter-spacing:1px;">UNKNOWN</td>
-          <td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#4a7a99;text-align:right;">{stats_doc['unknown']}</td>
-        </tr>
+        <tr style="background:#081520;"><td style="padding:10px 14px;font-size:11px;color:#4a7a99;">TOTAL MONITORED</td><td style="padding:10px 14px;font-size:18px;font-weight:bold;color:#00d4ff;text-align:right;">{stats_doc['total_monitored']:,}</td></tr>
+        <tr><td style="padding:10px 14px;font-size:11px;color:#4a7a99;">% READY</td><td style="padding:10px 14px;font-size:18px;font-weight:bold;color:#39ff14;text-align:right;">{stats_doc['percent_ready']}%</td></tr>
+        <tr style="background:#081520;"><td style="padding:10px 14px;font-size:11px;color:#4a7a99;">READY</td><td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#39ff14;text-align:right;">{stats_doc['ready']:,}</td></tr>
+        <tr><td style="padding:10px 14px;font-size:11px;color:#4a7a99;">LOST CONTACT</td><td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#ffc107;text-align:right;">{stats_doc['lost_contact']}</td></tr>
+        <tr style="background:#081520;"><td style="padding:10px 14px;font-size:11px;color:#4a7a99;">NEEDS SERVICE</td><td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#ff6b35;text-align:right;">{stats_doc['not_ready'] + stats_doc['reposition']}</td></tr>
+        <tr><td style="padding:10px 14px;font-size:11px;color:#4a7a99;">EXPIRED / EXPIRING B/P</td><td style="padding:10px 14px;font-size:14px;font-weight:bold;color:#ff6b35;text-align:right;">{stats_doc['expired_bp']} / {stats_doc['expiring_bp']}</td></tr>
       </table>
       <div style="text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid #0d3b5c;">
-        <p style="font-size:10px;color:#2a5570;letter-spacing:2px;">CARDIAC SOLUTIONS LLC &mdash; AED MONITORING SYSTEM</p>
+        <p style="font-size:10px;color:#2a5570;letter-spacing:2px;">CARDIAC SOLUTIONS LLC</p>
       </div>
     </div>
     """
@@ -464,13 +545,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

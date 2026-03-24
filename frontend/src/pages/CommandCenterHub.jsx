@@ -10,11 +10,12 @@ import {
   LogOut,
   BookOpen,
   Headphones,
+  Users,
 } from "lucide-react";
 
-const modules = [
+const ALL_MODULES = [
   {
-    id: 1,
+    moduleKey: "daily_report",
     title: "DAILY REPORT",
     status: "LIVE",
     icon: Activity,
@@ -24,7 +25,7 @@ const modules = [
     badgeCount: null,
   },
   {
-    id: 2,
+    moduleKey: "notifications",
     title: "NOTIFICATIONS",
     status: "LIVE",
     icon: Bell,
@@ -34,7 +35,7 @@ const modules = [
     badgeCount: 16,
   },
   {
-    id: 3,
+    moduleKey: "service_tickets",
     title: "SERVICE TICKETS",
     status: "IN DEV",
     icon: FileCheck,
@@ -44,7 +45,7 @@ const modules = [
     badgeCount: null,
   },
   {
-    id: 4,
+    moduleKey: "dashboard",
     title: "DASHBOARD",
     status: "IN DEV",
     icon: LayoutDashboard,
@@ -54,7 +55,7 @@ const modules = [
     badgeCount: null,
   },
   {
-    id: 5,
+    moduleKey: "survival_path",
     title: "SURVIVAL PATH",
     status: "IN DEV",
     icon: Lightbulb,
@@ -63,17 +64,40 @@ const modules = [
       "Cardiac event outcome tracking, response analytics, and chain-of-survival documentation per incident.",
     badgeCount: null,
   },
+  {
+    moduleKey: "user_access",
+    title: "USER ACCESS",
+    status: "ADMIN",
+    icon: Users,
+    route: "/user-access",
+    description:
+      "Add, edit, and remove authorized users. Control which modules each operator can access from their hub.",
+    badgeCount: null,
+  },
 ];
 
 function ModuleCard({ module, index, onNavigate }) {
   const Icon = module.icon;
   const isLive = module.status === "LIVE";
   const hasRoute = !!module.route;
-  const statusColor = isLive ? "#22c55e" : "#eab308";
+  const statusColor =
+    module.status === "LIVE" ? "#22c55e" : module.status === "ADMIN" ? "#ef4444" : "#eab308";
+  const statusBg =
+    module.status === "LIVE"
+      ? "rgba(34, 197, 94, 0.1)"
+      : module.status === "ADMIN"
+        ? "rgba(239, 68, 68, 0.1)"
+        : "rgba(234, 179, 8, 0.1)";
+  const statusBorder =
+    module.status === "LIVE"
+      ? "rgba(34, 197, 94, 0.3)"
+      : module.status === "ADMIN"
+        ? "rgba(239, 68, 68, 0.3)"
+        : "rgba(234, 179, 8, 0.3)";
 
   return (
     <motion.div
-      data-testid={`module-card-${module.id}`}
+      data-testid={`module-card-${module.moduleKey}`}
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: hasRoute ? 1 : 0.6, y: 0 }}
       transition={{ delay: 0.3 + index * 0.1, duration: 0.5 }}
@@ -121,10 +145,8 @@ function ModuleCard({ module, index, onNavigate }) {
               className="font-tech text-[10px] tracking-[0.2em] px-2.5 py-0.5 rounded-sm"
               style={{
                 color: statusColor,
-                background: isLive
-                  ? "rgba(34, 197, 94, 0.1)"
-                  : "rgba(234, 179, 8, 0.1)",
-                border: `1px solid ${isLive ? "rgba(34, 197, 94, 0.3)" : "rgba(234, 179, 8, 0.3)"}`,
+                background: statusBg,
+                border: `1px solid ${statusBorder}`,
               }}
             >
               {module.status}
@@ -158,7 +180,7 @@ function ModuleCard({ module, index, onNavigate }) {
             className="font-tech text-[11px] tracking-[0.15em] mb-1.5"
             style={{ color: "#06b6d4" }}
           >
-            MODULE #{module.id}
+            MODULE #{index + 1}
           </p>
 
           {/* Title */}
@@ -209,6 +231,10 @@ export default function CommandCenterHub({ user, onLogout }) {
   }, []);
 
   const operatorName = user?.username?.toUpperCase() || "ADMIN";
+  const userModules = user?.allowed_modules || [];
+
+  // Filter modules: show only those the user has access to
+  const visibleModules = ALL_MODULES.filter((m) => userModules.includes(m.moduleKey));
 
   if (powering) {
     return (
@@ -384,9 +410,9 @@ export default function CommandCenterHub({ user, onLogout }) {
             gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
           }}
         >
-          {modules.map((mod, i) => (
+          {visibleModules.map((mod, i) => (
             <ModuleCard
-              key={mod.id}
+              key={mod.moduleKey}
               module={mod}
               index={i}
               onNavigate={navigate}

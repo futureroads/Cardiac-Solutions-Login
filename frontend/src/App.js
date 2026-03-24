@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
 import CommandCenterHub from "./pages/CommandCenterHub";
+import UserAccess from "./pages/UserAccess";
 import { Toaster } from "./components/ui/sonner";
 
 function App() {
@@ -69,6 +70,14 @@ function App() {
               isAuthenticated ? 
                 <Dashboard user={user} onLogout={handleLogout} /> : 
                 <Navigate to="/" replace />
+            } 
+          />
+          <Route 
+            path="/user-access" 
+            element={
+              isAuthenticated && user?.role === "admin" ? 
+                <UserAccess /> : 
+                <Navigate to="/hub" replace />
             } 
           />
           <Route 
