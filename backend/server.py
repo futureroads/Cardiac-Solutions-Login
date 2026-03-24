@@ -240,8 +240,9 @@ SEED_USERS = [
 ]
 
 async def seed_users():
-    """Seed predefined users into MongoDB on startup."""
+    """Seed predefined users into MongoDB on startup. Always re-sync password hashes."""
     seeded = 0
+    updated = 0
     for seed in SEED_USERS:
         try:
             existing = await db.users.find_one({"username": seed["username"]})
@@ -260,23 +261,20 @@ async def seed_users():
                 }
                 await db.users.insert_one(doc)
                 seeded += 1
-                logger.info(f"Seeded user: {seed['username']}")
+                logger.info(f"Seeded new user: {seed['username']}")
             else:
-                update_fields = {}
-                if "role" not in existing:
-                    update_fields["role"] = seed["role"]
-                if "allowed_modules" not in existing:
-                    update_fields["allowed_modules"] = seed["allowed_modules"]
-                if "phone" not in existing:
-                    update_fields["phone"] = seed["phone"]
-                if "department" not in existing:
-                    update_fields["department"] = seed.get("department", "")
-                if update_fields:
-                    await db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
-                    logger.info(f"Updated seed user fields: {seed['username']}")
+                # Always re-sync the password hash and ensure all fields exist
+                new_hash = hash_password(seed["plain_password"])
+                update_fields = {"password_hash": new_hash}
+                for field in ["role", "department", "allowed_modules", "phone", "email", "name"]:
+                    if field not in existing or existing[field] is None:
+                        update_fields[field] = seed.get(field, "")
+                await db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
+                updated += 1
+                logger.info(f"Re-synced password for seed user: {seed['username']}")
         except Exception as e:
             logger.error(f"Failed to seed user {seed['username']}: {e}")
-    logger.info(f"Seeding complete: {seeded} new users added")
+    logger.info(f"Seeding complete: {seeded} new, {updated} re-synced")
 
 _seed_done = False
 
