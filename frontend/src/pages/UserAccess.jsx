@@ -23,14 +23,17 @@ const MODULE_OPTIONS = [
   { id: "survival_path", title: "Survival Path" },
 ];
 
-const ROLE_OPTIONS = ["user", "admin"];
+const ROLE_OPTIONS = ["C Level", "Director", "Manager", "Supervisor", "Employee"];
+
+const DEPARTMENT_OPTIONS = ["Admin", "Sales", "Service", "Shipping", "Warehouse", "Accounting"];
 
 const emptyForm = {
   username: "",
   password: "",
   email: "",
   phone: "",
-  role: "user",
+  role: "Employee",
+  department: "",
   allowed_modules: [],
 };
 
@@ -80,7 +83,8 @@ export default function UserAccess() {
       password: "",
       email: user.email || "",
       phone: user.phone || "",
-      role: user.role || "user",
+      role: user.role || "Employee",
+      department: user.department || "",
       allowed_modules: user.allowed_modules || [],
     });
     setShowForm(true);
@@ -312,6 +316,26 @@ export default function UserAccess() {
                   ))}
                 </select>
               </div>
+              {/* Department */}
+              <div>
+                <label className="font-tech text-[10px] tracking-[0.15em] mb-1 block" style={{ color: "#94a3b8" }}>
+                  DEPARTMENT
+                </label>
+                <select
+                  data-testid="input-department"
+                  value={form.department}
+                  onChange={(e) => setForm({ ...form, department: e.target.value })}
+                  className="w-full px-3 py-2 rounded-sm font-tech text-sm appearance-none"
+                  style={inputStyle}
+                >
+                  <option value="" style={{ background: "#0f172a" }}>SELECT...</option>
+                  {DEPARTMENT_OPTIONS.map((d) => (
+                    <option key={d} value={d} style={{ background: "#0f172a" }}>
+                      {d.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Module Access */}
@@ -396,7 +420,7 @@ export default function UserAccess() {
             <table className="w-full" data-testid="users-table">
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(148,163,184,0.08)" }}>
-                  {["USERNAME", "EMAIL", "PHONE", "ROLE", "MODULES", "ACTIONS"].map((h) => (
+                  {["USERNAME", "EMAIL", "PHONE", "ROLE", "DEPT", "MODULES", "ACTIONS"].map((h) => (
                     <th
                       key={h}
                       className="text-left px-4 py-3 font-tech text-[10px] tracking-[0.15em]"
@@ -440,8 +464,11 @@ export default function UserAccess() {
                           border: `1px solid ${u.role === "admin" ? "rgba(239,68,68,0.3)" : "rgba(6,182,212,0.3)"}`,
                         }}
                       >
-                        {(u.role || "user").toUpperCase()}
+                        {(u.role || "Employee").toUpperCase()}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 font-tech text-xs" style={{ color: "#94a3b8" }}>
+                      {u.department || "—"}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">

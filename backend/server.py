@@ -64,7 +64,8 @@ class UserResponse(BaseModel):
     name: str
     email: Optional[str] = ""
     phone: Optional[str] = ""
-    role: Optional[str] = "user"
+    role: Optional[str] = "Employee"
+    department: Optional[str] = ""
     allowed_modules: Optional[List[str]] = []
     created_at: str
 
@@ -78,7 +79,8 @@ class AdminUserCreate(BaseModel):
     password: str
     email: Optional[str] = ""
     phone: Optional[str] = ""
-    role: Optional[str] = "user"
+    role: Optional[str] = "Employee"
+    department: Optional[str] = ""
     allowed_modules: Optional[List[str]] = []
 
 class AdminUserUpdate(BaseModel):
@@ -87,6 +89,7 @@ class AdminUserUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     role: Optional[str] = None
+    department: Optional[str] = None
     allowed_modules: Optional[List[str]] = None
 
 class AEDDevice(BaseModel):
@@ -150,6 +153,7 @@ SEED_USERS = [
         "email": "",
         "phone": "",
         "role": "admin",
+        "department": "Admin",
         "allowed_modules": ALL_MODULE_IDS + ["user_access"],
         "plain_password": "@@U1s9m6c7@@",
         "created_at": "2024-01-01T00:00:00Z"
@@ -160,7 +164,8 @@ SEED_USERS = [
         "name": "Lew",
         "email": "c130usmc@gmail.com",
         "phone": "",
-        "role": "user",
+        "role": "C Level",
+        "department": "Admin",
         "allowed_modules": ALL_MODULE_IDS,
         "plain_password": "Lew123",
         "created_at": "2024-01-01T00:00:00Z"
@@ -171,7 +176,8 @@ SEED_USERS = [
         "name": "Tony Stark",
         "email": "iq.ai.solutions@gmail.com",
         "phone": "",
-        "role": "user",
+        "role": "Director",
+        "department": "Service",
         "allowed_modules": ALL_MODULE_IDS,
         "plain_password": "Stark123",
         "created_at": "2024-01-01T00:00:00Z"
@@ -182,7 +188,8 @@ SEED_USERS = [
         "name": "Tony",
         "email": "",
         "phone": "",
-        "role": "user",
+        "role": "Manager",
+        "department": "Sales",
         "allowed_modules": ALL_MODULE_IDS,
         "plain_password": "Tony123",
         "created_at": "2024-01-01T00:00:00Z"
@@ -193,7 +200,8 @@ SEED_USERS = [
         "name": "Tracey",
         "email": "",
         "phone": "",
-        "role": "user",
+        "role": "Supervisor",
+        "department": "Service",
         "allowed_modules": ALL_MODULE_IDS,
         "plain_password": "Tracey123",
         "created_at": "2024-01-01T00:00:00Z"
@@ -204,7 +212,8 @@ SEED_USERS = [
         "name": "Nate",
         "email": "",
         "phone": "",
-        "role": "user",
+        "role": "Employee",
+        "department": "Warehouse",
         "allowed_modules": ALL_MODULE_IDS,
         "plain_password": "Nate123",
         "created_at": "2024-01-01T00:00:00Z"
@@ -215,7 +224,8 @@ SEED_USERS = [
         "name": "Jon",
         "email": "",
         "phone": "",
-        "role": "user",
+        "role": "Employee",
+        "department": "Shipping",
         "allowed_modules": ALL_MODULE_IDS,
         "plain_password": "Jon123",
         "created_at": "2024-01-01T00:00:00Z"
@@ -234,6 +244,7 @@ async def seed_users():
                 "email": seed["email"],
                 "phone": seed["phone"],
                 "role": seed["role"],
+                "department": seed.get("department", ""),
                 "allowed_modules": seed["allowed_modules"],
                 "password_hash": hash_password(seed["plain_password"]),
                 "created_at": seed["created_at"],
@@ -249,6 +260,8 @@ async def seed_users():
                 update_fields["allowed_modules"] = seed["allowed_modules"]
             if "phone" not in existing:
                 update_fields["phone"] = seed["phone"]
+            if "department" not in existing:
+                update_fields["department"] = seed.get("department", "")
             if update_fields:
                 await db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
                 logger.info(f"Updated seed user fields: {seed['username']}")
@@ -302,7 +315,8 @@ async def login(credentials: UserLogin):
             name=user.get("name", user["username"]),
             email=user.get("email", ""),
             phone=user.get("phone", ""),
-            role=user.get("role", "user"),
+            role=user.get("role", "Employee"),
+            department=user.get("department", ""),
             allowed_modules=user.get("allowed_modules", []),
             created_at=user.get("created_at", ""),
         )
@@ -316,7 +330,8 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         name=current_user.get("name", current_user["username"]),
         email=current_user.get("email", ""),
         phone=current_user.get("phone", ""),
-        role=current_user.get("role", "user"),
+        role=current_user.get("role", "Employee"),
+        department=current_user.get("department", ""),
         allowed_modules=current_user.get("allowed_modules", []),
         created_at=current_user.get("created_at", ""),
     )
@@ -341,7 +356,8 @@ async def create_user(data: AdminUserCreate, admin: dict = Depends(require_admin
         "name": data.username,
         "email": data.email or "",
         "phone": data.phone or "",
-        "role": data.role or "user",
+        "role": data.role or "Employee",
+        "department": data.department or "",
         "allowed_modules": data.allowed_modules or [],
         "password_hash": hash_password(data.password),
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -373,6 +389,8 @@ async def update_user(user_id: str, data: AdminUserUpdate, admin: dict = Depends
         update["phone"] = data.phone
     if data.role is not None:
         update["role"] = data.role
+    if data.department is not None:
+        update["department"] = data.department
     if data.allowed_modules is not None:
         update["allowed_modules"] = data.allowed_modules
 
