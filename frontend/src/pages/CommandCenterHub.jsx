@@ -45,22 +45,22 @@ const modules = [
   },
   {
     id: 4,
-    title: "SURVIVAL PATH",
-    status: "IN DEV",
-    icon: Lightbulb,
-    route: null,
-    description:
-      "Cardiac event outcome tracking, response analytics, and chain-of-survival documentation per incident.",
-    badgeCount: null,
-  },
-  {
-    id: 5,
     title: "DASHBOARD",
     status: "IN DEV",
     icon: LayoutDashboard,
     route: "/dashboard",
     description:
       "Comprehensive AED monitoring dashboard with system status, service summary, AI recommendations, and voice query.",
+    badgeCount: null,
+  },
+  {
+    id: 5,
+    title: "SURVIVAL PATH",
+    status: "IN DEV",
+    icon: Lightbulb,
+    route: null,
+    description:
+      "Cardiac event outcome tracking, response analytics, and chain-of-survival documentation per incident.",
     badgeCount: null,
   },
 ];
