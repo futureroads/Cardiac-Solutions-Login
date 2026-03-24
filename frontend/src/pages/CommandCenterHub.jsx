@@ -247,6 +247,14 @@ export default function CommandCenterHub({ user, onLogout }) {
   // Filter modules: show only those the user has access to
   const visibleModules = ALL_MODULES.filter((m) => userModules.includes(m.moduleKey));
 
+  // If user has exactly one module with a route, skip hub and go directly there
+  const routableModules = visibleModules.filter((m) => m.route);
+  useEffect(() => {
+    if (routableModules.length === 1) {
+      navigate(routableModules[0].route, { replace: true });
+    }
+  }, [routableModules.length, navigate]);
+
   if (powering) {
     return (
       <div
