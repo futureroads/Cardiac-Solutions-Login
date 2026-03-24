@@ -20,7 +20,7 @@ const modules = [
     icon: Activity,
     route: "/daily-report",
     description:
-      "Real-time AED fleet status across all subscribers. AI-analyzed device health, trends and status breakdowns.",
+      "Real-time AED system status across all subscribers. AI-analyzed device health, trends and status breakdowns.",
     badgeCount: null,
   },
   {
