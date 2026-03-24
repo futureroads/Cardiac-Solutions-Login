@@ -293,10 +293,28 @@ export default function LoginPage({ onLogin }) {
   const [shockEffect, setShockEffect] = useState(false);
   const [showSparks, setShowSparks] = useState(false);
   const [currentScreen, setCurrentScreen] = useState("heart"); // "heart", "beating", "login"
+  const [serverStatus, setServerStatus] = useState("checking"); // "checking", "online", "offline"
   const containerRef = useRef(null);
   const usernameInputRef = useRef(null);
   
   const { startHeartbeat, stopHeartbeat } = useEKGSound();
+
+  // Check server connectivity on mount
+  useEffect(() => {
+    const checkServer = async () => {
+      try {
+        const res = await axios.get(`${API}/health`, { timeout: 5000 });
+        if (res.data?.status === "healthy") {
+          setServerStatus("online");
+        } else {
+          setServerStatus("offline");
+        }
+      } catch {
+        setServerStatus("offline");
+      }
+    };
+    checkServer();
+  }, []);
 
   // Focus username input when login screen appears
   useEffect(() => {
@@ -377,7 +395,15 @@ export default function LoginPage({ onLogin }) {
       
     } catch (error) {
       setIsBeating(false);
-      toast.error(error.response?.data?.detail || "Authentication failed");
+      if (error.response) {
+        // Server responded with an error
+        toast.error(error.response.data?.detail || `Server error (${error.response.status})`);
+      } else if (error.request) {
+        // No response received - network issue
+        toast.error("Cannot reach server. Check your connection or try again.");
+      } else {
+        toast.error("Authentication failed");
+      }
     } finally {
       setLoading(false);
       setTimeout(() => setShockEffect(false), 300);
@@ -658,6 +684,20 @@ export default function LoginPage({ onLogin }) {
                     >
                       {isRegister ? "// EXISTING OPERATOR? LOGIN" : "// NEW OPERATOR? REGISTER"}
                     </button>
+                  </div>
+
+                  {/* Server connection status */}
+                  <div className="mt-4 flex items-center justify-center gap-2" data-testid="server-status">
+                    <div className={`w-2 h-2 rounded-full ${
+                      serverStatus === "online" ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]" :
+                      serverStatus === "offline" ? "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" :
+                      "bg-yellow-500 animate-pulse"
+                    }`} />
+                    <span className="text-[10px] font-tech text-slate-600 tracking-wider">
+                      {serverStatus === "online" ? "SERVER ONLINE" :
+                       serverStatus === "offline" ? "SERVER OFFLINE" :
+                       "CHECKING..."}
+                    </span>
                   </div>
                 </div>
               </motion.div>
