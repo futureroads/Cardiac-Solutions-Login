@@ -248,12 +248,13 @@ export default function CommandCenterHub({ user, onLogout }) {
   const visibleModules = ALL_MODULES.filter((m) => userModules.includes(m.moduleKey));
 
   // If user has exactly one module with a route, skip hub and go directly there
-  const routableModules = visibleModules.filter((m) => m.route);
+  const singleRoute = visibleModules.filter((m) => m.route);
   useEffect(() => {
-    if (routableModules.length === 1) {
-      navigate(routableModules[0].route, { replace: true });
+    if (singleRoute.length === 1) {
+      navigate(singleRoute[0].route, { replace: true });
     }
-  }, [routableModules.length, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [singleRoute.length, navigate]);
 
   if (powering) {
     return (
