@@ -364,20 +364,6 @@ export default function CommandCenterHub({ user, onLogout }) {
           transition={{ duration: 0.6 }}
           className="text-center mb-12"
         >
-          {/* Red line + SELECT MODULE */}
-          <div className="flex flex-col items-center mb-4">
-            <div
-              className="w-12 h-[1px] mb-2"
-              style={{ background: "#ef4444" }}
-            />
-            <span
-              className="font-tech text-[11px] tracking-[0.2em]"
-              style={{ color: "#ef4444" }}
-            >
-              SELECT MODULE
-            </span>
-          </div>
-
           {/* COMMAND CENTER HUB */}
           <h2
             className="font-tech text-4xl sm:text-5xl tracking-[0.08em] mb-3"
@@ -397,18 +383,22 @@ export default function CommandCenterHub({ user, onLogout }) {
           </p>
         </motion.div>
 
-        {/* AVAILABLE MODULES label */}
+        {/* SELECT MODULE label */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2, duration: 0.5 }}
-          className="w-full max-w-[1200px] mb-6"
+          className="w-full max-w-[1200px] mb-6 flex items-center gap-3"
         >
+          <div
+            className="w-8 h-[1px]"
+            style={{ background: "#ef4444" }}
+          />
           <p
-            className="font-tech text-sm tracking-[0.12em]"
-            style={{ color: "#e2e8f0" }}
+            className="font-tech text-[11px] tracking-[0.2em]"
+            style={{ color: "#ef4444" }}
           >
-            AVAILABLE MODULES
+            SELECT MODULE
           </p>
         </motion.div>
 
