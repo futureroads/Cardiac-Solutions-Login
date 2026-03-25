@@ -38,9 +38,10 @@ const ALL_MODULES = [
   {
     moduleKey: "service_tickets",
     title: "SERVICE TICKETS",
-    status: "IN DEV",
+    status: "LIVE",
     icon: FileCheck,
     route: null,
+    externalUrl: "https://service.cardiac-solutions.ai",
     description:
       "Field technician dispatch, ticket lifecycle management, and AED service workflow from open to confirmed.",
     badgeCount: null,
@@ -90,7 +91,7 @@ const ALL_MODULES = [
 function ModuleCard({ module, index, onNavigate }) {
   const Icon = module.icon;
   const isLive = module.status === "LIVE";
-  const hasRoute = !!module.route;
+  const hasRoute = !!module.route || !!module.externalUrl;
   const statusColor =
     module.status === "LIVE" ? "#22c55e" : module.status === "ADMIN" ? "#ef4444" : "#eab308";
   const statusBg =
@@ -106,13 +107,21 @@ function ModuleCard({ module, index, onNavigate }) {
         ? "rgba(239, 68, 68, 0.3)"
         : "rgba(234, 179, 8, 0.3)";
 
+  const handleClick = () => {
+    if (module.externalUrl) {
+      window.open(module.externalUrl, "_blank", "noopener,noreferrer");
+    } else if (module.route) {
+      onNavigate(module.route);
+    }
+  };
+
   return (
     <motion.div
       data-testid={`module-card-${module.moduleKey}`}
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: hasRoute ? 1 : 0.6, y: 0 }}
       transition={{ delay: 0.3 + index * 0.1, duration: 0.5 }}
-      onClick={() => hasRoute && onNavigate(module.route)}
+      onClick={handleClick}
       className="relative group"
       style={{
         cursor: hasRoute ? "pointer" : "not-allowed",

@@ -31,6 +31,7 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - [x] Custom logo on heart and login screens
 - [x] **MongoDB user storage** with bcrypt hashed passwords (migrated from hardcoded)
 - [x] 7 seeded users on startup (1 admin + 6 regular users)
+- [x] **Password re-sync on every startup** — ensures production DB always has correct hashes
 - [x] **Role-based access control** (admin/user roles)
 - [x] **Module-based hub filtering** - users only see cards they have access to
 - [x] **Command Center Hub** with "Powering Up" splash screen
@@ -42,6 +43,11 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - [x] JARVIS-style dashboard accessible via Dashboard module card
 - [x] Dashboard panels: System Status, AI Recommendations, Service Tickets, etc.
 - [x] Send Overview email feature (MOCKED)
+- [x] **Service Tickets card links to external URL** (service.cardiac-solutions.ai, opens in new tab)
+- [x] **Server status indicator** on login page (green/red dot)
+- [x] **Better login error messages** (distinguishes network errors from auth errors)
+- [x] **Production deployment fixed** — root cause was stale password hashes in production DB
+- [x] **Debug diagnostic endpoints** (/api/debug/status, /api/debug/test-login)
 
 ## Tech Stack
 - Frontend: React 19 + Framer Motion + Tailwind CSS
@@ -61,14 +67,16 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - GET `/api/dashboard/subscribers` - Get subscriber list (mocked)
 - GET `/api/dashboard/devices` - Get device list (mocked)
 - POST `/api/dashboard/send-overview` - Email dashboard overview (mocked)
+- GET `/api/debug/status` - DB connectivity and user diagnostics (no auth)
+- GET `/api/debug/test-login` - Test login flow diagnostics (no auth)
 
 ## Key Files
-- `/app/frontend/src/pages/CommandCenterHub.jsx` - Hub with module filtering
+- `/app/frontend/src/pages/CommandCenterHub.jsx` - Hub with module filtering + external URL support
 - `/app/frontend/src/pages/UserAccess.jsx` - Admin user management page
 - `/app/frontend/src/pages/Dashboard.jsx` - JARVIS dashboard
-- `/app/frontend/src/pages/LoginPage.jsx` - Multi-stage login
+- `/app/frontend/src/pages/LoginPage.jsx` - Multi-stage login with server status indicator
 - `/app/frontend/src/App.js` - Routing with admin guard
-- `/app/backend/server.py` - All backend logic, auth, admin CRUD, seeding
+- `/app/backend/server.py` - All backend logic, auth, admin CRUD, seeding with password re-sync
 
 ## Prioritized Backlog
 
@@ -79,9 +87,9 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 ### P1 (High Priority)
 - Set up Resend API key for real email delivery (currently mocked)
 - Wire dashboard to backend APIs (currently uses frontend mock data)
+- Build Backend Management page (Module #7, admin-only)
 
 ### P2 (Medium Priority)
-- Build Service Tickets module page (Module #3)
 - Build Survival Path module page (Module #4)
 - Export data to CSV functionality
 - Historical trend charts
@@ -101,10 +109,12 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - Jon / Jon123
 
 ## Module IDs
-- daily_report, notifications, service_tickets, dashboard, survival_path, user_access (admin only)
+- daily_report, notifications, service_tickets, dashboard, survival_path, user_access (admin only), backend (admin only)
 
 ## Notes
 - Dashboard data is MOCKED (stats, subscribers, devices)
 - Email sending requires RESEND_API_KEY in backend/.env (currently mocked)
 - Users are stored in MongoDB with bcrypt password hashes
 - Admin user (user-admin-001) cannot be deleted via API
+- Service Tickets module links to external site: service.cardiac-solutions.ai
+- Seed user passwords are re-synced on every server startup to prevent stale hash issues
