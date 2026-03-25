@@ -38,7 +38,7 @@ const ALL_MODULES = [
   {
     moduleKey: "service_tickets",
     title: "SERVICE TICKETS",
-    status: "LIVE",
+    status: "IN DEV",
     icon: FileCheck,
     route: null,
     externalUrl: "https://service.cardiac-solutions.ai",
