@@ -28,7 +28,7 @@ const ALL_MODULES = [
   {
     moduleKey: "notifications",
     title: "NOTIFICATIONS",
-    status: "LIVE",
+    status: "IN DEV",
     icon: Bell,
     route: "/notifications",
     description:
