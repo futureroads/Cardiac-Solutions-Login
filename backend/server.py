@@ -238,7 +238,7 @@ SEED_USERS = [
 ]
 
 async def seed_users():
-    """Seed predefined users into MongoDB on startup. Always re-sync password hashes."""
+    """Seed predefined users into MongoDB on startup. Only re-hash if password doesn't verify."""
     seeded = 0
     updated = 0
     for seed in SEED_USERS:
@@ -261,18 +261,28 @@ async def seed_users():
                 seeded += 1
                 logger.info(f"Seeded new user: {seed['username']}")
             else:
-                # Always re-sync the password hash and ensure all fields exist
-                new_hash = hash_password(seed["plain_password"])
-                update_fields = {"password_hash": new_hash}
+                update_fields = {}
+                # Only re-hash if the current hash doesn't verify
+                current_hash = existing.get("password_hash", "")
+                needs_rehash = True
+                if current_hash:
+                    try:
+                        needs_rehash = not verify_password(seed["plain_password"], current_hash)
+                    except Exception:
+                        needs_rehash = True
+                if needs_rehash:
+                    update_fields["password_hash"] = hash_password(seed["plain_password"])
+                    logger.info(f"Re-hashing password for: {seed['username']}")
+                # Ensure all fields exist
                 for field in ["role", "department", "allowed_modules", "phone", "email", "name"]:
                     if field not in existing or existing[field] is None:
                         update_fields[field] = seed.get(field, "")
-                await db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
-                updated += 1
-                logger.info(f"Re-synced password for seed user: {seed['username']}")
+                if update_fields:
+                    await db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
+                    updated += 1
         except Exception as e:
             logger.error(f"Failed to seed user {seed['username']}: {e}")
-    logger.info(f"Seeding complete: {seeded} new, {updated} re-synced")
+    logger.info(f"Seeding complete: {seeded} new, {updated} updated")
 
 _seed_done = False
 
@@ -602,14 +612,12 @@ async def debug_status():
         "jwt_secret_set": bool(JWT_SECRET),
         "seed_done": _seed_done,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "build": "v3-resync",
     }
     if db is None:
         info["db_connected"] = False
         info["error"] = "MongoDB client not initialized"
         return info
     try:
-        await client.admin.command('ping')
         count = await db.users.count_documents({})
         usernames = []
         async for u in db.users.find({}, {"_id": 0, "username": 1}).limit(20):
@@ -625,7 +633,7 @@ async def debug_status():
 @app.get("/api/debug/test-login")
 async def debug_test_login():
     """Test login for seed user Lew — returns diagnostic info, no actual token."""
-    result = {"build": "v3-resync"}
+    result = {}
     if db is None:
         result["error"] = "DB not connected"
         return result
@@ -638,8 +646,6 @@ async def debug_test_login():
         result["user_found"] = True
         result["has_password_hash"] = "password_hash" in user
         result["hash_prefix"] = user.get("password_hash", "")[:7] if user.get("password_hash") else "NONE"
-        result["fields"] = list(user.keys())
-        # Test password verification
         try:
             pw_ok = verify_password("Lew123", user.get("password_hash", ""))
             result["password_verify"] = pw_ok
