@@ -287,7 +287,7 @@ export default function UserAccess() {
                     value={form.password}
                     onChange={(e) => setForm({ ...form, password: e.target.value })}
                     className="w-full px-3 py-2 pr-10 rounded-sm font-tech text-sm"
-                    style={inputStyle}
+                    style={{ ...inputStyle, textTransform: "none" }}
                     placeholder={editingId ? "••••••" : "Enter password"}
                   />
                   <button
@@ -311,7 +311,7 @@ export default function UserAccess() {
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   className="w-full px-3 py-2 rounded-sm font-tech text-sm"
-                  style={inputStyle}
+                  style={{ ...inputStyle, textTransform: "none" }}
                   placeholder="user@example.com"
                 />
               </div>
@@ -325,7 +325,7 @@ export default function UserAccess() {
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   className="w-full px-3 py-2 rounded-sm font-tech text-sm"
-                  style={inputStyle}
+                  style={{ ...inputStyle, textTransform: "none" }}
                   placeholder="555-0100"
                 />
               </div>
