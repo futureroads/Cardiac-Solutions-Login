@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import {
@@ -10,6 +10,8 @@ import {
   X,
   Shield,
   User,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -46,6 +48,8 @@ export default function UserAccess() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const formRef = useRef(null);
 
   const token = localStorage.getItem("token");
 
@@ -101,7 +105,9 @@ export default function UserAccess() {
       department: user.department || "",
       allowed_modules: user.allowed_modules || [],
     });
+    setShowPassword(false);
     setShowForm(true);
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
   };
 
   const cancel = () => {
@@ -237,6 +243,7 @@ export default function UserAccess() {
         {/* Form Panel */}
         {showForm && (
           <motion.div
+            ref={formRef}
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             className="mb-8 p-6 rounded-sm border"
@@ -273,15 +280,26 @@ export default function UserAccess() {
                 <label className="font-tech text-[10px] tracking-[0.15em] mb-1 block" style={{ color: "#94a3b8" }}>
                   PASSWORD {editingId && "(leave blank to keep)"}
                 </label>
-                <input
-                  data-testid="input-password"
-                  type="password"
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  className="w-full px-3 py-2 rounded-sm font-tech text-sm"
-                  style={inputStyle}
-                  placeholder={editingId ? "••••••" : "Enter password"}
-                />
+                <div className="relative">
+                  <input
+                    data-testid="input-password"
+                    type={showPassword ? "text" : "password"}
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    className="w-full px-3 py-2 pr-10 rounded-sm font-tech text-sm"
+                    style={inputStyle}
+                    placeholder={editingId ? "••••••" : "Enter password"}
+                  />
+                  <button
+                    type="button"
+                    data-testid="toggle-password-visibility"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:opacity-80 transition-opacity"
+                    style={{ color: "#94a3b8" }}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
               {/* Email */}
               <div>
