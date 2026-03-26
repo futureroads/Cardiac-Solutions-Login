@@ -6,24 +6,21 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 ## What's Been Implemented
 - [x] Login page with animated SVG heart, EKG line, sound effects
 - [x] Command Center Hub with "Powering Up" splash screen and dynamic module cards
-- [x] MongoDB user storage with bcrypt hashed passwords (7 seeded users)
-- [x] Password re-sync on startup (verify-then-rehash only if needed)
+- [x] MongoDB user storage with PBKDF2 hashed passwords (7 seeded users)
+- [x] Password auto-migration (bcrypt → PBKDF2) on login
 - [x] Role-based access control (admin/user roles)
 - [x] Module-based hub filtering per user
 - [x] User Access admin page (full CRUD)
 - [x] Service Tickets card → external link (service.cardiac-solutions.ai)
 - [x] Dashboard card → external link (dashboard.cardiac-solutions.ai)
+- [x] Backend card → external link (backend.cardiac-solutions.ai)
+- [x] Outage Status card → external link (outage.cardiac-solutions.ai)
 - [x] Server status indicator on login page
-- [x] **Production deployment FIXED** — multiple root causes resolved:
-  - Stale password hashes (re-sync on startup)
-  - Frontend hardcoded preview URL (relative URLs in production builds via apiBase.js)
-  - Over-pinned requirements.txt (stripped to direct deps only)
-  - Missing DB null checks in auth flow
-  - Null-safe user sorting in User Access
+- [x] **Production deployment FIXED** — root cause: bcrypt C binary compilation failure in production container. Switched to pure-Python PBKDF2 hashing, unpinned requirements.txt, lazy-loaded resend.
 
 ## Tech Stack
 - Frontend: React 19 + Framer Motion + Tailwind CSS + Shadcn UI
-- Backend: FastAPI + Motor (async MongoDB) + bcrypt + PyJWT
+- Backend: FastAPI + Motor (async MongoDB) + PBKDF2 (hashlib) + PyJWT
 - Database: MongoDB
 - Deployment: Emergent platform with Cloudflare CDN
 
@@ -32,7 +29,6 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - `/app/frontend/src/pages/CommandCenterHub.jsx` — Hub with module cards + external URLs
 - `/app/frontend/src/pages/UserAccess.jsx` — Admin CRUD with retry logic
 - `/app/frontend/src/pages/LoginPage.jsx` — Multi-stage login + server status
-- `/app/frontend/src/pages/Dashboard.jsx` — JARVIS dashboard (links to external)
 - `/app/backend/server.py` — All backend logic, auth, admin CRUD, seeding
 
 ## API Endpoints
@@ -43,6 +39,7 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - GET `/api/dashboard/stats|subscribers|devices` — Dashboard data (mocked)
 - GET `/api/debug/status` — DB diagnostics (no auth)
 - GET `/api/debug/test-login` — Login test diagnostics (no auth)
+- GET `/api/version` — Server version check (no auth)
 
 ## Credentials
 - **Admin**: futureroads / @@U1s9m6c7@@
@@ -51,6 +48,7 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 ## Prioritized Backlog
 
 ### P0 (Critical)
+- ~~Production 502 fix~~ ✅ RESOLVED
 - Build Daily Report module page
 - Build Notifications module page
 
@@ -66,10 +64,14 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 ### P3 (Nice to Have)
 - Mobile responsive optimizations
 - Refactor LoginPage.jsx into smaller components
+- Split server.py into modular route files
 
 ## Notes
 - Dashboard data is MOCKED
 - Email sending requires RESEND_API_KEY (currently mocked)
 - Service Tickets → service.cardiac-solutions.ai (external)
 - Dashboard → dashboard.cardiac-solutions.ai (external)
+- Backend → backend.cardiac-solutions.ai (external)
+- Outage Status → outage.cardiac-solutions.ai (external)
 - Notifications card shows "IN DEV" but is clickable (routes to /notifications)
+- Password hashing uses PBKDF2 (pure Python) — no bcrypt binary dependency
