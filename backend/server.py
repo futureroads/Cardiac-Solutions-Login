@@ -299,7 +299,12 @@ async def seed_users():
                 current_hash = existing.get("password_hash", "")
                 if not current_hash or not current_hash.startswith("pbkdf2:"):
                     update_fields["password_hash"] = hash_password(seed["plain_password"])
-                for field in ["role", "department", "allowed_modules", "phone", "email", "name"]:
+                # Always sync allowed_modules and role for seed users
+                if existing.get("allowed_modules") != seed["allowed_modules"]:
+                    update_fields["allowed_modules"] = seed["allowed_modules"]
+                if existing.get("role") != seed["role"]:
+                    update_fields["role"] = seed["role"]
+                for field in ["department", "phone", "email", "name"]:
                     if field not in existing or existing[field] is None:
                         update_fields[field] = seed.get(field, "")
                 if update_fields:
