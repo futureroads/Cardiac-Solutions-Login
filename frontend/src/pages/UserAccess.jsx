@@ -54,10 +54,14 @@ export default function UserAccess() {
     "Content-Type": "application/json",
   };
 
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = useCallback(async (retries = 2) => {
     try {
       const res = await fetch(`${API_URL}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) {
+        if (res.status === 502 && retries > 0) {
+          await new Promise(r => setTimeout(r, 2000));
+          return fetchUsers(retries - 1);
+        }
         const errBody = await res.text().catch(() => "");
         throw new Error(`HTTP ${res.status}: ${errBody || res.statusText}`);
       }
@@ -65,6 +69,10 @@ export default function UserAccess() {
       data.sort((a, b) => a.username.localeCompare(b.username, undefined, { sensitivity: "base" }));
       setUsers(data);
     } catch (err) {
+      if (retries > 0 && !err.message?.startsWith("HTTP")) {
+        await new Promise(r => setTimeout(r, 2000));
+        return fetchUsers(retries - 1);
+      }
       console.error("fetchUsers error:", err);
       toast.error(`Failed to load users: ${err.message}`);
     } finally {

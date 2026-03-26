@@ -286,27 +286,18 @@ async def seed_users():
 
 _seed_done = False
 
-async def ensure_seeded():
-    """Lazy seed: connect and seed if not done yet."""
-    global client, db, _seed_done
-    if _seed_done:
-        return
+async def ensure_db():
+    """Ensure MongoDB is connected. Lightweight — no bcrypt or seeding."""
+    global client, db
+    if db is not None:
+        return True
     try:
-        if db is None:
-            client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
-            db = client[db_name]
-        count = await db.users.count_documents({})
-        if count == 0:
-            logger.info("No users found — running lazy seed")
-            try:
-                await db.users.create_index("username", unique=True)
-                await db.users.create_index("id", unique=True)
-            except Exception:
-                pass
-        await seed_users()
-        _seed_done = True
+        client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+        db = client[db_name]
+        return True
     except Exception as e:
-        logger.error(f"ensure_seeded failed: {e}")
+        logger.error(f"ensure_db failed: {e}")
+        return False
 
 @app.on_event("startup")
 async def startup():
@@ -320,12 +311,12 @@ async def startup():
         _seed_done = True
         logger.info("Startup complete")
     except Exception as e:
-        logger.error(f"Startup DB init failed (will retry on first request): {e}")
+        logger.error(f"Startup DB init failed: {e}")
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    await ensure_seeded()
+    await ensure_db()
     if db is None:
-        raise HTTPException(status_code=503, detail="Database not available")
+        raise HTTPException(status_code=503, detail="Database not available. Please try again.")
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user_id = payload.get("sub")
@@ -336,10 +327,15 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         if user is None:
             raise HTTPException(status_code=401, detail="User not found")
         return user
+    except HTTPException:
+        raise
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception as e:
+        logger.error(f"get_current_user error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 async def require_admin(current_user: dict = Depends(get_current_user)):
     if current_user.get("role") != "admin":
@@ -350,9 +346,8 @@ async def require_admin(current_user: dict = Depends(get_current_user)):
 
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
-    await ensure_seeded()
+    await ensure_db()
     if db is None:
-        logger.error("Login failed: database not connected")
         raise HTTPException(status_code=503, detail="Database not available. Please try again.")
     
     user = await db.users.find_one({"username": credentials.username}, {"_id": 0})
@@ -397,10 +392,12 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 
 @api_router.get("/admin/users")
 async def list_users(admin: dict = Depends(require_admin)):
-    if db is None:
-        raise HTTPException(status_code=503, detail="Database not available")
-    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
-    return users
+    try:
+        users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
+        return users
+    except Exception as e:
+        logger.error(f"list_users error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load users")
 
 @api_router.post("/admin/users")
 async def create_user(data: AdminUserCreate, admin: dict = Depends(require_admin)):
