@@ -9,6 +9,8 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 import uuid
 
+print("[SERVER] Module loading started", flush=True)
+
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
@@ -16,20 +18,22 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 import jwt
-import bcrypt
 
-print("[SERVER] Module loading started", flush=True)
+# bcrypt is OPTIONAL — we default to PBKDF2 (pure Python, zero binary deps)
+try:
+    import bcrypt as _bcrypt
+    _HAS_BCRYPT = True
+except Exception:
+    _bcrypt = None
+    _HAS_BCRYPT = False
+
+print(f"[SERVER] Imports OK, bcrypt available={_HAS_BCRYPT}", flush=True)
 
 # Load .env first
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# Resend - optional import
-try:
-    import resend
-    resend.api_key = os.environ.get('RESEND_API_KEY', '')
-except Exception:
-    resend = None
+# Resend loaded lazily inside send_overview_email to avoid startup crash
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 
 # MongoDB connection
@@ -64,7 +68,7 @@ security = HTTPBearer()
 # Diagnostic endpoint — no DB, no auth, proves server is alive
 @app.get("/api/version")
 async def version_check():
-    return {"version": "v4", "python": sys.version, "status": "running"}
+    return {"version": "v5-pbkdf2", "python": sys.version, "status": "running", "bcrypt_available": _HAS_BCRYPT}
 
 
 # ==================== Models ====================
@@ -146,19 +150,28 @@ class DashboardStats(BaseModel):
 # ==================== Auth Helpers ====================
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    """Hash password using PBKDF2-SHA256 (pure Python, no binary deps)."""
+    salt = secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000).hex()
+    return f"pbkdf2:{salt}:{h}"
 
 def verify_password(password: str, stored: str) -> bool:
     if not stored:
         return False
-    # Support both bcrypt and PBKDF2 formats
+    # PBKDF2 format: "pbkdf2:<salt>:<hash>"
     if stored.startswith("pbkdf2:"):
         parts = stored.split(":")
         if len(parts) == 3:
             _, salt, h = parts
             return hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000).hex() == h
         return False
-    return bcrypt.checkpw(password.encode('utf-8'), stored.encode('utf-8'))
+    # Legacy bcrypt format ($2b$...)
+    if _HAS_BCRYPT and stored.startswith("$2"):
+        try:
+            return _bcrypt.checkpw(password.encode('utf-8'), stored.encode('utf-8'))
+        except Exception:
+            return False
+    return False
 
 def create_token(user_id: str, username: str) -> str:
     payload = {
@@ -279,9 +292,9 @@ async def seed_users():
                 seeded += 1
             else:
                 update_fields = {}
-                # Always re-hash to bcrypt if not already bcrypt
+                # Always re-hash to PBKDF2 if not already PBKDF2
                 current_hash = existing.get("password_hash", "")
-                if not current_hash or not current_hash.startswith("$2"):
+                if not current_hash or not current_hash.startswith("pbkdf2:"):
                     update_fields["password_hash"] = hash_password(seed["plain_password"])
                 # Always sync allowed_modules and role for seed users
                 if existing.get("allowed_modules") != seed["allowed_modules"]:
@@ -301,20 +314,26 @@ _seed_done = False
 
 async def _do_startup_db():
     global client, db, _seed_done
-    client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=3000)
-    db = client[db_name]
-    await db.users.create_index("username", unique=True)
-    await db.users.create_index("id", unique=True)
-    await seed_users()
-    _seed_done = True
+    try:
+        client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=3000)
+        db = client[db_name]
+        await db.users.create_index("username", unique=True)
+        await db.users.create_index("id", unique=True)
+        await seed_users()
+        _seed_done = True
+        print("[SERVER] DB startup complete", flush=True)
+    except Exception as e:
+        print(f"[SERVER] DB startup error: {e}", flush=True)
+        raise
 
 @app.on_event("startup")
 async def startup():
+    print("[SERVER] Starting up...", flush=True)
     try:
-        await asyncio.wait_for(_do_startup_db(), timeout=8)
-        logger.info("Startup complete with DB")
+        await asyncio.wait_for(_do_startup_db(), timeout=15)
+        print("[SERVER] Startup complete with DB", flush=True)
     except Exception as e:
-        logger.error(f"Startup DB skipped: {e}")
+        print(f"[SERVER] Startup DB skipped ({type(e).__name__}: {e}), will retry on first request", flush=True)
         # Server starts anyway — DB connects on first request
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -375,6 +394,15 @@ async def login(credentials: UserLogin):
 
     if not verify_password(credentials.password, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    # Auto-migrate legacy bcrypt hashes to PBKDF2 on successful login
+    current_hash = user.get("password_hash", "")
+    if current_hash and not current_hash.startswith("pbkdf2:"):
+        try:
+            new_hash = hash_password(credentials.password)
+            await db.users.update_one({"id": user["id"]}, {"$set": {"password_hash": new_hash}})
+        except Exception:
+            pass  # Non-critical, will try again next login
 
     token = create_token(user["id"], user["username"])
 
@@ -604,12 +632,19 @@ async def send_overview_email(current_user: dict = Depends(get_current_user)):
     </div>
     """
 
-    if not resend.api_key:
+    # Lazy-load resend to avoid startup crash
+    try:
+        import resend as _resend
+        _resend.api_key = os.environ.get('RESEND_API_KEY', '')
+    except Exception:
+        _resend = None
+
+    if not _resend or not _resend.api_key:
         logger.warning(f"RESEND_API_KEY not set — overview email to {user_email} was NOT sent (mocked success)")
         return {"status": "success", "message": f"Overview sent to {user_email}"}
 
     try:
-        email_result = await asyncio.to_thread(resend.Emails.send, {
+        email_result = await asyncio.to_thread(_resend.Emails.send, {
             "from": SENDER_EMAIL,
             "to": [user_email],
             "subject": f"Cardiac Solutions — Dashboard Overview ({now})",
