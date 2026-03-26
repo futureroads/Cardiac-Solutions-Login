@@ -452,7 +452,7 @@ export default function UserAccess() {
             <table className="w-full" data-testid="users-table">
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(148,163,184,0.08)" }}>
-                  {["USERNAME", "EMAIL", "PHONE", "ROLE", "DEPT", "MODULES", "ACTIONS"].map((h) => (
+                  {["Username", "Email", "Phone", "Role", "Dept", "Modules", "Actions"].map((h) => (
                     <th
                       key={h}
                       className="text-left px-4 py-3 font-tech text-[10px] tracking-[0.15em]"
