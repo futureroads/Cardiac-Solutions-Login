@@ -1,4 +1,14 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+import sys
+print(f"[BOOT] Python {sys.version}", flush=True)
+print(f"[BOOT] Starting imports...", flush=True)
+
+try:
+    from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+    print("[BOOT] fastapi OK", flush=True)
+except Exception as e:
+    print(f"[BOOT] fastapi FAILED: {e}", flush=True)
+    sys.exit(1)
+
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -13,6 +23,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 import jwt
 import bcrypt
+print("[BOOT] All imports OK", flush=True)
 
 print("[SERVER] Module loading started", flush=True)
 
@@ -56,6 +67,12 @@ app = FastAPI(title="Cardiac Solutions API")
 api_router = APIRouter(prefix="/api")
 
 security = HTTPBearer()
+
+# Diagnostic endpoint — no DB, no auth, proves server is alive
+@app.get("/api/version")
+async def version_check():
+    return {"version": "v4", "python": sys.version, "status": "running"}
+
 
 # ==================== Models ====================
 
