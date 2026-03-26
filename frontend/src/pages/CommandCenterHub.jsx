@@ -12,6 +12,7 @@ import {
   Headphones,
   Users,
   Server,
+  AlertTriangle,
 } from "lucide-react";
 
 const ALL_MODULES = [
@@ -85,6 +86,16 @@ const ALL_MODULES = [
     route: "/backend",
     description:
       "Monitor and control backend processes, system health, database status, and server performance metrics.",
+    badgeCount: null,
+  },
+  {
+    moduleKey: "outage_status",
+    title: "OUTAGE STATUS",
+    status: "ADMIN",
+    icon: AlertTriangle,
+    route: "/outage-status",
+    description:
+      "Monitor the real time status of major cloud services, cellular carriers and more.",
     badgeCount: null,
   },
 ];

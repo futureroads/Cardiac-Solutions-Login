@@ -194,7 +194,7 @@ SEED_USERS = [
         "phone": "",
         "role": "admin",
         "department": "Admin",
-        "allowed_modules": ALL_MODULE_IDS + ["user_access", "backend"],
+        "allowed_modules": ALL_MODULE_IDS + ["user_access", "backend", "outage_status"],
         "plain_password": "@@U1s9m6c7@@",
         "created_at": "2024-01-01T00:00:00Z"
     },
@@ -506,6 +506,7 @@ async def list_modules(admin: dict = Depends(require_admin)):
         {"id": "service_tickets", "title": "Service Tickets"},
         {"id": "dashboard", "title": "Dashboard"},
         {"id": "survival_path", "title": "Survival Path"},
+        {"id": "outage_status", "title": "Outage Status"},
     ]
 
 # ==================== Dashboard Routes ====================
