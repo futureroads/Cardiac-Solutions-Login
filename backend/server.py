@@ -323,6 +323,9 @@ async def startup():
         logger.error(f"Startup DB init failed (will retry on first request): {e}")
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    await ensure_seeded()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user_id = payload.get("sub")
@@ -394,6 +397,8 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 
 @api_router.get("/admin/users")
 async def list_users(admin: dict = Depends(require_admin)):
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
     users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
     return users
 
