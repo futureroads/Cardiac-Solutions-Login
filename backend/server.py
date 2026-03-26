@@ -277,12 +277,26 @@ _seed_done = False
 
 async def ensure_db():
     """Ensure MongoDB is connected. Lightweight — no bcrypt or seeding."""
-    global client, db
+    global client, db, _seed_done
     if db is not None:
+        if not _seed_done:
+            try:
+                await seed_users()
+                _seed_done = True
+            except Exception as e:
+                logger.error(f"Lazy seed failed: {e}")
+                _seed_done = True  # Don't retry on every request
         return True
     try:
         client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
         db = client[db_name]
+        try:
+            await db.users.create_index("username", unique=True)
+            await db.users.create_index("id", unique=True)
+        except Exception:
+            pass
+        await seed_users()
+        _seed_done = True
         return True
     except Exception as e:
         logger.error(f"ensure_db failed: {e}")
@@ -290,17 +304,8 @@ async def ensure_db():
 
 @app.on_event("startup")
 async def startup():
-    global client, db, _seed_done
-    try:
-        client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
-        db = client[db_name]
-        await db.users.create_index("username", unique=True)
-        await db.users.create_index("id", unique=True)
-        await seed_users()
-        _seed_done = True
-        logger.info("Startup complete")
-    except Exception as e:
-        logger.error(f"Startup DB init failed: {e}")
+    """Fast startup — just log. DB connection happens lazily on first request."""
+    logger.info("Server started — DB will connect on first request")
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     await ensure_db()
