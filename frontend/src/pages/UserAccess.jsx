@@ -57,12 +57,16 @@ export default function UserAccess() {
   const fetchUsers = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error("Failed to fetch users");
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status}: ${errBody || res.statusText}`);
+      }
       const data = await res.json();
       data.sort((a, b) => a.username.localeCompare(b.username, undefined, { sensitivity: "base" }));
       setUsers(data);
-    } catch {
-      toast.error("Failed to load users");
+    } catch (err) {
+      console.error("fetchUsers error:", err);
+      toast.error(`Failed to load users: ${err.message}`);
     } finally {
       setLoading(false);
     }
