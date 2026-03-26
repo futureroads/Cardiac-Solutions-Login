@@ -28,11 +28,11 @@ except ImportError:
     resend = None
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 
-# MongoDB connection - lazy init to prevent crash on DNS SRV resolution
+# MongoDB connection - Motor client is lazy (connects on first query, not on creation)
 mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
 db_name = os.environ.get('DB_NAME', 'test_database')
-client = None
-db = None
+client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+db = client[db_name]
 
 # JWT Configuration
 JWT_SECRET = os.environ.get('JWT_SECRET', 'cardiac-solutions-jwt-fallback')
@@ -275,42 +275,20 @@ async def seed_users():
 
 _seed_done = False
 
-async def ensure_db():
-    """Ensure MongoDB is connected. Lightweight — no bcrypt or seeding."""
-    global client, db, _seed_done
-    if db is not None:
-        if not _seed_done:
-            try:
-                await seed_users()
-                _seed_done = True
-            except Exception as e:
-                logger.error(f"Lazy seed failed: {e}")
-                _seed_done = True  # Don't retry on every request
-        return True
-    try:
-        client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
-        db = client[db_name]
-        try:
-            await db.users.create_index("username", unique=True)
-            await db.users.create_index("id", unique=True)
-        except Exception:
-            pass
-        await seed_users()
-        _seed_done = True
-        return True
-    except Exception as e:
-        logger.error(f"ensure_db failed: {e}")
-        return False
-
 @app.on_event("startup")
 async def startup():
-    """Fast startup — just log. DB connection happens lazily on first request."""
-    logger.info("Server started — DB will connect on first request")
+    """Fast startup — seed in background."""
+    global _seed_done
+    try:
+        await db.users.create_index("username", unique=True)
+        await db.users.create_index("id", unique=True)
+        await seed_users()
+        _seed_done = True
+        logger.info("Startup complete")
+    except Exception as e:
+        logger.error(f"Startup seed failed (will retry): {e}")
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    await ensure_db()
-    if db is None:
-        raise HTTPException(status_code=503, detail="Database not available. Please try again.")
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user_id = payload.get("sub")
@@ -340,9 +318,11 @@ async def require_admin(current_user: dict = Depends(get_current_user)):
 
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
-    await ensure_db()
-    if db is None:
-        raise HTTPException(status_code=503, detail="Database not available. Please try again.")
+    if not _seed_done:
+        try:
+            await seed_users()
+        except Exception:
+            pass
     
     user = await db.users.find_one({"username": credentials.username}, {"_id": 0})
     if not user:
