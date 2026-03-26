@@ -511,6 +511,8 @@ async def list_modules(admin: dict = Depends(require_admin)):
         {"id": "service_tickets", "title": "Service Tickets"},
         {"id": "dashboard", "title": "Dashboard"},
         {"id": "survival_path", "title": "Survival Path"},
+        {"id": "user_access", "title": "User Access"},
+        {"id": "backend", "title": "Backend"},
         {"id": "outage_status", "title": "Outage Status"},
     ]
 
