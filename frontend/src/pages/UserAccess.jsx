@@ -66,7 +66,7 @@ export default function UserAccess() {
         throw new Error(`HTTP ${res.status}: ${errBody || res.statusText}`);
       }
       const data = await res.json();
-      data.sort((a, b) => a.username.localeCompare(b.username, undefined, { sensitivity: "base" }));
+      data.sort((a, b) => (a.username || "").localeCompare(b.username || "", undefined, { sensitivity: "base" }));
       setUsers(data);
     } catch (err) {
       if (retries > 0 && !err.message?.startsWith("HTTP")) {
