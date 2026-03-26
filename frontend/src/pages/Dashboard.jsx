@@ -3,7 +3,8 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { LogOut, Mic, Mail, Loader2, Play, Pause } from "lucide-react";
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+import API_BASE from "@/apiBase";
+const API_URL = API_BASE;
 
 export default function Dashboard({ user, onLogout }) {
   const [currentTime, setCurrentTime] = useState(new Date());

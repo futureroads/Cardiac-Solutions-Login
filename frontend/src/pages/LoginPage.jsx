@@ -4,8 +4,8 @@ import { toast } from "sonner";
 import axios from "axios";
 import { Eye, EyeOff, Zap, Shield, Activity, ArrowLeft } from "lucide-react";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+import API_BASE from "@/apiBase";
+const API = `${API_BASE}/api`;
 
 // EKG Sound Effect using MP3 file
 const useEKGSound = () => {
