@@ -9,24 +9,14 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 import uuid
 
-print(f"[BOOT] Python {sys.version}", flush=True)
-
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 import jwt
-
-# Motor/MongoDB - try import
-try:
-    from motor.motor_asyncio import AsyncIOMotorClient
-    print("[BOOT] motor OK", flush=True)
-except Exception as e:
-    print(f"[BOOT] motor FAILED: {e}", flush=True)
-    AsyncIOMotorClient = None
-
-print("[BOOT] All imports OK", flush=True)
+import bcrypt
 
 print("[SERVER] Module loading started", flush=True)
 
@@ -156,25 +146,19 @@ class DashboardStats(BaseModel):
 # ==================== Auth Helpers ====================
 
 def hash_password(password: str) -> str:
-    """Pure Python PBKDF2 hashing — no C/Rust compilation needed."""
-    salt = secrets.token_hex(16)
-    h = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000).hex()
-    return f"pbkdf2:{salt}:{h}"
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def verify_password(password: str, stored: str) -> bool:
     if not stored:
         return False
+    # Support both bcrypt and PBKDF2 formats
     if stored.startswith("pbkdf2:"):
         parts = stored.split(":")
         if len(parts) == 3:
             _, salt, h = parts
             return hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000).hex() == h
-    # Legacy bcrypt format fallback
-    try:
-        import bcrypt as _bcrypt
-        return _bcrypt.checkpw(password.encode('utf-8'), stored.encode('utf-8'))
-    except Exception:
         return False
+    return bcrypt.checkpw(password.encode('utf-8'), stored.encode('utf-8'))
 
 def create_token(user_id: str, username: str) -> str:
     payload = {
@@ -295,9 +279,9 @@ async def seed_users():
                 seeded += 1
             else:
                 update_fields = {}
-                # Migrate to PBKDF2 if still on bcrypt
+                # Always re-hash to bcrypt if not already bcrypt
                 current_hash = existing.get("password_hash", "")
-                if not current_hash or not current_hash.startswith("pbkdf2:"):
+                if not current_hash or not current_hash.startswith("$2"):
                     update_fields["password_hash"] = hash_password(seed["plain_password"])
                 # Always sync allowed_modules and role for seed users
                 if existing.get("allowed_modules") != seed["allowed_modules"]:
