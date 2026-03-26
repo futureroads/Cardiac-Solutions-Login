@@ -271,7 +271,7 @@ export default function UserAccess() {
                   value={form.username}
                   onChange={(e) => setForm({ ...form, username: e.target.value })}
                   className="w-full px-3 py-2 rounded-sm font-tech text-sm"
-                  style={inputStyle}
+                  style={{ ...inputStyle, textTransform: "none" }}
                   placeholder="Enter username"
                 />
               </div>
@@ -472,7 +472,7 @@ export default function UserAccess() {
                     data-testid={`user-row-${u.username}`}
                   >
                     <td className="px-4 py-3 font-tech text-sm" style={{ color: "#e2e8f0" }}>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2" style={{ textTransform: "none" }}>
                         {u.role === "admin" ? (
                           <Shield size={12} style={{ color: "#ef4444" }} />
                         ) : (
