@@ -93,7 +93,8 @@ const ALL_MODULES = [
     title: "OUTAGE STATUS",
     status: "ADMIN",
     icon: AlertTriangle,
-    route: "/outage-status",
+    route: null,
+    externalUrl: "https://outage.cardiac-solutions.ai",
     description:
       "Monitor the real time status of major cloud services, cellular carriers and more.",
     badgeCount: null,
