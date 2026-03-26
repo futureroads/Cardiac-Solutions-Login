@@ -4,5 +4,4 @@ python-dotenv
 motor
 dnspython
 PyJWT
-bcrypt
 python-multipart

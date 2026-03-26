@@ -1,28 +1,31 @@
 import sys
-print(f"[BOOT] Python {sys.version}", flush=True)
-print(f"[BOOT] Starting imports...", flush=True)
-
-try:
-    from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
-    print("[BOOT] fastapi OK", flush=True)
-except Exception as e:
-    print(f"[BOOT] fastapi FAILED: {e}", flush=True)
-    sys.exit(1)
-
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import asyncio
+import hashlib
+import secrets
 from pathlib import Path
-from pydantic import BaseModel, Field
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 import uuid
-from datetime import datetime, timezone, timedelta
+
+print(f"[BOOT] Python {sys.version}", flush=True)
+
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from dotenv import load_dotenv
+from starlette.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 import jwt
-import bcrypt
+
+# Motor/MongoDB - try import
+try:
+    from motor.motor_asyncio import AsyncIOMotorClient
+    print("[BOOT] motor OK", flush=True)
+except Exception as e:
+    print(f"[BOOT] motor FAILED: {e}", flush=True)
+    AsyncIOMotorClient = None
+
 print("[BOOT] All imports OK", flush=True)
 
 print("[SERVER] Module loading started", flush=True)
@@ -153,10 +156,25 @@ class DashboardStats(BaseModel):
 # ==================== Auth Helpers ====================
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    """Pure Python PBKDF2 hashing — no C/Rust compilation needed."""
+    salt = secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000).hex()
+    return f"pbkdf2:{salt}:{h}"
 
-def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+def verify_password(password: str, stored: str) -> bool:
+    if not stored:
+        return False
+    if stored.startswith("pbkdf2:"):
+        parts = stored.split(":")
+        if len(parts) == 3:
+            _, salt, h = parts
+            return hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000).hex() == h
+    # Legacy bcrypt format fallback
+    try:
+        import bcrypt as _bcrypt
+        return _bcrypt.checkpw(password.encode('utf-8'), stored.encode('utf-8'))
+    except Exception:
+        return False
 
 def create_token(user_id: str, username: str) -> str:
     payload = {
@@ -255,7 +273,7 @@ SEED_USERS = [
 ]
 
 async def seed_users():
-    """Seed predefined users into MongoDB on startup. Fast — only hashes NEW users."""
+    """Seed predefined users. Re-hash to PBKDF2 if old bcrypt format detected."""
     seeded = 0
     for seed in SEED_USERS:
         try:
@@ -275,15 +293,15 @@ async def seed_users():
                 }
                 await db.users.insert_one(doc)
                 seeded += 1
-                logger.info(f"Seeded new user: {seed['username']}")
             else:
-                # Only fill in missing fields — don't touch password
                 update_fields = {}
+                # Migrate to PBKDF2 if still on bcrypt
+                current_hash = existing.get("password_hash", "")
+                if not current_hash or not current_hash.startswith("pbkdf2:"):
+                    update_fields["password_hash"] = hash_password(seed["plain_password"])
                 for field in ["role", "department", "allowed_modules", "phone", "email", "name"]:
                     if field not in existing or existing[field] is None:
                         update_fields[field] = seed.get(field, "")
-                if "password_hash" not in existing or not existing["password_hash"]:
-                    update_fields["password_hash"] = hash_password(seed["plain_password"])
                 if update_fields:
                     await db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
         except Exception as e:
