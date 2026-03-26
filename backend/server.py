@@ -238,9 +238,8 @@ SEED_USERS = [
 ]
 
 async def seed_users():
-    """Seed predefined users into MongoDB on startup. Only re-hash if password doesn't verify."""
+    """Seed predefined users into MongoDB on startup. Fast — only hashes NEW users."""
     seeded = 0
-    updated = 0
     for seed in SEED_USERS:
         try:
             existing = await db.users.find_one({"username": seed["username"]})
@@ -261,28 +260,18 @@ async def seed_users():
                 seeded += 1
                 logger.info(f"Seeded new user: {seed['username']}")
             else:
+                # Only fill in missing fields — don't touch password
                 update_fields = {}
-                # Only re-hash if the current hash doesn't verify
-                current_hash = existing.get("password_hash", "")
-                needs_rehash = True
-                if current_hash:
-                    try:
-                        needs_rehash = not verify_password(seed["plain_password"], current_hash)
-                    except Exception:
-                        needs_rehash = True
-                if needs_rehash:
-                    update_fields["password_hash"] = hash_password(seed["plain_password"])
-                    logger.info(f"Re-hashing password for: {seed['username']}")
-                # Ensure all fields exist
                 for field in ["role", "department", "allowed_modules", "phone", "email", "name"]:
                     if field not in existing or existing[field] is None:
                         update_fields[field] = seed.get(field, "")
+                if "password_hash" not in existing or not existing["password_hash"]:
+                    update_fields["password_hash"] = hash_password(seed["plain_password"])
                 if update_fields:
                     await db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
-                    updated += 1
         except Exception as e:
             logger.error(f"Failed to seed user {seed['username']}: {e}")
-    logger.info(f"Seeding complete: {seeded} new, {updated} updated")
+    logger.info(f"Seeding complete: {seeded} new users")
 
 _seed_done = False
 
