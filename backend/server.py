@@ -24,7 +24,7 @@ load_dotenv(ROOT_DIR / '.env')
 try:
     import resend
     resend.api_key = os.environ.get('RESEND_API_KEY', '')
-except ImportError:
+except Exception:
     resend = None
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 
