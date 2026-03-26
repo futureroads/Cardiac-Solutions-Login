@@ -1,120 +1,75 @@
 # Cardiac Solutions LLC - AED Monitoring Dashboard PRD
 
 ## Original Problem Statement
-Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, service and monitor AEDs in the USA using remote cameras. Features include:
-- High-tech, futuristic login page with obsidian black background
-- Glowing cyan heart symbol with EKG line animation
-- Stark Industries HUD aesthetic with Jarvis-style circular data rings
-- Custom AED pad cursor that clamps on click
-- "Shock" effect on login
-- Dashboard for AED monitoring
-
-## User Personas
-1. **System Admin (futureroads)** - Manages user access, controls module visibility per user
-2. **AED Technicians** - Monitor device status, check battery/pads expiry
-3. **Healthcare Facility Managers** - Overview of subscriber AED fleet
-4. **Field Service Engineers** - Track reposition and maintenance needs
-
-## Core Requirements
-- JWT-based username/password authentication with MongoDB user storage
-- Admin role with "User Access" module for user CRUD + module assignment
-- Animated login page with EKG heart visualization and sound
-- Multi-stage login flow: heart click -> EKG animation -> login form
-- Command Center Hub as post-login landing page with module-based access control
-- JARVIS-style dashboard accessible from hub
-- Dark theme with cyan/neon accents, red branding for Cardiac Solutions
+Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, service and monitor AEDs in the USA using remote cameras.
 
 ## What's Been Implemented
-- [x] Login page with animated SVG heart and EKG line
-- [x] Multi-stage login: heart -> 5s EKG animation with MP3 sound -> login form
-- [x] BACK button on login screen
-- [x] Custom logo on heart and login screens
-- [x] **MongoDB user storage** with bcrypt hashed passwords (migrated from hardcoded)
-- [x] 7 seeded users on startup (1 admin + 6 regular users)
-- [x] **Password re-sync on every startup** — ensures production DB always has correct hashes
-- [x] **Role-based access control** (admin/user roles)
-- [x] **Module-based hub filtering** - users only see cards they have access to
-- [x] **Command Center Hub** with "Powering Up" splash screen
-- [x] Hub header with pulsing red heart, SYSTEM ONLINE, OPERATOR badge, LOGOUT button
-- [x] **User Access admin page** - Add/Edit/Delete users with Username, Password, Email, Phone, Role, Module Access
-- [x] Module selection checkboxes for assigning card visibility per user
-- [x] System admin (futureroads) cannot be deleted
-- [x] Non-admin users redirected away from /user-access
-- [x] JARVIS-style dashboard accessible via Dashboard module card
-- [x] Dashboard panels: System Status, AI Recommendations, Service Tickets, etc.
-- [x] Send Overview email feature (MOCKED)
-- [x] **Service Tickets card links to external URL** (service.cardiac-solutions.ai, opens in new tab)
-- [x] **Server status indicator** on login page (green/red dot)
-- [x] **Better login error messages** (distinguishes network errors from auth errors)
-- [x] **Production deployment fixed** — root cause was stale password hashes in production DB
-- [x] **Debug diagnostic endpoints** (/api/debug/status, /api/debug/test-login)
+- [x] Login page with animated SVG heart, EKG line, sound effects
+- [x] Command Center Hub with "Powering Up" splash screen and dynamic module cards
+- [x] MongoDB user storage with bcrypt hashed passwords (7 seeded users)
+- [x] Password re-sync on startup (verify-then-rehash only if needed)
+- [x] Role-based access control (admin/user roles)
+- [x] Module-based hub filtering per user
+- [x] User Access admin page (full CRUD)
+- [x] Service Tickets card → external link (service.cardiac-solutions.ai)
+- [x] Dashboard card → external link (dashboard.cardiac-solutions.ai)
+- [x] Server status indicator on login page
+- [x] **Production deployment FIXED** — multiple root causes resolved:
+  - Stale password hashes (re-sync on startup)
+  - Frontend hardcoded preview URL (relative URLs in production builds via apiBase.js)
+  - Over-pinned requirements.txt (stripped to direct deps only)
+  - Missing DB null checks in auth flow
+  - Null-safe user sorting in User Access
 
 ## Tech Stack
-- Frontend: React 19 + Framer Motion + Tailwind CSS
-- Backend: FastAPI (Python) + bcrypt + PyJWT + Motor (async MongoDB)
-- Database: MongoDB (users collection with roles + allowed_modules)
-- Authentication: JWT with MongoDB-backed users
-
-## API Endpoints
-- POST `/api/auth/login` - Authenticate user (returns JWT + user with role/modules)
-- GET `/api/auth/me` - Get current user profile
-- GET `/api/admin/users` - List all users (admin only)
-- POST `/api/admin/users` - Create user (admin only)
-- PUT `/api/admin/users/{id}` - Update user (admin only)
-- DELETE `/api/admin/users/{id}` - Delete user (admin only)
-- GET `/api/admin/modules` - List available modules (admin only)
-- GET `/api/dashboard/stats` - Get AED statistics (mocked)
-- GET `/api/dashboard/subscribers` - Get subscriber list (mocked)
-- GET `/api/dashboard/devices` - Get device list (mocked)
-- POST `/api/dashboard/send-overview` - Email dashboard overview (mocked)
-- GET `/api/debug/status` - DB connectivity and user diagnostics (no auth)
-- GET `/api/debug/test-login` - Test login flow diagnostics (no auth)
+- Frontend: React 19 + Framer Motion + Tailwind CSS + Shadcn UI
+- Backend: FastAPI + Motor (async MongoDB) + bcrypt + PyJWT
+- Database: MongoDB
+- Deployment: Emergent platform with Cloudflare CDN
 
 ## Key Files
-- `/app/frontend/src/pages/CommandCenterHub.jsx` - Hub with module filtering + external URL support
-- `/app/frontend/src/pages/UserAccess.jsx` - Admin user management page
-- `/app/frontend/src/pages/Dashboard.jsx` - JARVIS dashboard
-- `/app/frontend/src/pages/LoginPage.jsx` - Multi-stage login with server status indicator
-- `/app/frontend/src/App.js` - Routing with admin guard
-- `/app/backend/server.py` - All backend logic, auth, admin CRUD, seeding with password re-sync
+- `/app/frontend/src/apiBase.js` — environment-aware API URL (relative in production)
+- `/app/frontend/src/pages/CommandCenterHub.jsx` — Hub with module cards + external URLs
+- `/app/frontend/src/pages/UserAccess.jsx` — Admin CRUD with retry logic
+- `/app/frontend/src/pages/LoginPage.jsx` — Multi-stage login + server status
+- `/app/frontend/src/pages/Dashboard.jsx` — JARVIS dashboard (links to external)
+- `/app/backend/server.py` — All backend logic, auth, admin CRUD, seeding
+
+## API Endpoints
+- POST `/api/auth/login` — Authenticate user
+- GET `/api/auth/me` — Current user profile
+- GET/POST/PUT/DELETE `/api/admin/users` — User CRUD (admin only)
+- GET `/api/admin/modules` — Available modules list
+- GET `/api/dashboard/stats|subscribers|devices` — Dashboard data (mocked)
+- GET `/api/debug/status` — DB diagnostics (no auth)
+- GET `/api/debug/test-login` — Login test diagnostics (no auth)
+
+## Credentials
+- **Admin**: futureroads / @@U1s9m6c7@@
+- **Users**: Lew/Lew123, Stark/Stark123, Tony/Tony123, Tracey/Tracey123, Nate/Nate123, Jon/Jon123
 
 ## Prioritized Backlog
 
 ### P0 (Critical)
-- Build Daily Report module page (Module #1) based on user's "Daily Report UI" image
-- Build Notifications module page (Module #2)
+- Build Daily Report module page
+- Build Notifications module page
 
-### P1 (High Priority)
-- Set up Resend API key for real email delivery (currently mocked)
-- Wire dashboard to backend APIs (currently uses frontend mock data)
-- Build Backend Management page (Module #7, admin-only)
+### P1 (High)
+- Build Backend Management page (admin-only)
+- Enable real email delivery (Resend API key)
+- Wire dashboard to real backend APIs
 
-### P2 (Medium Priority)
-- Build Survival Path module page (Module #4)
-- Export data to CSV functionality
-- Historical trend charts
+### P2 (Medium)
+- Build Survival Path module page
+- Export to CSV, historical charts
 
 ### P3 (Nice to Have)
-- Device location map view
 - Mobile responsive optimizations
 - Refactor LoginPage.jsx into smaller components
 
-## Credentials
-- **Admin**: futureroads / @@U1s9m6c7@@ (role: admin, all modules + user_access)
-- Lew / Lew123 (email: c130usmc@gmail.com)
-- Stark / Stark123 (email: iq.ai.solutions@gmail.com)
-- Tony / Tony123
-- Tracey / Tracey123
-- Nate / Nate123
-- Jon / Jon123
-
-## Module IDs
-- daily_report, notifications, service_tickets, dashboard, survival_path, user_access (admin only), backend (admin only)
-
 ## Notes
-- Dashboard data is MOCKED (stats, subscribers, devices)
-- Email sending requires RESEND_API_KEY in backend/.env (currently mocked)
-- Users are stored in MongoDB with bcrypt password hashes
-- Admin user (user-admin-001) cannot be deleted via API
-- Service Tickets module links to external site: service.cardiac-solutions.ai
-- Seed user passwords are re-synced on every server startup to prevent stale hash issues
+- Dashboard data is MOCKED
+- Email sending requires RESEND_API_KEY (currently mocked)
+- Service Tickets → service.cardiac-solutions.ai (external)
+- Dashboard → dashboard.cardiac-solutions.ai (external)
+- Notifications card shows "IN DEV" but is clickable (routes to /notifications)
