@@ -444,6 +444,47 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         created_at=current_user.get("created_at", ""),
     )
 
+# ==================== Cross-Domain SSO Token ====================
+
+ALLOWED_CROSS_DOMAIN_TARGETS = {
+    "report": "https://report.cardiac-solutions.ai/auth",
+    "notifications": "https://notifications.cardiac-solutions.ai/auth",
+}
+
+class CrossDomainTokenRequest(BaseModel):
+    target: str  # "report" or "notifications"
+
+class CrossDomainTokenResponse(BaseModel):
+    redirect_url: str
+
+@api_router.post("/auth/cross-domain-token", response_model=CrossDomainTokenResponse)
+async def create_cross_domain_token(
+    body: CrossDomainTokenRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Generate a one-time, short-lived JWT for cross-domain SSO redirect."""
+    target_url = ALLOWED_CROSS_DOMAIN_TARGETS.get(body.target)
+    if not target_url:
+        raise HTTPException(status_code=400, detail=f"Unknown target: {body.target}")
+
+    payload = {
+        "sub": current_user["id"],
+        "username": current_user.get("username", ""),
+        "name": current_user.get("name", ""),
+        "role": current_user.get("role", "Employee"),
+        "email": current_user.get("email", ""),
+        "allowed_modules": current_user.get("allowed_modules", []),
+        "jti": uuid.uuid4().hex,           # unique token ID for single-use
+        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(timezone.utc) + timedelta(seconds=60),
+        "target": body.target,
+    }
+
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    redirect_url = f"{target_url}?token={token}"
+
+    return CrossDomainTokenResponse(redirect_url=redirect_url)
+
 # ==================== Admin User Management ====================
 
 @api_router.get("/admin/users")

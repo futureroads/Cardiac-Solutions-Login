@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
+import API_BASE from "../apiBase";
 import {
   Activity,
   Bell,
@@ -22,7 +23,7 @@ const ALL_MODULES = [
     status: "LIVE",
     icon: Activity,
     route: null,
-    externalUrl: "https://report.cardiac-solutions.ai",
+    crossDomainTarget: "report",
     description:
       "Real-time AED system status across all subscribers. AI-analyzed device health, trends and status breakdowns.",
     badgeCount: null,
@@ -33,7 +34,7 @@ const ALL_MODULES = [
     status: "IN DEV",
     icon: Bell,
     route: null,
-    externalUrl: "https://notifications.cardiac-solutions.ai",
+    crossDomainTarget: "notifications",
     description:
       "Subscriber issue alerts and email dispatch console. Track sent notifications and actionable AED events.",
     badgeCount: 16,
@@ -104,10 +105,10 @@ const ALL_MODULES = [
   },
 ];
 
-function ModuleCard({ module, index, onNavigate }) {
+function ModuleCard({ module, index, onNavigate, authToken }) {
+  const [loading, setLoading] = useState(false);
   const Icon = module.icon;
-  const isLive = module.status === "LIVE";
-  const hasRoute = !!module.route || !!module.externalUrl;
+  const hasRoute = !!module.route || !!module.externalUrl || !!module.crossDomainTarget;
   const statusColor =
     module.status === "LIVE" ? "#22c55e" : module.status === "ADMIN" ? "#ef4444" : "#eab308";
   const statusBg =
@@ -123,8 +124,28 @@ function ModuleCard({ module, index, onNavigate }) {
         ? "rgba(239, 68, 68, 0.3)"
         : "rgba(234, 179, 8, 0.3)";
 
-  const handleClick = () => {
-    if (module.externalUrl) {
+  const handleClick = async () => {
+    if (module.crossDomainTarget) {
+      // SSO flow: get signed token, then redirect
+      setLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/cross-domain-token`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({ target: module.crossDomainTarget }),
+        });
+        if (!res.ok) throw new Error("Token request failed");
+        const data = await res.json();
+        window.open(data.redirect_url, "_blank", "noopener,noreferrer");
+      } catch (err) {
+        console.error("Cross-domain SSO error:", err);
+      } finally {
+        setLoading(false);
+      }
+    } else if (module.externalUrl) {
       window.open(module.externalUrl, "_blank", "noopener,noreferrer");
     } else if (module.route) {
       onNavigate(module.route);
@@ -268,6 +289,7 @@ export default function CommandCenterHub({ user, onLogout }) {
 
   const operatorName = user?.username?.toUpperCase() || "ADMIN";
   const userModules = user?.allowed_modules || [];
+  const authToken = localStorage.getItem("token") || "";
 
   // Filter modules: show only those the user has access to
   const visibleModules = ALL_MODULES.filter((m) => userModules.includes(m.moduleKey));
@@ -461,6 +483,7 @@ export default function CommandCenterHub({ user, onLogout }) {
               module={mod}
               index={i}
               onNavigate={navigate}
+              authToken={authToken}
             />
           ))}
         </div>
