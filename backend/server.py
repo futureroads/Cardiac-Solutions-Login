@@ -4,6 +4,7 @@ import logging
 import asyncio
 import hashlib
 import secrets
+import traceback
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
@@ -11,14 +12,20 @@ import uuid
 
 print("[SERVER] Module loading started", flush=True)
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
-from fastapi.responses import JSONResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, Field
-import jwt
+try:
+    from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
+    from fastapi.responses import JSONResponse
+    from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+    from dotenv import load_dotenv
+    from starlette.middleware.cors import CORSMiddleware
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from pydantic import BaseModel, Field
+    import jwt
+    print("[SERVER] All imports OK", flush=True)
+except Exception as e:
+    print(f"[SERVER] FATAL IMPORT ERROR: {e}", flush=True)
+    traceback.print_exc()
+    raise
 
 # bcrypt is OPTIONAL — we default to PBKDF2 (pure Python, zero binary deps)
 try:
@@ -28,7 +35,7 @@ except Exception:
     _bcrypt = None
     _HAS_BCRYPT = False
 
-print(f"[SERVER] Imports OK, bcrypt available={_HAS_BCRYPT}", flush=True)
+print(f"[SERVER] bcrypt available={_HAS_BCRYPT}", flush=True)
 
 # Load .env first
 ROOT_DIR = Path(__file__).parent
@@ -41,17 +48,25 @@ SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
 db_name = os.environ.get('DB_NAME', 'test_database')
 
+print(f"[SERVER] MONGO_URL set={bool(mongo_url)}, DB_NAME={db_name}", flush=True)
+
 # Create client at module level — Motor is lazy (connects on first use)
 # retryWrites + retryReads ensure transient failures auto-retry
-_mongo_client = AsyncIOMotorClient(
-    mongo_url,
-    serverSelectionTimeoutMS=5000,
-    connectTimeoutMS=5000,
-    socketTimeoutMS=10000,
-    retryWrites=True,
-    retryReads=True,
-)
-_db = _mongo_client[db_name]
+try:
+    _mongo_client = AsyncIOMotorClient(
+        mongo_url,
+        serverSelectionTimeoutMS=5000,
+        connectTimeoutMS=5000,
+        socketTimeoutMS=10000,
+        retryWrites=True,
+        retryReads=True,
+    )
+    _db = _mongo_client[db_name]
+    print("[SERVER] Motor client created", flush=True)
+except Exception as e:
+    print(f"[SERVER] Motor client creation failed: {e}", flush=True)
+    _mongo_client = None
+    _db = None
 
 # JWT Configuration
 JWT_SECRET = os.environ.get('JWT_SECRET', 'cardiac-solutions-jwt-fallback')
@@ -96,7 +111,15 @@ security = HTTPBearer()
 # Diagnostic endpoint — no DB, no auth, proves server is alive
 @app.get("/api/version")
 async def version_check():
-    return {"version": "v6-resilient", "python": sys.version, "status": "running", "bcrypt_available": _HAS_BCRYPT}
+    return {
+        "version": "v7-indestructible",
+        "python": sys.version,
+        "status": "running",
+        "bcrypt_available": _HAS_BCRYPT,
+        "db_initialized": _db is not None,
+        "mongo_url_set": bool(mongo_url),
+        "db_name": db_name,
+    }
 
 
 # ==================== Models ====================
@@ -344,6 +367,9 @@ _seed_done = False
 async def startup():
     global _seed_done
     print("[SERVER] Starting up...", flush=True)
+    if _db is None:
+        print("[SERVER] DB not initialized, skipping startup DB tasks", flush=True)
+        return
     try:
         await asyncio.wait_for(_db.users.create_index("username", unique=True), timeout=5)
         await asyncio.wait_for(_db.users.create_index("id", unique=True), timeout=5)
@@ -354,6 +380,8 @@ async def startup():
         print(f"[SERVER] Startup DB skipped ({type(e).__name__}: {e}), will retry on first request", flush=True)
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user_id = payload.get("sub")
@@ -383,7 +411,14 @@ async def require_admin(current_user: dict = Depends(get_current_user)):
 
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
-    global _seed_done
+    global _seed_done, _mongo_client, _db
+    # Reconnect if DB was never initialized
+    if _db is None:
+        try:
+            _mongo_client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+            _db = _mongo_client[db_name]
+        except Exception:
+            raise HTTPException(status_code=503, detail="Database unavailable")
     # Lazy seed if startup was skipped
     if not _seed_done:
         try:
@@ -720,7 +755,7 @@ async def debug_status():
         "db_name": db_name,
         "jwt_secret_set": bool(JWT_SECRET),
         "seed_done": _seed_done,
-        "version": "v6-resilient",
+        "version": "v7-indestructible",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     try:
@@ -772,4 +807,8 @@ app.include_router(api_router)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    _mongo_client.close()
+    try:
+        if _mongo_client:
+            _mongo_client.close()
+    except Exception:
+        pass
