@@ -419,8 +419,8 @@ export default function LoginPage({ onLogin }) {
       onMouseLeave={() => setShowCustomCursor(false)}
     >
       {/* Build Version */}
-      <div className="absolute top-3 left-4 z-50 text-[10px] font-mono tracking-wider text-slate-600 select-none">
-        v2603271340
+      <div className="absolute top-6 left-5 z-50 text-xs font-mono tracking-widest text-slate-500 select-none opacity-70">
+        v2603271345
       </div>
 
       {/* Custom Cursor - only show on heart and beating screens */}
