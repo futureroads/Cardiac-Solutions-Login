@@ -533,71 +533,86 @@ async def list_users(admin: dict = Depends(require_admin)):
 
 @api_router.post("/admin/users")
 async def create_user(data: AdminUserCreate, admin: dict = Depends(require_admin)):
-    existing = await _db.users.find_one({"username": data.username})
-    if existing:
-        raise HTTPException(status_code=400, detail="Username already exists")
+    try:
+        existing = await _db.users.find_one({"username": data.username})
+        if existing:
+            raise HTTPException(status_code=400, detail="Username already exists")
 
-    user_id = f"user-{uuid.uuid4().hex[:8]}"
-    doc = {
-        "id": user_id,
-        "username": data.username,
-        "name": data.username,
-        "email": data.email or "",
-        "phone": data.phone or "",
-        "role": data.role or "Employee",
-        "department": data.department or "",
-        "allowed_modules": data.allowed_modules or [],
-        "password_hash": hash_password(data.password),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await _db.users.insert_one(doc)
-    doc.pop("_id", None)
-    doc.pop("password_hash", None)
-    return doc
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        doc = {
+            "id": user_id,
+            "username": data.username,
+            "name": data.username,
+            "email": data.email or "",
+            "phone": data.phone or "",
+            "role": data.role or "Employee",
+            "department": data.department or "",
+            "allowed_modules": data.allowed_modules or [],
+            "password_hash": hash_password(data.password),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await _db.users.insert_one(doc)
+        doc.pop("_id", None)
+        doc.pop("password_hash", None)
+        return doc
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"create_user error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create user")
 
 @api_router.put("/admin/users/{user_id}")
 async def update_user(user_id: str, data: AdminUserUpdate, admin: dict = Depends(require_admin)):
-    user = await _db.users.find_one({"id": user_id})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        user = await _db.users.find_one({"id": user_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
 
-    update = {}
-    if data.username is not None:
-        # Check uniqueness
-        clash = await _db.users.find_one({"username": data.username, "id": {"$ne": user_id}})
-        if clash:
-            raise HTTPException(status_code=400, detail="Username already exists")
-        update["username"] = data.username
-        update["name"] = data.username
-    if data.password is not None and data.password != "":
-        update["password_hash"] = hash_password(data.password)
-    if data.email is not None:
-        update["email"] = data.email
-    if data.phone is not None:
-        update["phone"] = data.phone
-    if data.role is not None:
-        update["role"] = data.role
-    if data.department is not None:
-        update["department"] = data.department
-    if data.allowed_modules is not None:
-        update["allowed_modules"] = data.allowed_modules
+        update = {}
+        if data.username is not None:
+            clash = await _db.users.find_one({"username": data.username, "id": {"$ne": user_id}})
+            if clash:
+                raise HTTPException(status_code=400, detail="Username already exists")
+            update["username"] = data.username
+            update["name"] = data.username
+        if data.password is not None and data.password != "":
+            update["password_hash"] = hash_password(data.password)
+        if data.email is not None:
+            update["email"] = data.email
+        if data.phone is not None:
+            update["phone"] = data.phone
+        if data.role is not None:
+            update["role"] = data.role
+        if data.department is not None:
+            update["department"] = data.department
+        if data.allowed_modules is not None:
+            update["allowed_modules"] = data.allowed_modules
 
-    if update:
-        await _db.users.update_one({"id": user_id}, {"$set": update})
+        if update:
+            await _db.users.update_one({"id": user_id}, {"$set": update})
 
-    updated = await _db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
-    return updated
+        updated = await _db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"update_user error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update user")
 
 @api_router.delete("/admin/users/{user_id}")
 async def delete_user(user_id: str, admin: dict = Depends(require_admin)):
-    # Prevent deleting yourself
     if user_id == "user-admin-001":
         raise HTTPException(status_code=400, detail="Cannot delete the system admin")
-
-    result = await _db.users.delete_one({"id": user_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {"status": "deleted"}
+    try:
+        result = await _db.users.delete_one({"id": user_id})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"delete_user error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete user")
 
 @api_router.get("/admin/modules")
 async def list_modules(admin: dict = Depends(require_admin)):
@@ -617,24 +632,26 @@ async def list_modules(admin: dict = Depends(require_admin)):
 
 @api_router.get("/dashboard/stats", response_model=DashboardStats)
 async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
-    stats = await _db.dashboard_stats.find_one({}, {"_id": 0})
-    if not stats:
-        stats = {
-            "total_monitored": 3108,
-            "percent_ready": 76.7,
-            "ready": 2385,
-            "not_ready": 6,
-            "reposition": 82,
-            "not_present": 7,
-            "expired_bp": 289,
-            "expiring_bp": 25,
-            "lost_contact": 256,
-            "unknown": 58,
-            "last_updated": datetime.now(timezone.utc).isoformat()
-        }
-        await _db.dashboard_stats.insert_one(stats)
-        stats.pop("_id", None)
-    return DashboardStats(**stats)
+    try:
+        stats = await _db.dashboard_stats.find_one({}, {"_id": 0})
+        if not stats:
+            stats = {
+                "total_monitored": 3108,
+                "percent_ready": 76.7,
+                "ready": 2385,
+                "not_ready": 6,
+                "reposition": 82,
+                "not_present": 7,
+                "expired_bp": 289,
+                "expiring_bp": 25,
+                "lost_contact": 256,
+                "unknown": 58,
+                "last_updated": datetime.now(timezone.utc).isoformat()
+            }
+        return DashboardStats(**stats)
+    except Exception as e:
+        logger.error(f"get_dashboard_stats error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load stats")
 
 @api_router.get("/dashboard/subscribers", response_model=List[Subscriber])
 async def get_subscribers(current_user: dict = Depends(get_current_user)):

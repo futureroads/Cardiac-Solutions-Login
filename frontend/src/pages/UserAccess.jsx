@@ -58,27 +58,39 @@ export default function UserAccess() {
     "Content-Type": "application/json",
   };
 
-  const fetchUsers = useCallback(async (retries = 2) => {
+  const fetchUsers = useCallback(async (retries = 3) => {
     try {
       const res = await fetch(`${API_URL}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) {
-        if (res.status === 502 && retries > 0) {
+        // Retry on server errors (502, 520, 503, 504)
+        if ([502, 503, 504, 520, 521, 522].includes(res.status) && retries > 0) {
           await new Promise(r => setTimeout(r, 2000));
           return fetchUsers(retries - 1);
         }
-        const errBody = await res.text().catch(() => "");
-        throw new Error(`HTTP ${res.status}: ${errBody || res.statusText}`);
+        // Try to get JSON error detail, fall back to status text
+        let errMsg = res.statusText;
+        try {
+          const ct = res.headers.get("content-type") || "";
+          if (ct.includes("application/json")) {
+            const errBody = await res.json();
+            errMsg = errBody.detail || errMsg;
+          }
+        } catch {}
+        throw new Error(errMsg);
       }
       const data = await res.json();
       data.sort((a, b) => (a.username || "").localeCompare(b.username || "", undefined, { sensitivity: "base" }));
       setUsers(data);
     } catch (err) {
-      if (retries > 0 && !err.message?.startsWith("HTTP")) {
+      if (retries > 0) {
         await new Promise(r => setTimeout(r, 2000));
         return fetchUsers(retries - 1);
       }
       console.error("fetchUsers error:", err);
-      toast.error(`Failed to load users: ${err.message}`);
+      toast.error("Failed to load users. Server may be restarting — please try again.", {
+        action: { label: "Retry", onClick: () => { setLoading(true); fetchUsers(3); } },
+        duration: 10000,
+      });
     } finally {
       setLoading(false);
     }
@@ -146,9 +158,18 @@ export default function UserAccess() {
       const method = editingId ? "PUT" : "POST";
 
       const res = await fetch(url, { method, headers, body: JSON.stringify(body) });
-      const data = await res.json();
 
-      if (!res.ok) throw new Error(data.detail || "Failed to save user");
+      if (!res.ok) {
+        let errMsg = "Failed to save user";
+        try {
+          const ct = res.headers.get("content-type") || "";
+          if (ct.includes("application/json")) {
+            const data = await res.json();
+            errMsg = data.detail || errMsg;
+          }
+        } catch {}
+        throw new Error(errMsg);
+      }
 
       toast.success(editingId ? "User updated" : "User created");
       cancel();
@@ -168,8 +189,15 @@ export default function UserAccess() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.detail || "Failed to delete");
+        let errMsg = "Failed to delete";
+        try {
+          const ct = res.headers.get("content-type") || "";
+          if (ct.includes("application/json")) {
+            const data = await res.json();
+            errMsg = data.detail || errMsg;
+          }
+        } catch {}
+        throw new Error(errMsg);
       }
       toast.success(`User "${username}" deleted`);
       fetchUsers();

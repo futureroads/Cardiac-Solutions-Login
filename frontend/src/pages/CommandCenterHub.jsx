@@ -126,25 +126,35 @@ function ModuleCard({ module, index, onNavigate, authToken }) {
 
   const handleClick = async () => {
     if (module.crossDomainTarget) {
-      // SSO flow: get signed token, then redirect
       setLoading(true);
-      try {
-        const res = await fetch(`${API_BASE}/api/auth/cross-domain-token`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${authToken}`,
-          },
-          body: JSON.stringify({ target: module.crossDomainTarget }),
-        });
-        if (!res.ok) throw new Error("Token request failed");
-        const data = await res.json();
-        window.open(data.redirect_url, "_blank", "noopener,noreferrer");
-      } catch (err) {
-        console.error("Cross-domain SSO error:", err);
-      } finally {
-        setLoading(false);
+      // SSO flow with retry: get signed token, then redirect
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const res = await fetch(`${API_BASE}/api/auth/cross-domain-token`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({ target: module.crossDomainTarget }),
+          });
+          if ([502, 503, 520, 521].includes(res.status) && attempt < 2) {
+            await new Promise(r => setTimeout(r, 1500));
+            continue;
+          }
+          if (!res.ok) throw new Error("Token request failed");
+          const data = await res.json();
+          window.open(data.redirect_url, "_blank", "noopener,noreferrer");
+          break;
+        } catch (err) {
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 1500));
+            continue;
+          }
+          console.error("Cross-domain SSO error:", err);
+        }
       }
+      setLoading(false);
     } else if (module.externalUrl) {
       window.open(module.externalUrl, "_blank", "noopener,noreferrer");
     } else if (module.route) {
