@@ -21,7 +21,8 @@ const ALL_MODULES = [
     title: "DAILY REPORT",
     status: "LIVE",
     icon: Activity,
-    route: "/daily-report",
+    route: null,
+    externalUrl: "https://report.cardiac-solutions.ai",
     description:
       "Real-time AED system status across all subscribers. AI-analyzed device health, trends and status breakdowns.",
     badgeCount: null,
@@ -31,7 +32,8 @@ const ALL_MODULES = [
     title: "NOTIFICATIONS",
     status: "IN DEV",
     icon: Bell,
-    route: "/notifications",
+    route: null,
+    externalUrl: "https://notifications.cardiac-solutions.ai",
     description:
       "Subscriber issue alerts and email dispatch console. Track sent notifications and actionable AED events.",
     badgeCount: 16,
