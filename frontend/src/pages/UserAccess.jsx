@@ -12,6 +12,7 @@ import {
   User,
   Eye,
   EyeOff,
+  LogOut,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,7 +41,7 @@ const emptyForm = {
   allowed_modules: [],
 };
 
-export default function UserAccess() {
+export default function UserAccess({ onLogout }) {
   const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -252,18 +253,32 @@ export default function UserAccess() {
             USER ACCESS MANAGEMENT
           </h1>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 px-4 py-2 rounded-sm font-tech text-[11px] tracking-[0.1em] transition-colors hover:bg-cyan-500/10"
-          style={{
-            border: "1px solid rgba(6, 182, 212, 0.3)",
-            color: "#06b6d4",
-          }}
-          data-testid="add-user-btn"
-        >
-          <UserPlus size={14} />
-          ADD USER
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2 rounded-sm font-tech text-[11px] tracking-[0.1em] transition-colors hover:bg-cyan-500/10"
+            style={{
+              border: "1px solid rgba(6, 182, 212, 0.3)",
+              color: "#06b6d4",
+            }}
+            data-testid="add-user-btn"
+          >
+            <UserPlus size={14} />
+            ADD USER
+          </button>
+          <button
+            onClick={() => { if (onLogout) onLogout(); navigate("/"); }}
+            className="flex items-center gap-2 px-3 py-2 rounded-sm font-tech text-[11px] tracking-[0.1em] transition-colors hover:bg-red-500/10"
+            style={{
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              color: "#ef4444",
+            }}
+            data-testid="logout-btn-ua"
+          >
+            <LogOut size={14} />
+            LOGOUT
+          </button>
+        </div>
       </header>
 
       {/* Main */}

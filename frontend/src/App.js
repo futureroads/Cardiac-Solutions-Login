@@ -76,7 +76,7 @@ function App() {
             path="/user-access" 
             element={
               isAuthenticated && user?.role === "admin" ? 
-                <UserAccess /> : 
+                <UserAccess onLogout={handleLogout} /> : 
                 <Navigate to="/hub" replace />
             } 
           />
