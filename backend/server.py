@@ -11,7 +11,8 @@ import uuid
 
 print("[SERVER] Module loading started", flush=True)
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -36,11 +37,21 @@ load_dotenv(ROOT_DIR / '.env')
 # Resend loaded lazily inside send_overview_email to avoid startup crash
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 
-# MongoDB connection
+# MongoDB connection — Motor handles auto-reconnect internally
 mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
 db_name = os.environ.get('DB_NAME', 'test_database')
-client = None
-db = None
+
+# Create client at module level — Motor is lazy (connects on first use)
+# retryWrites + retryReads ensure transient failures auto-retry
+_mongo_client = AsyncIOMotorClient(
+    mongo_url,
+    serverSelectionTimeoutMS=5000,
+    connectTimeoutMS=5000,
+    socketTimeoutMS=10000,
+    retryWrites=True,
+    retryReads=True,
+)
+_db = _mongo_client[db_name]
 
 # JWT Configuration
 JWT_SECRET = os.environ.get('JWT_SECRET', 'cardiac-solutions-jwt-fallback')
@@ -60,6 +71,23 @@ ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard
 # Create the main app
 app = FastAPI(title="Cardiac Solutions API")
 
+# CORS — MUST be added before routes so error responses also get headers
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Global exception handler — ensures ALL errors return valid JSON (prevents 520)
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception on {request.method} {request.url.path}: {type(exc).__name__}: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "type": str(type(exc).__name__)},
+    )
+
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
@@ -68,7 +96,7 @@ security = HTTPBearer()
 # Diagnostic endpoint — no DB, no auth, proves server is alive
 @app.get("/api/version")
 async def version_check():
-    return {"version": "v5-pbkdf2", "python": sys.version, "status": "running", "bcrypt_available": _HAS_BCRYPT}
+    return {"version": "v6-resilient", "python": sys.version, "status": "running", "bcrypt_available": _HAS_BCRYPT}
 
 
 # ==================== Models ====================
@@ -274,7 +302,7 @@ async def seed_users():
     seeded = 0
     for seed in SEED_USERS:
         try:
-            existing = await db.users.find_one({"username": seed["username"]})
+            existing = await _db.users.find_one({"username": seed["username"]})
             if not existing:
                 doc = {
                     "id": seed["id"],
@@ -288,7 +316,7 @@ async def seed_users():
                     "password_hash": hash_password(seed["plain_password"]),
                     "created_at": seed["created_at"],
                 }
-                await db.users.insert_one(doc)
+                await _db.users.insert_one(doc)
                 seeded += 1
             else:
                 update_fields = {}
@@ -305,52 +333,34 @@ async def seed_users():
                     if field not in existing or existing[field] is None:
                         update_fields[field] = seed.get(field, "")
                 if update_fields:
-                    await db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
+                    await _db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
         except Exception as e:
             logger.error(f"Failed to seed user {seed['username']}: {e}")
     logger.info(f"Seeding complete: {seeded} new users")
 
 _seed_done = False
 
-async def _do_startup_db():
-    global client, db, _seed_done
-    try:
-        client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=3000)
-        db = client[db_name]
-        await db.users.create_index("username", unique=True)
-        await db.users.create_index("id", unique=True)
-        await seed_users()
-        _seed_done = True
-        print("[SERVER] DB startup complete", flush=True)
-    except Exception as e:
-        print(f"[SERVER] DB startup error: {e}", flush=True)
-        raise
-
 @app.on_event("startup")
 async def startup():
+    global _seed_done
     print("[SERVER] Starting up...", flush=True)
     try:
-        await asyncio.wait_for(_do_startup_db(), timeout=15)
+        await asyncio.wait_for(_db.users.create_index("username", unique=True), timeout=5)
+        await asyncio.wait_for(_db.users.create_index("id", unique=True), timeout=5)
+        await asyncio.wait_for(seed_users(), timeout=15)
+        _seed_done = True
         print("[SERVER] Startup complete with DB", flush=True)
     except Exception as e:
         print(f"[SERVER] Startup DB skipped ({type(e).__name__}: {e}), will retry on first request", flush=True)
-        # Server starts anyway — DB connects on first request
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    global client, db
-    if db is None:
-        try:
-            client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
-            db = client[db_name]
-        except Exception:
-            raise HTTPException(status_code=503, detail="Database unavailable")
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
 
-        user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+        user = await _db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
         if user is None:
             raise HTTPException(status_code=401, detail="User not found")
         return user
@@ -361,8 +371,8 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
     except Exception as e:
-        logger.error(f"get_current_user error: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"get_current_user error: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
 
 async def require_admin(current_user: dict = Depends(get_current_user)):
     if current_user.get("role") != "admin":
@@ -373,22 +383,21 @@ async def require_admin(current_user: dict = Depends(get_current_user)):
 
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
-    global client, db, _seed_done
-    # Lazy DB init if startup was skipped
-    if db is None:
-        try:
-            client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
-            db = client[db_name]
-        except Exception as e:
-            raise HTTPException(status_code=503, detail="Database unavailable")
+    global _seed_done
+    # Lazy seed if startup was skipped
     if not _seed_done:
         try:
-            await seed_users()
+            await asyncio.wait_for(seed_users(), timeout=10)
             _seed_done = True
-        except Exception:
-            pass
-    
-    user = await db.users.find_one({"username": credentials.username}, {"_id": 0})
+        except Exception as e:
+            logger.warning(f"Lazy seed failed: {e}")
+
+    try:
+        user = await _db.users.find_one({"username": credentials.username}, {"_id": 0})
+    except Exception as e:
+        logger.error(f"Login DB error: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=503, detail="Database temporarily unavailable. Please try again.")
+
     if not user:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
@@ -400,9 +409,9 @@ async def login(credentials: UserLogin):
     if current_hash and not current_hash.startswith("pbkdf2:"):
         try:
             new_hash = hash_password(credentials.password)
-            await db.users.update_one({"id": user["id"]}, {"$set": {"password_hash": new_hash}})
+            await _db.users.update_one({"id": user["id"]}, {"$set": {"password_hash": new_hash}})
         except Exception:
-            pass  # Non-critical, will try again next login
+            pass  # Non-critical
 
     token = create_token(user["id"], user["username"])
 
@@ -440,7 +449,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 @api_router.get("/admin/users")
 async def list_users(admin: dict = Depends(require_admin)):
     try:
-        users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
+        users = await _db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
         return users
     except Exception as e:
         logger.error(f"list_users error: {e}")
@@ -448,7 +457,7 @@ async def list_users(admin: dict = Depends(require_admin)):
 
 @api_router.post("/admin/users")
 async def create_user(data: AdminUserCreate, admin: dict = Depends(require_admin)):
-    existing = await db.users.find_one({"username": data.username})
+    existing = await _db.users.find_one({"username": data.username})
     if existing:
         raise HTTPException(status_code=400, detail="Username already exists")
 
@@ -465,21 +474,21 @@ async def create_user(data: AdminUserCreate, admin: dict = Depends(require_admin
         "password_hash": hash_password(data.password),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.users.insert_one(doc)
+    await _db.users.insert_one(doc)
     doc.pop("_id", None)
     doc.pop("password_hash", None)
     return doc
 
 @api_router.put("/admin/users/{user_id}")
 async def update_user(user_id: str, data: AdminUserUpdate, admin: dict = Depends(require_admin)):
-    user = await db.users.find_one({"id": user_id})
+    user = await _db.users.find_one({"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     update = {}
     if data.username is not None:
         # Check uniqueness
-        clash = await db.users.find_one({"username": data.username, "id": {"$ne": user_id}})
+        clash = await _db.users.find_one({"username": data.username, "id": {"$ne": user_id}})
         if clash:
             raise HTTPException(status_code=400, detail="Username already exists")
         update["username"] = data.username
@@ -498,9 +507,9 @@ async def update_user(user_id: str, data: AdminUserUpdate, admin: dict = Depends
         update["allowed_modules"] = data.allowed_modules
 
     if update:
-        await db.users.update_one({"id": user_id}, {"$set": update})
+        await _db.users.update_one({"id": user_id}, {"$set": update})
 
-    updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    updated = await _db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
     return updated
 
 @api_router.delete("/admin/users/{user_id}")
@@ -509,7 +518,7 @@ async def delete_user(user_id: str, admin: dict = Depends(require_admin)):
     if user_id == "user-admin-001":
         raise HTTPException(status_code=400, detail="Cannot delete the system admin")
 
-    result = await db.users.delete_one({"id": user_id})
+    result = await _db.users.delete_one({"id": user_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
     return {"status": "deleted"}
@@ -532,7 +541,7 @@ async def list_modules(admin: dict = Depends(require_admin)):
 
 @api_router.get("/dashboard/stats", response_model=DashboardStats)
 async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
-    stats = await db.dashboard_stats.find_one({}, {"_id": 0})
+    stats = await _db.dashboard_stats.find_one({}, {"_id": 0})
     if not stats:
         stats = {
             "total_monitored": 3108,
@@ -547,13 +556,13 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
             "unknown": 58,
             "last_updated": datetime.now(timezone.utc).isoformat()
         }
-        await db.dashboard_stats.insert_one(stats)
+        await _db.dashboard_stats.insert_one(stats)
         stats.pop("_id", None)
     return DashboardStats(**stats)
 
 @api_router.get("/dashboard/subscribers", response_model=List[Subscriber])
 async def get_subscribers(current_user: dict = Depends(get_current_user)):
-    subscribers = await db.subscribers.find({}, {"_id": 0}).to_list(100)
+    subscribers = await _db.subscribers.find({}, {"_id": 0}).to_list(100)
     if not subscribers:
         mock_subscribers = [
             {"id": str(uuid.uuid4()), "name": "Baton Rouge Airport", "total": 4, "ready": 0, "not_ready": 0, "reposition": 0, "not_present": 0, "expired_bp": 4, "expiring_bp": 0, "lost_contact": 0, "unknown": 0},
@@ -565,13 +574,13 @@ async def get_subscribers(current_user: dict = Depends(get_current_user)):
             {"id": str(uuid.uuid4()), "name": "Delta Airlines HQ", "total": 156, "ready": 142, "not_ready": 2, "reposition": 5, "not_present": 1, "expired_bp": 3, "expiring_bp": 2, "lost_contact": 1, "unknown": 0},
             {"id": str(uuid.uuid4()), "name": "Emory Healthcare", "total": 520, "ready": 498, "not_ready": 3, "reposition": 12, "not_present": 2, "expired_bp": 2, "expiring_bp": 1, "lost_contact": 2, "unknown": 0},
         ]
-        await db.subscribers.insert_many(mock_subscribers)
+        await _db.subscribers.insert_many(mock_subscribers)
         subscribers = mock_subscribers
     return [Subscriber(**s) for s in subscribers]
 
 @api_router.get("/dashboard/devices", response_model=List[AEDDevice])
 async def get_devices(current_user: dict = Depends(get_current_user), limit: int = 50):
-    devices = await db.devices.find({}, {"_id": 0}).to_list(limit)
+    devices = await _db.devices.find({}, {"_id": 0}).to_list(limit)
     if not devices:
         locations = ["Main Lobby", "Floor 2 East", "Cafeteria", "Gym", "Pool Area", "Conference Room A", "Emergency Exit 1"]
         statuses = ["ready", "ready", "ready", "ready", "not_ready", "reposition", "lost_contact"]
@@ -587,7 +596,7 @@ async def get_devices(current_user: dict = Depends(get_current_user), limit: int
                 "pads_expiry": "2025-06-15",
                 "camera_status": "online" if i % 5 != 0 else "offline"
             })
-        await db.devices.insert_many(mock_devices)
+        await _db.devices.insert_many(mock_devices)
         devices = mock_devices
     return [AEDDevice(**d) for d in devices]
 
@@ -599,7 +608,7 @@ async def send_overview_email(current_user: dict = Depends(get_current_user)):
     if not user_email:
         raise HTTPException(status_code=400, detail="No email address on file for your account")
 
-    stats_doc = await db.dashboard_stats.find_one({}, {"_id": 0})
+    stats_doc = await _db.dashboard_stats.find_one({}, {"_id": 0})
     if not stats_doc:
         stats_doc = {
             "total_monitored": 3108, "percent_ready": 76.7, "ready": 2385,
@@ -670,16 +679,13 @@ async def debug_status():
         "db_name": db_name,
         "jwt_secret_set": bool(JWT_SECRET),
         "seed_done": _seed_done,
+        "version": "v6-resilient",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    if db is None:
-        info["db_connected"] = False
-        info["error"] = "MongoDB client not initialized"
-        return info
     try:
-        count = await db.users.count_documents({})
+        count = await _db.users.count_documents({})
         usernames = []
-        async for u in db.users.find({}, {"_id": 0, "username": 1}).limit(20):
+        async for u in _db.users.find({}, {"_id": 0, "username": 1}).limit(20):
             usernames.append(u.get("username", "?"))
         info["db_connected"] = True
         info["user_count"] = count
@@ -693,14 +699,11 @@ async def debug_status():
 async def debug_test_login():
     """Test login for seed user Lew — returns diagnostic info, no actual token."""
     result = {}
-    if db is None:
-        result["error"] = "DB not connected"
-        return result
     try:
-        user = await db.users.find_one({"username": "Lew"}, {"_id": 0})
+        user = await _db.users.find_one({"username": "Lew"}, {"_id": 0})
         if not user:
             result["error"] = "User 'Lew' not found in database"
-            result["user_count"] = await db.users.count_documents({})
+            result["user_count"] = await _db.users.count_documents({})
             return result
         result["user_found"] = True
         result["has_password_hash"] = "password_hash" in user
@@ -723,18 +726,9 @@ async def root():
 async def health():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
-# CORS - add before router to ensure all responses get headers
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Include the router in the main app
 app.include_router(api_router)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    if client:
-        client.close()
+    _mongo_client.close()
