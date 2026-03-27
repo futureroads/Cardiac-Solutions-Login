@@ -16,6 +16,25 @@ function App() {
     const token = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
     if (token && storedUser) {
+      // Check if JWT is expired
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.exp && payload.exp * 1000 < Date.now()) {
+          // Token expired — force logout
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          setIsAuthenticated(false);
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // Invalid token format — clear it
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        setLoading(false);
+        return;
+      }
       setIsAuthenticated(true);
       setUser(JSON.parse(storedUser));
     }
@@ -27,6 +46,8 @@ function App() {
     localStorage.setItem("user", JSON.stringify(userData));
     setIsAuthenticated(true);
     setUser(userData);
+    // Always go to hub after fresh login
+    window.history.replaceState(null, '', '/hub');
   };
 
   const handleLogout = () => {
@@ -34,6 +55,7 @@ function App() {
     localStorage.removeItem("user");
     setIsAuthenticated(false);
     setUser(null);
+    window.history.replaceState(null, '', '/');
   };
 
   if (loading) {
