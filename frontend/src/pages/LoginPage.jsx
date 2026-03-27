@@ -373,41 +373,64 @@ export default function LoginPage({ onLogin }) {
     setLoading(true);
     setShockEffect(true);
 
-    try {
-      const endpoint = isRegister ? "/auth/register" : "/auth/login";
-      const payload = isRegister 
-        ? { username, password, name }
-        : { username, password };
+    const endpoint = isRegister ? "/auth/register" : "/auth/login";
+    const payload = isRegister 
+      ? { username, password, name }
+      : { username, password };
 
-      const response = await axios.post(`${API}${endpoint}`, payload);
-      
-      // Start heartbeat animation on success
-      setIsBeating(true);
-      
-      // Save credentials for next login
-      localStorage.setItem("saved_username", username);
-      localStorage.setItem("saved_password", password);
+    // Retry up to 3 times on server errors (520, 502, 503)
+    let lastError = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await axios.post(`${API}${endpoint}`, payload);
+        
+        // Success — start heartbeat animation
+        setIsBeating(true);
+        localStorage.setItem("saved_username", username);
+        localStorage.setItem("saved_password", password);
 
-      setTimeout(() => {
-        toast.success(isRegister ? "Account created successfully!" : "Access granted!");
-        onLogin(response.data.access_token, response.data.user);
-      }, 1500);
-      
-    } catch (error) {
-      setIsBeating(false);
-      if (error.response) {
-        // Server responded with an error
-        toast.error(error.response.data?.detail || `Server error (${error.response.status})`);
-      } else if (error.request) {
-        // No response received - network issue
-        toast.error("Cannot reach server. Check your connection or try again.");
-      } else {
-        toast.error("Authentication failed");
+        setTimeout(() => {
+          toast.success(isRegister ? "Account created successfully!" : "Access granted!");
+          onLogin(response.data.access_token, response.data.user);
+        }, 1500);
+        
+        setLoading(false);
+        setTimeout(() => setShockEffect(false), 300);
+        return; // success — exit
+      } catch (error) {
+        lastError = error;
+        const status = error.response?.status;
+        if ([502, 503, 504, 520, 521, 522].includes(status) && attempt < 2) {
+          toast.info("Server is warming up... retrying", { duration: 2000 });
+          await new Promise(r => setTimeout(r, 2500));
+          continue; // retry
+        }
+        if (!error.response && attempt < 2) {
+          toast.info("Connecting to server... retrying", { duration: 2000 });
+          await new Promise(r => setTimeout(r, 2500));
+          continue; // retry on network errors too
+        }
+        break; // non-retryable error
       }
-    } finally {
-      setLoading(false);
-      setTimeout(() => setShockEffect(false), 300);
     }
+
+    // All retries failed
+    setIsBeating(false);
+    if (lastError?.response) {
+      const detail = lastError.response.data?.detail;
+      const status = lastError.response.status;
+      if ([502, 503, 520].includes(status)) {
+        toast.error("Server is temporarily unavailable. Please try again in a moment.");
+      } else {
+        toast.error(detail || `Server error (${status})`);
+      }
+    } else if (lastError?.request) {
+      toast.error("Cannot reach server. Please try again in a moment.");
+    } else {
+      toast.error("Authentication failed");
+    }
+    setLoading(false);
+    setTimeout(() => setShockEffect(false), 300);
   };
 
   return (
@@ -420,7 +443,7 @@ export default function LoginPage({ onLogin }) {
     >
       {/* Build Version */}
       <div className="absolute top-6 left-5 z-50 text-xs font-mono tracking-widest text-slate-500 select-none opacity-70">
-        v2603271345
+        v2603271400
       </div>
 
       {/* Custom Cursor - only show on heart and beating screens */}
