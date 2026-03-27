@@ -418,6 +418,11 @@ export default function LoginPage({ onLogin }) {
       onMouseEnter={() => setShowCustomCursor(true)}
       onMouseLeave={() => setShowCustomCursor(false)}
     >
+      {/* Build Version */}
+      <div className="absolute top-3 left-4 z-50 text-[10px] font-mono tracking-wider text-slate-600 select-none">
+        v2603271200
+      </div>
+
       {/* Custom Cursor - only show on heart and beating screens */}
       {showCustomCursor && currentScreen !== "login" && (
         <AEDCursor position={cursorPosition} isClicking={isClicking} />
