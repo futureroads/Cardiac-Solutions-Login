@@ -111,14 +111,23 @@ security = HTTPBearer()
 # Diagnostic endpoint — no DB, no auth, proves server is alive
 @app.get("/api/version")
 async def version_check():
+    import importlib
+    versions = {}
+    for pkg in ["fastapi", "uvicorn", "motor", "pymongo", "pydantic", "starlette"]:
+        try:
+            m = importlib.import_module(pkg)
+            versions[pkg] = getattr(m, "__version__", "installed")
+        except Exception:
+            versions[pkg] = "NOT FOUND"
     return {
-        "version": "v7-indestructible",
+        "version": "v8-nuclear",
+        "build": "2603271340",
         "python": sys.version,
         "status": "running",
         "bcrypt_available": _HAS_BCRYPT,
         "db_initialized": _db is not None,
-        "mongo_url_set": bool(mongo_url),
-        "db_name": db_name,
+        "seed_done": _seed_done,
+        "packages": versions,
     }
 
 
@@ -321,12 +330,23 @@ SEED_USERS = [
 ]
 
 async def seed_users():
-    """Seed predefined users. Re-hash to PBKDF2 if old bcrypt format detected."""
+    """Seed predefined users. Non-blocking - runs PBKDF2 in thread pool."""
+    # Quick check: if all users exist, skip entirely (fast path for restarts)
+    try:
+        count = await _db.users.count_documents({})
+        if count >= len(SEED_USERS):
+            logger.info(f"Seeding skipped: {count} users already exist")
+            return
+    except Exception:
+        pass
+
     seeded = 0
     for seed in SEED_USERS:
         try:
             existing = await _db.users.find_one({"username": seed["username"]})
             if not existing:
+                # Run PBKDF2 in thread pool to avoid blocking event loop
+                pw_hash = await asyncio.to_thread(hash_password, seed["plain_password"])
                 doc = {
                     "id": seed["id"],
                     "username": seed["username"],
@@ -336,18 +356,16 @@ async def seed_users():
                     "role": seed["role"],
                     "department": seed.get("department", ""),
                     "allowed_modules": seed["allowed_modules"],
-                    "password_hash": hash_password(seed["plain_password"]),
+                    "password_hash": pw_hash,
                     "created_at": seed["created_at"],
                 }
                 await _db.users.insert_one(doc)
                 seeded += 1
             else:
                 update_fields = {}
-                # Always re-hash to PBKDF2 if not already PBKDF2
                 current_hash = existing.get("password_hash", "")
                 if not current_hash or not current_hash.startswith("pbkdf2:"):
-                    update_fields["password_hash"] = hash_password(seed["plain_password"])
-                # Always sync allowed_modules and role for seed users
+                    update_fields["password_hash"] = await asyncio.to_thread(hash_password, seed["plain_password"])
                 if existing.get("allowed_modules") != seed["allowed_modules"]:
                     update_fields["allowed_modules"] = seed["allowed_modules"]
                 if existing.get("role") != seed["role"]:
@@ -369,15 +387,17 @@ async def startup():
     print("[SERVER] Starting up...", flush=True)
     if _db is None:
         print("[SERVER] DB not initialized, skipping startup DB tasks", flush=True)
+        print("[SERVER] READY (no DB)", flush=True)
         return
     try:
         await asyncio.wait_for(_db.users.create_index("username", unique=True), timeout=5)
         await asyncio.wait_for(_db.users.create_index("id", unique=True), timeout=5)
         await asyncio.wait_for(seed_users(), timeout=15)
         _seed_done = True
-        print("[SERVER] Startup complete with DB", flush=True)
+        print("[SERVER] READY (with DB)", flush=True)
     except Exception as e:
         print(f"[SERVER] Startup DB skipped ({type(e).__name__}: {e}), will retry on first request", flush=True)
+        print("[SERVER] READY (DB deferred)", flush=True)
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     if _db is None:
@@ -772,7 +792,7 @@ async def debug_status():
         "db_name": db_name,
         "jwt_secret_set": bool(JWT_SECRET),
         "seed_done": _seed_done,
-        "version": "v7-indestructible",
+        "version": "v8-nuclear",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     try:
