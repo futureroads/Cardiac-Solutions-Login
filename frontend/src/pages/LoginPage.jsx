@@ -443,7 +443,7 @@ export default function LoginPage({ onLogin }) {
     >
       {/* Build Version */}
       <div className="absolute top-6 left-5 z-50 text-xs font-mono tracking-widest text-slate-500 select-none opacity-70">
-        v2603271410
+        v2603271420
       </div>
 
       {/* Custom Cursor - only show on heart and beating screens */}

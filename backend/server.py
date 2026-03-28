@@ -80,6 +80,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ==================== Production Error Logger ====================
+async def log_to_db(level, message, context=""):
+    """Store error/event in MongoDB for production debugging."""
+    try:
+        if _db is not None:
+            await _db.server_log.insert_one({
+                "level": level,
+                "message": str(message)[:500],
+                "context": context,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+            # Keep only last 200 entries
+            count = await _db.server_log.count_documents({})
+            if count > 200:
+                oldest = await _db.server_log.find().sort("timestamp", 1).limit(count - 200).to_list(count - 200)
+                if oldest:
+                    ids = [doc["_id"] for doc in oldest]
+                    await _db.server_log.delete_many({"_id": {"$in": ids}})
+    except Exception:
+        pass  # Can't log the log failure
+
 # All available module IDs
 ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path"]
 
@@ -97,7 +118,9 @@ app.add_middleware(
 # Global exception handler — ensures ALL errors return valid JSON (prevents 520)
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled exception on {request.method} {request.url.path}: {type(exc).__name__}: {exc}")
+    error_msg = f"{type(exc).__name__}: {exc}"
+    logger.error(f"Unhandled exception on {request.method} {request.url.path}: {error_msg}")
+    await log_to_db("ERROR", error_msg, f"{request.method} {request.url.path}")
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error", "type": str(type(exc).__name__)},
@@ -120,8 +143,8 @@ async def version_check():
         except Exception:
             versions[pkg] = "NOT FOUND"
     return {
-        "version": "v8-nuclear",
-        "build": "2603271340",
+        "version": "v9-diagnostic",
+        "build": "2603271420",
         "python": sys.version,
         "status": "running",
         "bcrypt_available": _HAS_BCRYPT,
@@ -385,6 +408,7 @@ _seed_done = False
 async def startup():
     global _seed_done
     print("[SERVER] Starting up...", flush=True)
+    await log_to_db("INFO", "Server starting up", f"python={sys.version}, db_init={_db is not None}")
     if _db is None:
         print("[SERVER] DB not initialized, skipping startup DB tasks", flush=True)
         print("[SERVER] READY (no DB)", flush=True)
@@ -394,8 +418,10 @@ async def startup():
         await asyncio.wait_for(_db.users.create_index("id", unique=True), timeout=5)
         await asyncio.wait_for(seed_users(), timeout=15)
         _seed_done = True
+        await log_to_db("INFO", "Startup complete with DB", f"seed_done=True")
         print("[SERVER] READY (with DB)", flush=True)
     except Exception as e:
+        await log_to_db("WARNING", f"Startup DB skipped: {type(e).__name__}: {e}")
         print(f"[SERVER] Startup DB skipped ({type(e).__name__}: {e}), will retry on first request", flush=True)
         print("[SERVER] READY (DB deferred)", flush=True)
 
@@ -450,7 +476,9 @@ async def login(credentials: UserLogin):
     try:
         user = await _db.users.find_one({"username": credentials.username}, {"_id": 0})
     except Exception as e:
-        logger.error(f"Login DB error: {type(e).__name__}: {e}")
+        error_msg = f"Login DB error: {type(e).__name__}: {e}"
+        logger.error(error_msg)
+        await log_to_db("ERROR", error_msg, f"username={credentials.username}")
         raise HTTPException(status_code=503, detail="Database temporarily unavailable. Please try again.")
 
     if not user:
@@ -784,6 +812,17 @@ async def send_overview_email(current_user: dict = Depends(get_current_user)):
 async def health_root():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
+@app.get("/api/debug/errors")
+async def get_error_log():
+    """Production error log — stored in MongoDB. Check this after a 502/520 to see what happened."""
+    try:
+        if _db is None:
+            return {"error": "DB not initialized"}
+        entries = await _db.server_log.find({}, {"_id": 0}).sort("timestamp", -1).to_list(50)
+        return {"count": len(entries), "entries": entries}
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/api/debug/status")
 async def debug_status():
     """Diagnostic endpoint — check MongoDB connectivity and user count. No auth required."""
@@ -792,7 +831,7 @@ async def debug_status():
         "db_name": db_name,
         "jwt_secret_set": bool(JWT_SECRET),
         "seed_done": _seed_done,
-        "version": "v8-nuclear",
+        "version": "v9-diagnostic",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     try:
@@ -845,6 +884,7 @@ app.include_router(api_router)
 @app.on_event("shutdown")
 async def shutdown_db_client():
     try:
+        await log_to_db("INFO", "Server shutting down")
         if _mongo_client:
             _mongo_client.close()
     except Exception:
