@@ -6,6 +6,7 @@ import Dashboard from "./pages/Dashboard";
 import CommandCenterHub from "./pages/CommandCenterHub";
 import UserAccess from "./pages/UserAccess";
 import BackendManagement from "./pages/BackendManagement";
+import OutageStatus from "./pages/OutageStatus";
 import { Toaster } from "./components/ui/sonner";
 
 function App() {
@@ -108,6 +109,14 @@ function App() {
             element={
               isAuthenticated && user?.role === "admin" ? 
                 <BackendManagement user={user} onLogout={handleLogout} /> : 
+                <Navigate to="/hub" replace />
+            } 
+          />
+          <Route 
+            path="/outage" 
+            element={
+              isAuthenticated && user?.role === "admin" ? 
+                <OutageStatus user={user} onLogout={handleLogout} /> : 
                 <Navigate to="/hub" replace />
             } 
           />
