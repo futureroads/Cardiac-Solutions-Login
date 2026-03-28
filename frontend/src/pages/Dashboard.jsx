@@ -13,6 +13,27 @@ export default function Dashboard({ user, onLogout }) {
   const [sendingOverview, setSendingOverview] = useState(false);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem("dashboard_view") || 'detailed');
 
+  const token = localStorage.getItem("token") || "";
+
+  // Cross-domain SSO redirect helper
+  const ssoRedirect = async (target) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(`${API_URL}/api/auth/cross-domain-token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ target }),
+        });
+        if ([502, 503, 520].includes(res.status) && attempt < 2) { await new Promise(r => setTimeout(r, 1500)); continue; }
+        if (!res.ok) throw new Error("Failed");
+        const data = await res.json();
+        window.open(data.redirect_url, "_blank", "noopener,noreferrer");
+        return;
+      } catch { if (attempt < 2) { await new Promise(r => setTimeout(r, 1500)); continue; } }
+    }
+    toast.error("Could not connect. Try again.");
+  };
+
   const toggleViewMode = () => {
     const newMode = viewMode === 'simple' ? 'detailed' : 'simple';
     setViewMode(newMode);
@@ -230,7 +251,7 @@ export default function Dashboard({ user, onLogout }) {
         {/* LEFT COLUMN */}
         <div className="flex flex-col gap-[7px]">
           {/* System Status */}
-          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
+          <div onClick={() => ssoRedirect("report")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors" data-testid="system-status-panel">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">System Status</div>
@@ -353,7 +374,7 @@ export default function Dashboard({ user, onLogout }) {
           </div>
 
           {/* Customer Notifications (compact) */}
-          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden" data-testid="customer-notifications-panel">
+          <div onClick={() => ssoRedirect("notifications")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors" data-testid="customer-notifications-panel">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">Customer Notifications</div>
@@ -478,7 +499,7 @@ export default function Dashboard({ user, onLogout }) {
         {/* RIGHT COLUMN */}
         <div className="flex flex-col gap-[7px]">
           {/* Service Tickets */}
-          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1">
+          <div onClick={() => window.open("https://service.cardiac-solutions.ai", "_blank", "noopener,noreferrer")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1 cursor-pointer hover:border-cyan-400/60 transition-colors" data-testid="service-tickets-panel">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">Service Tickets</div>
@@ -553,7 +574,7 @@ export default function Dashboard({ user, onLogout }) {
         {/* SIMPLE - LEFT COLUMN */}
         <div className="flex flex-col gap-[7px]">
           {/* System Status */}
-          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
+          <div onClick={() => ssoRedirect("report")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">System Status</div>
@@ -641,7 +662,7 @@ export default function Dashboard({ user, onLogout }) {
           </div>
 
           {/* Customer Notifications */}
-          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden">
+          <div onClick={() => ssoRedirect("notifications")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">Customer Notifications</div>
