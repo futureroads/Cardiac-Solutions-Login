@@ -458,12 +458,50 @@ async def login(credentials: UserLogin):
     # Lazy seed if startup was skipped
     if not _seed_done:
         try:
-            await _db.users.create_index("username", unique=True)
-            await _db.users.create_index("id", unique=True)
+            # --- DB cleanup migration (runs once before index creation) ---
+            # 1. Delete documents where username is null or missing
+            del_null = await _db.users.delete_many({"$or": [
+                {"username": None},
+                {"username": {"$exists": False}},
+                {"username": ""},
+            ]})
+            if del_null.deleted_count > 0:
+                logger.info(f"DB cleanup: deleted {del_null.deleted_count} docs with null/empty username")
+
+            # 2. Resolve duplicate id='user-tony-001' — keep only the one with username='Tony'
+            tony_dupes = await _db.users.find({"id": "user-tony-001"}).to_list(100)
+            if len(tony_dupes) > 1:
+                kept = False
+                for doc in tony_dupes:
+                    if not kept and doc.get("username") == "Tony":
+                        kept = True
+                        continue
+                    await _db.users.delete_one({"_id": doc["_id"]})
+                    logger.info(f"DB cleanup: removed duplicate user-tony-001 (_id={doc['_id']})")
+                if not kept and tony_dupes:
+                    # If none had username='Tony', keep the first one
+                    for doc in tony_dupes[1:]:
+                        await _db.users.delete_one({"_id": doc["_id"]})
+                        logger.info(f"DB cleanup: removed extra user-tony-001 (_id={doc['_id']})")
+
+            # 3. Drop old non-sparse indexes before recreating with sparse=True
+            try:
+                await _db.users.drop_index("username_1")
+            except Exception:
+                pass
+            try:
+                await _db.users.drop_index("id_1")
+            except Exception:
+                pass
+
+            await _db.users.create_index("username", unique=True, sparse=True)
+            await _db.users.create_index("id", unique=True, sparse=True)
             await asyncio.wait_for(seed_users(), timeout=10)
             _seed_done = True
+            logger.info("Lazy init complete: cleanup + indexes + seed done")
         except Exception as e:
             logger.warning(f"Lazy init failed: {e}")
+            await log_to_db("ERROR", f"Lazy init failed: {e}", "login")
 
     try:
         user = await _db.users.find_one({"username": credentials.username}, {"_id": 0})

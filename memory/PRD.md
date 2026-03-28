@@ -22,6 +22,7 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - [x] Notifications card → SSO redirect (notifications.cardiac-solutions.ai/auth?token=...)
 - [x] Frontend auto-retry on 520/502/503 errors (3 retries, 2s delay, Retry button)
 - [x] **Production deployment FIXED (v8-nuclear)** — unpinned requirements, non-blocking PBKDF2 via asyncio.to_thread, fast restart (skip seed if users exist), global exception handler, CORS-first middleware, all DB calls wrapped in try/except, safe shutdown handler
+- [x] **MongoDB CrashLoopBackOff FIX (2026-03-28)** — Added programmatic DB cleanup migration in lazy init: deletes null/empty username docs, resolves duplicate `user-tony-001`, drops old indexes, recreates with `sparse=True`
 
 ## Tech Stack
 - Frontend: React 19 + Framer Motion + Tailwind CSS + Shadcn UI
