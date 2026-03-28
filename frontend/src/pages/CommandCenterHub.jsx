@@ -55,8 +55,7 @@ const ALL_MODULES = [
     title: "DASHBOARD",
     status: "IN DEV",
     icon: LayoutDashboard,
-    route: null,
-    externalUrl: "https://dashboard.cardiac-solutions.ai",
+    route: "/dashboard",
     description:
       "Comprehensive AED monitoring dashboard with system status, service summary, AI recommendations, and voice query.",
     badgeCount: null,

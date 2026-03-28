@@ -917,6 +917,7 @@ export default function Dashboard({ user, onLogout }) {
           position: absolute;
           width: 9px;
           height: 9px;
+          pointer-events: none;
           border-color: rgb(0, 212, 255);
           border-style: solid;
         }
@@ -934,6 +935,7 @@ export default function Dashboard({ user, onLogout }) {
           background: linear-gradient(90deg, transparent, rgb(0, 212, 255), transparent);
           opacity: 0.35;
           animation: topline 5s ease-in-out infinite;
+          pointer-events: none;
         }
         
         .plabel {
