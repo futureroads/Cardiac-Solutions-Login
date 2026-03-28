@@ -85,8 +85,7 @@ const ALL_MODULES = [
     title: "BACKEND",
     status: "ADMIN",
     icon: Server,
-    route: null,
-    externalUrl: "https://backend.cardiac-solutions.ai",
+    route: "/backend",
     description:
       "Monitor and control backend processes, system health, database status, and server performance metrics.",
     badgeCount: null,

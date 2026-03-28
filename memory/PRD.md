@@ -47,13 +47,18 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - **Admin**: futureroads / @@U1s9m6c7@@
 - **Users**: Lew/Lew123, Stark/Stark123, Tony/Tony123, Tracey/Tracey123, Nate/Nate123, Jon/Jon123
 
+## What's Been Implemented (continued)
+- [x] **Backend Management page (2026-03-28)** — Internal `/backend` route with Camera Overview (Total Cameras, Total Checked In Past 24 Hrs, Online/Offline, Camera Endpoint), Server Resources, Database Status, Runtime Info, Microservices, Event Log. JARVIS theme. Admin-only access.
+
 ## Prioritized Backlog
 
 ### P1 (High)
+- Build Daily Report module page
+- Build Notifications module page
 - Enable real email delivery (Resend API key)
-- Wire dashboard to real backend APIs
 
 ### P2 (Medium)
+- Wire dashboard to real backend APIs
 - Build Survival Path module page
 - Export to CSV, historical charts
 

@@ -5,6 +5,7 @@ import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
 import CommandCenterHub from "./pages/CommandCenterHub";
 import UserAccess from "./pages/UserAccess";
+import BackendManagement from "./pages/BackendManagement";
 import { Toaster } from "./components/ui/sonner";
 
 function App() {
@@ -99,6 +100,14 @@ function App() {
             element={
               isAuthenticated && user?.role === "admin" ? 
                 <UserAccess onLogout={handleLogout} /> : 
+                <Navigate to="/hub" replace />
+            } 
+          />
+          <Route 
+            path="/backend" 
+            element={
+              isAuthenticated && user?.role === "admin" ? 
+                <BackendManagement user={user} onLogout={handleLogout} /> : 
                 <Navigate to="/hub" replace />
             } 
           />
