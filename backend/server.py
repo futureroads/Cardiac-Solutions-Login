@@ -143,8 +143,8 @@ async def version_check():
         except Exception:
             versions[pkg] = "NOT FOUND"
     return {
-        "version": "v9-diagnostic",
-        "build": "2603271420",
+        "version": "v10-instant",
+        "build": "2603271445",
         "python": sys.version,
         "status": "running",
         "bcrypt_available": _HAS_BCRYPT,
@@ -407,23 +407,13 @@ _seed_done = False
 @app.on_event("startup")
 async def startup():
     global _seed_done
-    print("[SERVER] Starting up...", flush=True)
-    await log_to_db("INFO", "Server starting up", f"python={sys.version}, db_init={_db is not None}")
-    if _db is None:
-        print("[SERVER] DB not initialized, skipping startup DB tasks", flush=True)
-        print("[SERVER] READY (no DB)", flush=True)
-        return
+    print("[SERVER] READY (instant start, DB deferred to first request)", flush=True)
+    # Do ALL initialization lazily on first request
+    # This ensures the health check probe succeeds immediately
     try:
-        await asyncio.wait_for(_db.users.create_index("username", unique=True), timeout=5)
-        await asyncio.wait_for(_db.users.create_index("id", unique=True), timeout=5)
-        await asyncio.wait_for(seed_users(), timeout=15)
-        _seed_done = True
-        await log_to_db("INFO", "Startup complete with DB", f"seed_done=True")
-        print("[SERVER] READY (with DB)", flush=True)
-    except Exception as e:
-        await log_to_db("WARNING", f"Startup DB skipped: {type(e).__name__}: {e}")
-        print(f"[SERVER] Startup DB skipped ({type(e).__name__}: {e}), will retry on first request", flush=True)
-        print("[SERVER] READY (DB deferred)", flush=True)
+        await log_to_db("INFO", "Server started (instant)", f"python={sys.version}")
+    except Exception:
+        pass
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     if _db is None:
@@ -468,10 +458,12 @@ async def login(credentials: UserLogin):
     # Lazy seed if startup was skipped
     if not _seed_done:
         try:
+            await _db.users.create_index("username", unique=True)
+            await _db.users.create_index("id", unique=True)
             await asyncio.wait_for(seed_users(), timeout=10)
             _seed_done = True
         except Exception as e:
-            logger.warning(f"Lazy seed failed: {e}")
+            logger.warning(f"Lazy init failed: {e}")
 
     try:
         user = await _db.users.find_one({"username": credentials.username}, {"_id": 0})
@@ -831,7 +823,7 @@ async def debug_status():
         "db_name": db_name,
         "jwt_secret_set": bool(JWT_SECRET),
         "seed_done": _seed_done,
-        "version": "v9-diagnostic",
+        "version": "v10-instant",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     try:
