@@ -15,6 +15,12 @@ import {
   CheckCircle2,
   ExternalLink,
   Globe,
+  ShieldCheck,
+  Link,
+  User,
+  Key,
+  CalendarClock,
+  Timer,
 } from "lucide-react";
 import API_BASE from "@/apiBase";
 
@@ -136,6 +142,66 @@ export default function BackendManagement({ user, onLogout }) {
             <button onClick={onLogout} className="text-red-500 hover:text-red-400 transition-colors" data-testid="backend-logout-btn">
               <LogOut className="w-4 h-4" />
             </button>
+          </div>
+        </div>
+
+        {/* READINESS SYSTEM */}
+        <div className="px-[10px] pt-[10px]">
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden" data-testid="readiness-system-panel">
+            <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+            <div className="panel-glow" />
+            <div className="plabel"><ShieldCheck className="w-[12px] h-[12px]" /> Readiness System</div>
+            <div className="grid grid-cols-6 gap-[6px]">
+              {(() => {
+                const today = new Date();
+                const lastAccessed = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 1, 0, 0);
+                const nextAccess = new Date(lastAccessed.getTime() + 24 * 60 * 60 * 1000);
+                const fmtDate = (d) => {
+                  const mm = String(d.getMonth() + 1).padStart(2, "0");
+                  const dd = String(d.getDate()).padStart(2, "0");
+                  const yy = d.getFullYear();
+                  return `${mm}/${dd}/${yy} 01:00 AM`;
+                };
+                const items = [
+                  { label: "URL", value: "readiness.cardiac-solutions.ai", icon: Link, color: "text-cyan-400", isLink: true },
+                  { label: "User Name", value: "readiness_admin", icon: User, color: "text-slate-200" },
+                  { label: "Password", value: "••••••••••", icon: Key, color: "text-slate-200" },
+                  { label: "Daily Access Time", value: "1:00 AM", icon: CalendarClock, color: "text-cyan-400" },
+                  { label: "Last Accessed", value: fmtDate(lastAccessed), icon: Clock, color: "text-green-400" },
+                  { label: "Next Access", value: fmtDate(nextAccess), icon: CalendarClock, color: "text-yellow-400" },
+                ];
+                return items.map((item, i) => {
+                  const Icon = item.icon;
+                  return (
+                    <div key={i} className="flex items-center gap-[8px] px-[10px] py-[8px] bg-cyan-500/5 border border-cyan-500/15 rounded-sm" data-testid={`readiness-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                      <div className="w-[28px] h-[28px] rounded-full border border-cyan-500/30 flex items-center justify-center flex-shrink-0">
+                        <Icon className="w-[12px] h-[12px] text-cyan-400" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <div className="text-[7px] tracking-wider text-cyan-500/50 uppercase">{item.label}</div>
+                        {item.isLink ? (
+                          <button onClick={() => window.open(`https://${item.value}`, "_blank", "noopener,noreferrer")} className={`font-orbitron text-[10px] font-bold ${item.color} tracking-wider text-left hover:underline truncate`}>
+                            {item.value}
+                          </button>
+                        ) : (
+                          <div className={`font-orbitron text-[10px] font-bold ${item.color} tracking-wider truncate`}>{item.value}</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+            {/* Last Access Duration — separate row */}
+            <div className="mt-[6px] flex items-center gap-[8px] px-[10px] py-[8px] bg-green-500/5 border border-green-500/20 rounded-sm w-fit" data-testid="readiness-last-access-duration">
+              <div className="w-[28px] h-[28px] rounded-full border border-green-500/30 flex items-center justify-center flex-shrink-0">
+                <Timer className="w-[12px] h-[12px] text-green-400" />
+              </div>
+              <div className="flex flex-col">
+                <div className="text-[7px] tracking-wider text-green-500/50 uppercase">Last Access Duration</div>
+                <div className="font-orbitron text-[10px] font-bold text-green-400 tracking-wider">3 hrs</div>
+              </div>
+            </div>
           </div>
         </div>
 
