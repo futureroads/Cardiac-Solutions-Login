@@ -917,6 +917,57 @@ async def update_service_status(category_name: str, service_name: str, status: s
 # ==================== Hybrid Training Routes ====================
 
 VALID_STATUSES = ["READY", "NOT READY", "NOT PRESENT", "REPOSITION", "UNKNOWN"]
+FEEDBACK_SOURCE_URL = "https://readisys.survivalpath.ai/api/reports/aed-status-feedback"
+
+@api_router.get("/training/sync")
+async def sync_feedbacks(admin: dict = Depends(require_admin)):
+    """Fetch latest feedback from external Readisys API and sync into local DB."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(FEEDBACK_SOURCE_URL)
+            resp.raise_for_status()
+            data = resp.json()
+
+        if not data.get("ok") or "items" not in data:
+            raise HTTPException(status_code=502, detail="Invalid response from feedback source")
+
+        synced = 0
+        for item in data["items"]:
+            ext_id = item.get("id", "")
+            existing = await _db.training_feedbacks.find_one({"external_id": ext_id})
+            if existing:
+                continue
+            doc = {
+                "id": f"fb-{uuid.uuid4().hex[:8]}",
+                "external_id": ext_id,
+                "aed_id": item.get("sentinel_id", ""),
+                "subscriber": item.get("subscriber", ""),
+                "sentinel_id": item.get("sentinel_id", ""),
+                "captured_at": item.get("captured_at", ""),
+                "assigned_status": item.get("current_status", ""),
+                "correct_status": item.get("corrected_status", ""),
+                "details": item.get("comments", "") or "",
+                "s3_url": item.get("s3_url", ""),
+                "image_url": item.get("s3_url", ""),
+                "submitted_at": item.get("submitted_at", datetime.now(timezone.utc).isoformat()),
+                "submitted_by": item.get("submitted_by", ""),
+                "status": "pending",
+                "qwen_analysis": None,
+                "opencv_rule": None,
+            }
+            await _db.training_feedbacks.insert_one(doc)
+            doc.pop("_id", None)
+            synced += 1
+
+        total = await _db.training_feedbacks.count_documents({})
+        return {"synced": synced, "total": total}
+    except httpx.HTTPError as e:
+        logger.error(f"sync_feedbacks HTTP error: {e}")
+        raise HTTPException(status_code=502, detail=f"Failed to fetch from source: {str(e)}")
+    except Exception as e:
+        logger.error(f"sync_feedbacks error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/training/feedback")
 async def submit_feedback(data: dict):

@@ -86,7 +86,7 @@ function Step1Queue({ feedbacks, onSelect, selectedId }) {
     <div className="flex flex-col gap-[6px]" data-testid="step1-queue">
       <div className="plabel"><ListChecks className="w-[12px] h-[12px]" /> Feedback Queue ({pending.length} pending)</div>
       {pending.length === 0 && (
-        <div className="text-[10px] text-cyan-500/40 text-center py-[20px]">No pending feedbacks in queue. Awaiting API submissions.</div>
+        <div className="text-[10px] text-cyan-500/40 text-center py-[20px]">No pending feedbacks in queue. Syncing from Readisys API...</div>
       )}
       {pending.map((fb) => (
         <div
@@ -99,15 +99,21 @@ function Step1Queue({ feedbacks, onSelect, selectedId }) {
         >
           <div className="flex flex-col gap-[2px] flex-1 min-w-0">
             <div className="flex items-center gap-[8px]">
-              <span className="font-orbitron text-[9px] font-bold text-slate-200 tracking-wider">{fb.aed_id}</span>
+              <span className="font-orbitron text-[9px] font-bold text-slate-200 tracking-wider">{fb.sentinel_id || fb.aed_id}</span>
+              <span className="text-[8px] text-cyan-500/50">{fb.subscriber}</span>
               <PipelineBadge status={fb.status} />
             </div>
             <div className="flex items-center gap-[4px] text-[8px]">
+              <span className="text-cyan-500/30">AI:</span>
               <StatusBadge status={fb.assigned_status} />
-              <span className="text-cyan-500/30">→</span>
+              <span className="text-cyan-500/30">→ Corrected:</span>
               <StatusBadge status={fb.correct_status} />
             </div>
             {fb.details && <div className="text-[8px] text-cyan-500/40 truncate">{fb.details}</div>}
+            <div className="flex items-center gap-[8px] text-[7px] text-cyan-500/25">
+              {fb.submitted_by && <span>by {fb.submitted_by}</span>}
+              {fb.captured_at && <span>captured {new Date(fb.captured_at).toLocaleString()}</span>}
+            </div>
           </div>
           <div className="text-[7px] text-cyan-500/30 font-orbitron tracking-wider whitespace-nowrap ml-[8px]">
             {new Date(fb.submitted_at).toLocaleDateString()}
@@ -120,7 +126,8 @@ function Step1Queue({ feedbacks, onSelect, selectedId }) {
           {others.slice(0, 10).map((fb) => (
             <div key={fb.id} className="flex items-center justify-between px-[10px] py-[6px] bg-cyan-500/3 border-l-2 border-l-green-500/20 opacity-60">
               <div className="flex items-center gap-[8px]">
-                <span className="font-orbitron text-[8px] font-bold text-slate-200/60 tracking-wider">{fb.aed_id}</span>
+                <span className="font-orbitron text-[8px] font-bold text-slate-200/60 tracking-wider">{fb.sentinel_id || fb.aed_id}</span>
+                <span className="text-[7px] text-cyan-500/30">{fb.subscriber}</span>
                 <PipelineBadge status={fb.status} />
                 <StatusBadge status={fb.assigned_status} />
                 <span className="text-cyan-500/20">→</span>
@@ -149,13 +156,18 @@ function Step2Analyze({ selected, onAnalyze, analyzing }) {
       <div className="plabel"><Brain className="w-[12px] h-[12px]" /> Analyze Feedback</div>
       <div className="bg-cyan-500/5 border border-cyan-500/15 p-[10px] rounded-sm">
         <div className="grid grid-cols-2 gap-[6px]">
-          <div><span className="text-[7px] text-cyan-500/40 tracking-wider">AED ID</span><div className="font-orbitron text-[11px] font-bold text-slate-200">{selected.aed_id}</div></div>
-          <div><span className="text-[7px] text-cyan-500/40 tracking-wider">SUBMITTED</span><div className="font-orbitron text-[9px] text-slate-200/70">{new Date(selected.submitted_at).toLocaleString()}</div></div>
+          <div><span className="text-[7px] text-cyan-500/40 tracking-wider">SENTINEL ID</span><div className="font-orbitron text-[11px] font-bold text-slate-200">{selected.sentinel_id || selected.aed_id}</div></div>
+          <div><span className="text-[7px] text-cyan-500/40 tracking-wider">SUBSCRIBER</span><div className="font-orbitron text-[10px] font-bold text-slate-200/80">{selected.subscriber || "—"}</div></div>
           <div><span className="text-[7px] text-cyan-500/40 tracking-wider">AI ASSIGNED</span><div className="mt-[2px]"><StatusBadge status={selected.assigned_status} /></div></div>
           <div><span className="text-[7px] text-cyan-500/40 tracking-wider">CORRECT STATUS</span><div className="mt-[2px]"><StatusBadge status={selected.correct_status} /></div></div>
+          <div><span className="text-[7px] text-cyan-500/40 tracking-wider">CAPTURED</span><div className="font-orbitron text-[9px] text-slate-200/70">{selected.captured_at ? new Date(selected.captured_at).toLocaleString() : "—"}</div></div>
+          <div><span className="text-[7px] text-cyan-500/40 tracking-wider">SUBMITTED BY</span><div className="font-orbitron text-[9px] text-slate-200/70">{selected.submitted_by || "—"}</div></div>
         </div>
         {selected.details && (
-          <div className="mt-[6px]"><span className="text-[7px] text-cyan-500/40 tracking-wider">DETAILS</span><div className="text-[9px] text-slate-200/80 mt-[2px]">{selected.details}</div></div>
+          <div className="mt-[6px]"><span className="text-[7px] text-cyan-500/40 tracking-wider">COMMENTS</span><div className="text-[9px] text-slate-200/80 mt-[2px]">{selected.details}</div></div>
+        )}
+        {selected.s3_url && (
+          <div className="mt-[6px]"><span className="text-[7px] text-cyan-500/40 tracking-wider">IMAGE</span><div className="text-[8px] text-cyan-400/60 mt-[2px] truncate">{selected.s3_url}</div></div>
         )}
       </div>
       {selected.status === "pending" ? (
@@ -345,11 +357,24 @@ export default function HybridTraining({ user, onLogout }) {
   const [applying, setApplying] = useState(null);
   const [checking, setChecking] = useState(null);
 
+  const [syncing, setSyncing] = useState(false);
+
   const token = localStorage.getItem("token") || "";
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
   useEffect(() => { const t = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(t); }, []);
+
+  const syncFromSource = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/training/sync`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.synced > 0) toast.success(`Synced ${data.synced} new feedbacks from Readisys`);
+      }
+    } catch {} finally { setSyncing(false); }
+  }, [token]);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -366,7 +391,7 @@ export default function HybridTraining({ user, onLogout }) {
     } catch {}
   }, [token]);
 
-  useEffect(() => { fetchAll(); const t = setInterval(fetchAll, 30000); return () => clearInterval(t); }, [fetchAll]);
+  useEffect(() => { syncFromSource().then(() => fetchAll()); const t = setInterval(fetchAll, 30000); return () => clearInterval(t); }, [fetchAll, syncFromSource]);
 
   const handleAnalyze = async (feedbackId) => {
     setAnalyzing(true);
@@ -443,6 +468,15 @@ export default function HybridTraining({ user, onLogout }) {
             </div>
           </div>
           <div className="flex gap-[12px] items-center text-[8px] tracking-wider">
+            <button
+              onClick={() => syncFromSource().then(() => fetchAll())}
+              disabled={syncing}
+              className="flex items-center gap-[4px] px-[6px] py-[3px] border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 font-orbitron text-[7px] font-bold tracking-wider rounded-sm hover:bg-cyan-500/20 transition-all disabled:opacity-40"
+              data-testid="sync-btn"
+            >
+              <RefreshCw className={`w-[10px] h-[10px] ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "SYNCING..." : "SYNC"}
+            </button>
             <span className="flex items-center gap-[4px]"><Cpu className="w-[10px] h-[10px]" /> QUEUE: {stats.queue_pending}</span>
             <span>|</span>
             <span className="text-green-400">RESOLVED: {stats.resolved}/{stats.total_monitors}</span>
