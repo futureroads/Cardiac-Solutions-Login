@@ -4,16 +4,11 @@ import {
   ArrowLeft,
   LogOut,
   ExternalLink,
-  Cloud,
-  Wifi,
-  Radio,
-  Shield,
-  Server,
-  Globe,
   CheckCircle2,
   AlertTriangle,
   XCircle,
 } from "lucide-react";
+import { SERVICE_CATEGORIES } from "@/data/serviceStatuses";
 
 const STATUS_CONFIG = {
   operational: { label: "OPERATIONAL", color: "text-green-400", bg: "bg-green-500/15", border: "border-l-green-400", dot: "bg-green-400", glow: "rgba(57,255,20,0.6)" },
@@ -21,57 +16,6 @@ const STATUS_CONFIG = {
   outage: { label: "OUTAGE", color: "text-red-400", bg: "bg-red-500/15", border: "border-l-red-500", dot: "bg-red-500", glow: "rgba(255,34,68,0.6)" },
   maintenance: { label: "MAINTENANCE", color: "text-cyan-400", bg: "bg-cyan-500/15", border: "border-l-cyan-400", dot: "bg-cyan-400", glow: "rgba(0,212,255,0.6)" },
 };
-
-const SERVICE_CATEGORIES = [
-  {
-    category: "Cloud & CDN Services",
-    icon: Cloud,
-    services: [
-      { name: "Cloudflare", status: "operational", url: "https://www.cloudflarestatus.com", description: "CDN, DDoS Protection, DNS" },
-      { name: "AWS", status: "operational", url: "https://health.aws.amazon.com/health/status", description: "Cloud Infrastructure" },
-      { name: "Microsoft Azure", status: "operational", url: "https://status.azure.com", description: "Cloud Platform" },
-      { name: "Google Cloud", status: "operational", url: "https://status.cloud.google.com", description: "Cloud Services" },
-      { name: "MongoDB Atlas", status: "operational", url: "https://status.cloud.mongodb.com", description: "Database Hosting" },
-    ],
-  },
-  {
-    category: "Cellular Carriers",
-    icon: Radio,
-    services: [
-      { name: "AT&T", status: "operational", url: "https://downdetector.com/status/att/", description: "Cellular Network" },
-      { name: "Verizon", status: "operational", url: "https://downdetector.com/status/verizon/", description: "Cellular Network" },
-      { name: "T-Mobile", status: "operational", url: "https://downdetector.com/status/t-mobile/", description: "Cellular Network" },
-      { name: "US Cellular", status: "operational", url: "https://downdetector.com/status/us-cellular/", description: "Cellular Network" },
-    ],
-  },
-  {
-    category: "Communication & Email",
-    icon: Globe,
-    services: [
-      { name: "Twilio", status: "operational", url: "https://status.twilio.com", description: "SMS & Voice" },
-      { name: "SendGrid", status: "operational", url: "https://status.sendgrid.com", description: "Email Delivery" },
-      { name: "Resend", status: "operational", url: "https://resend-status.com", description: "Email API" },
-    ],
-  },
-  {
-    category: "Security & Auth",
-    icon: Shield,
-    services: [
-      { name: "Auth0", status: "operational", url: "https://status.auth0.com", description: "Identity & Auth" },
-      { name: "Let's Encrypt", status: "operational", url: "https://letsencrypt.status.io", description: "SSL Certificates" },
-    ],
-  },
-  {
-    category: "Internal Services",
-    icon: Server,
-    services: [
-      { name: "Cardiac Solutions API", status: "operational", url: null, description: "Backend API Server" },
-      { name: "Camera Ingest Pipeline", status: "operational", url: null, description: "Camera Data Processing" },
-      { name: "Notification Engine", status: "operational", url: null, description: "Alert Dispatch System" },
-      { name: "SSO Gateway", status: "operational", url: null, description: "Cross-Domain Auth" },
-    ],
-  },
-];
 
 function ServiceRow({ service }) {
   const cfg = STATUS_CONFIG[service.status];
