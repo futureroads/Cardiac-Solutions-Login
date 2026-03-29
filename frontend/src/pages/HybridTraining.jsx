@@ -507,25 +507,34 @@ export default function HybridTraining({ user, onLogout }) {
 
   const handleAnalyze = async (feedbackId, customPrompt) => {
     setAnalyzing(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/training/analyze/${feedbackId}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ custom_prompt: customPrompt }),
-      });
-      if (!res.ok) throw new Error("Analysis failed");
-      const data = await res.json();
-      toast.success("Gemini analysis complete — review results in QWEN and OPENCV fields");
-      await fetchAll();
-      const updated = await (await fetch(`${API_BASE}/api/training/feedbacks`, { headers })).json();
-      setSelectedFeedback(updated.find((f) => f.id === feedbackId) || null);
-      return data;
-    } catch (err) {
-      toast.error("Analysis failed: " + err.message);
-      return null;
-    } finally {
-      setAnalyzing(false);
+    let lastErr = "Unknown error";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (attempt > 0) await new Promise(r => setTimeout(r, 3000));
+        const res = await fetch(`${API_BASE}/api/training/analyze/${feedbackId}`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ custom_prompt: customPrompt }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          toast.success("Gemini analysis complete — review results in QWEN and OPENCV fields");
+          await fetchAll();
+          const updated = await (await fetch(`${API_BASE}/api/training/feedbacks`, { headers })).json();
+          setSelectedFeedback(updated.find((f) => f.id === feedbackId) || null);
+          setAnalyzing(false);
+          return data;
+        }
+        const errData = await res.json().catch(() => ({}));
+        lastErr = errData.detail || `HTTP ${res.status}`;
+        if (res.status === 401 || res.status === 403 || res.status === 404) break;
+      } catch (e) {
+        lastErr = e.message || "Network error";
+      }
     }
+    toast.error(`Analysis failed: ${lastErr}`);
+    setAnalyzing(false);
+    return null;
   };
 
   const handleSubmitPrompts = async (feedbackId, qwenPrompt, opencvRule) => {
