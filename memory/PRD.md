@@ -19,6 +19,9 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - [x] Outage Status page (admin-only) monitoring 18 services across 5 categories
 - [x] Hybrid Training page (admin-only) — 5-step workflow: Feedback Queue -> Analyze -> Updates -> Apply -> Monitor
 - [x] Hybrid Training syncs from real Readisys API with 3-attempt retry logic
+- [x] Hybrid Training Step 2: Real Gemini LLM (gemini-2.5-flash) generates Qwen + OpenCV prompt suggestions
+- [x] Hybrid Training Step 2: Editable QWEN and OPENCV text fields for manual prompt editing/pasting
+- [x] Hybrid Training Step 2: SUBMIT PROMPTS endpoint saves final prompts as update records
 - [x] Frontend error resilience: auto-retries, health pings, error toasts
 - [x] Production CrashLoopBackOff fix: sparse indexes, null username cleanup, duplicate removal
 - [x] Seed always updates allowed_modules for existing users (no fast-path skip)
@@ -53,8 +56,7 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 ## Prioritized Backlog
 
 ### P1 (High)
-- Plug in real Qwen API for prompt generation (Hybrid Training Step 2) — currently MOCKED
-- Plug in real OpenCV config API for rule updates (Hybrid Training Step 4) — currently MOCKED
+- Wire Hybrid Training Step 4 "Apply" to send prompts to real Qwen/OpenCV backends
 - Build Daily Report module page
 - Build Notifications module page
 - Enable real email delivery (Resend API key)
@@ -72,6 +74,6 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 
 ## Known Issues
 - Production cold start / "asleep" timeouts (BLOCKED on platform infrastructure)
-- Qwen/OpenCV APIs are MOCKED in Hybrid Training Steps 2-5
+- Steps 4-5 (Apply/Monitor) still use MOCKED endpoints — Apply doesn't call real Qwen/OpenCV backends
 - Email sending is MOCKED (no RESEND_API_KEY configured)
 - Dashboard stats/subscribers/devices are MOCKED
