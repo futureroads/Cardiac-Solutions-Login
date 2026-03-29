@@ -146,11 +146,14 @@ function Step2Analyze({ selected, onAnalyze, analyzing, onSubmitPrompts, submitt
   const [geminiPrompt, setGeminiPrompt] = useState("");
   const [qwenPrompt, setQwenPrompt] = useState("");
   const [opencvRule, setOpencvRule] = useState("");
+  const [geminiDone, setGeminiDone] = useState(false);
 
   useEffect(() => {
     if (selected) {
+      const hasExisting = !!(selected.qwen_analysis);
       setQwenPrompt(selected.qwen_analysis || "");
       setOpencvRule(typeof selected.opencv_rule === "string" ? selected.opencv_rule : selected.opencv_rule?.description || "");
+      setGeminiDone(hasExisting);
       setGeminiPrompt(
         `Analyze this AED feedback correction:\n` +
         `- AED Unit: ${selected.sentinel_id || selected.aed_id}\n` +
@@ -178,6 +181,7 @@ function Step2Analyze({ selected, onAnalyze, analyzing, onSubmitPrompts, submitt
     if (result) {
       setQwenPrompt(result.qwen_suggestion || "");
       setOpencvRule(result.opencv_suggestion || "");
+      setGeminiDone(true);
     }
   };
 
@@ -192,84 +196,78 @@ function Step2Analyze({ selected, onAnalyze, analyzing, onSubmitPrompts, submitt
           <div><span className="text-[7px] text-cyan-500/40 tracking-wider">SUBSCRIBER</span><div className="font-orbitron text-[10px] font-bold text-slate-200/80">{selected.subscriber || "—"}</div></div>
           <div><span className="text-[7px] text-cyan-500/40 tracking-wider">AI ASSIGNED</span><div className="mt-[2px]"><StatusBadge status={selected.assigned_status} /></div></div>
           <div><span className="text-[7px] text-cyan-500/40 tracking-wider">CORRECT STATUS</span><div className="mt-[2px]"><StatusBadge status={selected.correct_status} /></div></div>
-          <div><span className="text-[7px] text-cyan-500/40 tracking-wider">CAPTURED</span><div className="font-orbitron text-[9px] text-slate-200/70">{selected.captured_at ? new Date(selected.captured_at).toLocaleString() : "—"}</div></div>
-          <div><span className="text-[7px] text-cyan-500/40 tracking-wider">SUBMITTED BY</span><div className="font-orbitron text-[9px] text-slate-200/70">{selected.submitted_by || "—"}</div></div>
         </div>
         {selected.details && (
           <div className="mt-[6px]"><span className="text-[7px] text-cyan-500/40 tracking-wider">COMMENTS</span><div className="text-[9px] text-slate-200/80 mt-[2px]">{selected.details}</div></div>
         )}
-        {selected.s3_url && (
-          <div className="mt-[6px]"><span className="text-[7px] text-cyan-500/40 tracking-wider">IMAGE</span><div className="text-[8px] text-cyan-400/60 mt-[2px] truncate">{selected.s3_url}</div></div>
-        )}
       </div>
 
-      {/* Editable prompt to Gemini */}
-      <div>
-        <label className="font-orbitron text-[8px] font-bold tracking-[0.2em] text-cyan-400 flex items-center gap-[6px] mb-[4px]">
+      {/* STEP A: Prompt to Gemini */}
+      <div className="border border-cyan-500/20 rounded-sm p-[10px] bg-cyan-500/[0.02]">
+        <label className="font-orbitron text-[8px] font-bold tracking-[0.2em] text-cyan-400 flex items-center gap-[6px] mb-[6px]">
           <Brain className="w-[10px] h-[10px]" /> PROMPT TO GEMINI
-          <span className="text-[7px] text-cyan-500/30 font-normal tracking-normal ml-[4px]">— edit this to customize what Gemini analyzes</span>
         </label>
         <textarea
           value={geminiPrompt}
           onChange={(e) => setGeminiPrompt(e.target.value)}
           placeholder="Write your prompt to Gemini here..."
-          rows={5}
+          rows={4}
           className="w-full bg-[rgba(0,20,40,0.8)] border border-cyan-500/30 rounded-sm px-[10px] py-[8px] text-[10px] text-slate-200 font-mono placeholder:text-cyan-500/25 focus:border-cyan-400 focus:outline-none resize-y"
           data-testid="gemini-prompt-input"
         />
-      </div>
-
-      {/* Submit to Gemini button */}
-      <button
-        onClick={() => handleAnalyze(selected.id)}
-        disabled={analyzing || !geminiPrompt.trim()}
-        className="flex items-center justify-center gap-[6px] px-[12px] py-[8px] border border-cyan-400 bg-cyan-500/15 text-cyan-400 font-orbitron text-[9px] font-bold tracking-wider rounded-sm hover:bg-cyan-500/25 transition-all disabled:opacity-40"
-        data-testid="analyze-submit-btn"
-      >
-        {analyzing ? <RefreshCw className="w-[12px] h-[12px] animate-spin" /> : <Brain className="w-[12px] h-[12px]" />}
-        {analyzing ? "ANALYZING WITH GEMINI..." : "SUBMIT TO QWEN FOR ANALYSIS"}
-      </button>
-
-      {/* QWEN + OPENCV Result/Edit Fields — always visible */}
-      <div className="flex flex-col gap-[6px] mt-[2px]">
-        <div>
-          <label className="font-orbitron text-[8px] font-bold tracking-[0.2em] text-cyan-400 flex items-center gap-[6px] mb-[4px]">
-            <Brain className="w-[10px] h-[10px]" /> QWEN
-            <span className="text-[7px] text-cyan-500/30 font-normal tracking-normal ml-[4px]">— Gemini result or paste your own retraining prompt</span>
-          </label>
-          <textarea
-            value={qwenPrompt}
-            onChange={(e) => setQwenPrompt(e.target.value)}
-            placeholder="Qwen retraining prompt will appear here after analysis, or paste your own..."
-            rows={5}
-            className="w-full bg-[rgba(0,20,40,0.8)] border border-cyan-500/30 rounded-sm px-[10px] py-[8px] text-[10px] text-slate-200 font-mono placeholder:text-cyan-500/25 focus:border-cyan-400 focus:outline-none resize-y"
-            data-testid="qwen-prompt-input"
-          />
-        </div>
-        <div>
-          <label className="font-orbitron text-[8px] font-bold tracking-[0.2em] text-orange-400 flex items-center gap-[6px] mb-[4px]">
-            <Eye className="w-[10px] h-[10px]" /> OPENCV
-            <span className="text-[7px] text-orange-500/30 font-normal tracking-normal ml-[4px]">— Gemini result or paste your own rule update</span>
-          </label>
-          <textarea
-            value={opencvRule}
-            onChange={(e) => setOpencvRule(e.target.value)}
-            placeholder="OpenCV rule update will appear here after analysis, or paste your own..."
-            rows={5}
-            className="w-full bg-[rgba(0,20,40,0.8)] border border-orange-500/30 rounded-sm px-[10px] py-[8px] text-[10px] text-slate-200 font-mono placeholder:text-orange-500/25 focus:border-orange-400 focus:outline-none resize-y"
-            data-testid="opencv-rule-input"
-          />
-        </div>
         <button
-          onClick={() => onSubmitPrompts(selected.id, qwenPrompt, opencvRule)}
-          disabled={submittingPrompts || (!qwenPrompt.trim() && !opencvRule.trim())}
-          className="flex items-center justify-center gap-[6px] px-[12px] py-[8px] border border-green-500 bg-green-500/15 text-green-400 font-orbitron text-[9px] font-bold tracking-wider rounded-sm hover:bg-green-500/25 transition-all disabled:opacity-30"
-          data-testid="submit-prompts-btn"
+          onClick={() => handleAnalyze(selected.id)}
+          disabled={analyzing || !geminiPrompt.trim()}
+          className="mt-[6px] w-full flex items-center justify-center gap-[6px] px-[12px] py-[8px] border border-cyan-400 bg-cyan-500/15 text-cyan-400 font-orbitron text-[9px] font-bold tracking-wider rounded-sm hover:bg-cyan-500/25 transition-all disabled:opacity-40"
+          data-testid="analyze-submit-btn"
         >
-          {submittingPrompts ? <RefreshCw className="w-[12px] h-[12px] animate-spin" /> : <Send className="w-[12px] h-[12px]" />}
-          {submittingPrompts ? "SUBMITTING..." : "SUBMIT PROMPTS"}
+          {analyzing ? <RefreshCw className="w-[12px] h-[12px] animate-spin" /> : <Brain className="w-[12px] h-[12px]" />}
+          {analyzing ? "ANALYZING WITH GEMINI..." : "SUBMIT TO QWEN FOR ANALYSIS"}
         </button>
       </div>
+
+      {/* STEP B: Gemini results — Qwen prompt */}
+      <div className={`border rounded-sm p-[10px] transition-all ${geminiDone || qwenPrompt ? "border-cyan-500/30 bg-cyan-500/[0.03]" : "border-cyan-500/10 bg-transparent opacity-40"}`}>
+        <label className="font-orbitron text-[8px] font-bold tracking-[0.2em] text-cyan-400 flex items-center gap-[6px] mb-[6px]">
+          <Brain className="w-[10px] h-[10px]" /> QWEN RETRAINING PROMPT
+          <span className="text-[7px] text-cyan-500/30 font-normal tracking-normal">— returned from Gemini, edit before sending</span>
+        </label>
+        <textarea
+          value={qwenPrompt}
+          onChange={(e) => setQwenPrompt(e.target.value)}
+          placeholder="Gemini's Qwen retraining prompt will appear here..."
+          rows={6}
+          className="w-full bg-[rgba(0,20,40,0.8)] border border-cyan-500/30 rounded-sm px-[10px] py-[8px] text-[10px] text-slate-200 font-mono placeholder:text-cyan-500/25 focus:border-cyan-400 focus:outline-none resize-y"
+          data-testid="qwen-prompt-input"
+        />
+      </div>
+
+      {/* STEP B2: Gemini results — OpenCV rule */}
+      <div className={`border rounded-sm p-[10px] transition-all ${geminiDone || opencvRule ? "border-orange-500/30 bg-orange-500/[0.03]" : "border-orange-500/10 bg-transparent opacity-40"}`}>
+        <label className="font-orbitron text-[8px] font-bold tracking-[0.2em] text-orange-400 flex items-center gap-[6px] mb-[6px]">
+          <Eye className="w-[10px] h-[10px]" /> OPENCV RULE UPDATE
+          <span className="text-[7px] text-orange-500/30 font-normal tracking-normal">— returned from Gemini, edit before sending</span>
+        </label>
+        <textarea
+          value={opencvRule}
+          onChange={(e) => setOpencvRule(e.target.value)}
+          placeholder="Gemini's OpenCV rule update will appear here..."
+          rows={6}
+          className="w-full bg-[rgba(0,20,40,0.8)] border border-orange-500/30 rounded-sm px-[10px] py-[8px] text-[10px] text-slate-200 font-mono placeholder:text-orange-500/25 focus:border-orange-400 focus:outline-none resize-y"
+          data-testid="opencv-rule-input"
+        />
+      </div>
+
+      {/* STEP C: Send to backend */}
+      <button
+        onClick={() => onSubmitPrompts(selected.id, qwenPrompt, opencvRule)}
+        disabled={submittingPrompts || (!qwenPrompt.trim() && !opencvRule.trim())}
+        className="w-full flex items-center justify-center gap-[6px] px-[12px] py-[10px] border border-green-500 bg-green-500/15 text-green-400 font-orbitron text-[10px] font-bold tracking-wider rounded-sm hover:bg-green-500/25 transition-all disabled:opacity-30"
+        data-testid="send-training-btn"
+      >
+        {submittingPrompts ? <RefreshCw className="w-[12px] h-[12px] animate-spin" /> : <Send className="w-[12px] h-[12px]" />}
+        {submittingPrompts ? "SENDING..." : "SEND TRAINING PROMPT"}
+      </button>
     </div>
   );
 }
