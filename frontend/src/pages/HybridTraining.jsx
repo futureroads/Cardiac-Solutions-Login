@@ -367,13 +367,27 @@ export default function HybridTraining({ user, onLogout }) {
 
   const syncFromSource = useCallback(async () => {
     setSyncing(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/training/sync`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.synced > 0) toast.success(`Synced ${data.synced} new feedbacks from Readisys`);
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (attempt > 0) await new Promise(r => setTimeout(r, 2000 * attempt));
+        const res = await fetch(`${API_BASE}/api/training/sync`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.synced > 0) toast.success(`Synced ${data.synced} new feedbacks from Readisys`);
+          setSyncing(false);
+          return true;
+        }
+        const errData = await res.json().catch(() => ({}));
+        lastErr = errData.detail || `HTTP ${res.status}`;
+        if (res.status === 401 || res.status === 403) break;
+      } catch (e) {
+        lastErr = e.message || "Network error";
       }
-    } catch {} finally { setSyncing(false); }
+    }
+    toast.error(`Sync failed: ${lastErr}`);
+    setSyncing(false);
+    return false;
   }, [token]);
 
   const fetchAll = useCallback(async () => {
@@ -385,13 +399,26 @@ export default function HybridTraining({ user, onLogout }) {
         fetch(`${API_BASE}/api/training/stats`, { headers }),
       ]);
       if (fbRes.ok) setFeedbacks(await fbRes.json());
+      else console.error("feedbacks fetch failed:", fbRes.status);
       if (upRes.ok) setUpdates(await upRes.json());
       if (monRes.ok) setMonitors(await monRes.json());
       if (stRes.ok) setStats(await stRes.json());
-    } catch {}
+    } catch (e) {
+      console.error("fetchAll error:", e);
+    }
   }, [token]);
 
-  useEffect(() => { syncFromSource().then(() => fetchAll()); const t = setInterval(fetchAll, 30000); return () => clearInterval(t); }, [fetchAll, syncFromSource]);
+  useEffect(() => {
+    // Wake server first, then sync, then fetch
+    const init = async () => {
+      try { await fetch(`${API_BASE}/api/health`); } catch {}
+      await syncFromSource();
+      await fetchAll();
+    };
+    init();
+    const t = setInterval(fetchAll, 30000);
+    return () => clearInterval(t);
+  }, [fetchAll, syncFromSource]);
 
   const handleAnalyze = async (feedbackId) => {
     setAnalyzing(true);

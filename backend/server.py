@@ -102,7 +102,7 @@ async def log_to_db(level, message, context=""):
         pass  # Can't log the log failure
 
 # All available module IDs
-ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path"]
+ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path", "hybrid_training"]
 
 # Create the main app
 app = FastAPI(title="Cardiac Solutions API")
@@ -279,7 +279,7 @@ SEED_USERS = [
         "phone": "",
         "role": "admin",
         "department": "Admin",
-        "allowed_modules": ALL_MODULE_IDS + ["user_access", "backend", "outage_status", "hybrid_training"],
+        "allowed_modules": ALL_MODULE_IDS + ["user_access", "backend", "outage_status"],
         "plain_password": "@@U1s9m6c7@@",
         "created_at": "2024-01-01T00:00:00Z"
     },
@@ -358,22 +358,23 @@ SEED_USERS = [
 ]
 
 async def seed_users():
-    """Seed predefined users. Non-blocking - runs PBKDF2 in thread pool."""
-    # Quick check: if all users exist, skip entirely (fast path for restarts)
+    """Seed predefined users. Non-blocking — runs PBKDF2 in thread pool."""
+    # Quick check: if all users exist, still run update pass for module changes
     try:
         count = await _db.users.count_documents({})
-        if count >= len(SEED_USERS):
-            logger.info(f"Seeding skipped: {count} users already exist")
-            return
+        skip_inserts = count >= len(SEED_USERS)
+        if skip_inserts:
+            logger.info(f"Seed: {count} users exist, checking for field updates only")
     except Exception:
-        pass
+        skip_inserts = False
 
     seeded = 0
     for seed in SEED_USERS:
         try:
             existing = await _db.users.find_one({"username": seed["username"]})
             if not existing:
-                # Run PBKDF2 in thread pool to avoid blocking event loop
+                if skip_inserts:
+                    continue
                 pw_hash = await asyncio.to_thread(hash_password, seed["plain_password"])
                 doc = {
                     "id": seed["id"],
@@ -394,7 +395,7 @@ async def seed_users():
                 current_hash = existing.get("password_hash", "")
                 if not current_hash or not current_hash.startswith("pbkdf2:"):
                     update_fields["password_hash"] = await asyncio.to_thread(hash_password, seed["plain_password"])
-                if existing.get("allowed_modules") != seed["allowed_modules"]:
+                if set(existing.get("allowed_modules", [])) != set(seed["allowed_modules"]):
                     update_fields["allowed_modules"] = seed["allowed_modules"]
                 if existing.get("role") != seed["role"]:
                     update_fields["role"] = seed["role"]
@@ -403,6 +404,7 @@ async def seed_users():
                         update_fields[field] = seed.get(field, "")
                 if update_fields:
                     await _db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
+                    logger.info(f"Seed: updated {seed['username']} fields: {list(update_fields.keys())}")
         except Exception as e:
             logger.error(f"Failed to seed user {seed['username']}: {e}")
     logger.info(f"Seeding complete: {seeded} new users")
@@ -923,15 +925,37 @@ FEEDBACK_SOURCE_URL = "https://readisys.survivalpath.ai/api/reports/aed-status-f
 async def sync_feedbacks(admin: dict = Depends(require_admin)):
     """Fetch latest feedback from external Readisys API and sync into local DB."""
     import httpx
+
+    # Retry up to 3 times with increasing timeout for cold-start resilience
+    data = None
+    last_error = None
+    for attempt in range(3):
+        try:
+            timeout = 10 + (attempt * 5)  # 10s, 15s, 20s
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.get(FEEDBACK_SOURCE_URL)
+                resp.raise_for_status()
+                data = resp.json()
+                break
+        except Exception as e:
+            last_error = e
+            logger.warning(f"sync_feedbacks attempt {attempt+1}/3 failed: {e}")
+            if attempt < 2:
+                await asyncio.sleep(1)
+
+    if data is None:
+        err_msg = f"Readisys API unreachable after 3 attempts: {last_error}"
+        logger.error(err_msg)
+        await log_to_db("ERROR", err_msg, "training/sync")
+        raise HTTPException(status_code=502, detail=err_msg)
+
+    if not data.get("ok") or "items" not in data:
+        err_msg = f"Invalid response from Readisys: ok={data.get('ok')}, keys={list(data.keys())}"
+        logger.error(err_msg)
+        await log_to_db("ERROR", err_msg, "training/sync")
+        raise HTTPException(status_code=502, detail="Invalid response from feedback source")
+
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(FEEDBACK_SOURCE_URL)
-            resp.raise_for_status()
-            data = resp.json()
-
-        if not data.get("ok") or "items" not in data:
-            raise HTTPException(status_code=502, detail="Invalid response from feedback source")
-
         synced = 0
         for item in data["items"]:
             ext_id = item.get("id", "")
@@ -961,12 +985,12 @@ async def sync_feedbacks(admin: dict = Depends(require_admin)):
             synced += 1
 
         total = await _db.training_feedbacks.count_documents({})
+        logger.info(f"sync_feedbacks: synced={synced}, total={total}")
         return {"synced": synced, "total": total}
-    except httpx.HTTPError as e:
-        logger.error(f"sync_feedbacks HTTP error: {e}")
-        raise HTTPException(status_code=502, detail=f"Failed to fetch from source: {str(e)}")
     except Exception as e:
-        logger.error(f"sync_feedbacks error: {e}")
+        err_msg = f"sync_feedbacks DB insert error: {e}"
+        logger.error(err_msg)
+        await log_to_db("ERROR", err_msg, "training/sync")
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/training/feedback")
