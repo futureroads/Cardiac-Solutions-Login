@@ -52,7 +52,7 @@ code {
   font-family: 'JetBrains Mono', monospace;
 }
 
-/* Custom Scrollbar — Wide Red */
+/* Custom Scrollbar — Wide Cyan */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -63,18 +63,18 @@ code {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #ff2244;
+  background: #06b6d4;
   border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #ff4466;
+  background: #22d3ee;
 }
 
 /* Firefox scrollbar */
 * {
   scrollbar-width: auto;
-  scrollbar-color: #ff2244 #0a0f1c;
+  scrollbar-color: #06b6d4 #0a0f1c;
 }
 
 /* Holographic Grid Background */

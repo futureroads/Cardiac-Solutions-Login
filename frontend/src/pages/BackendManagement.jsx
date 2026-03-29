@@ -521,8 +521,8 @@ export default function BackendManagement({ user, onLogout }) {
 
         .scrollbar-thin::-webkit-scrollbar { width: 10px; height: 10px; }
         .scrollbar-thin::-webkit-scrollbar-track { background: #0a0f1c; }
-        .scrollbar-thin::-webkit-scrollbar-thumb { background: #ff2244; border-radius: 5px; }
-        .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #ff4466; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #06b6d4; border-radius: 5px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #22d3ee; }
       `}</style>
     </div>
   );
