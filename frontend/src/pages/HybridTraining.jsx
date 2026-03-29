@@ -518,7 +518,6 @@ export default function HybridTraining({ user, onLogout }) {
   const handleAnalyze = async (feedbackId, customPrompt) => {
     setAnalyzing(true);
     try {
-      // 1. Kick off analysis (returns immediately, LLM runs in background)
       const res = await fetch(`${API_BASE}/api/training/analyze/${feedbackId}`, {
         method: "POST",
         headers,
@@ -528,35 +527,16 @@ export default function HybridTraining({ user, onLogout }) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || `HTTP ${res.status}`);
       }
-
-      // 2. Poll feedbacks list (proven to work) until this item is "analyzed"
-      toast.info("Gemini is analyzing — this may take 15-30 seconds...");
-      for (let i = 0; i < 20; i++) {
-        await new Promise(r => setTimeout(r, 3000));
-        try {
-          const fbRes = await fetch(`${API_BASE}/api/training/feedbacks`, { headers });
-          if (fbRes.ok) {
-            const allFb = await fbRes.json();
-            const updated = allFb.find(f => f.id === feedbackId);
-            if (updated && updated.status === "analyzed") {
-              toast.success("Gemini analysis complete — review results below");
-              setFeedbacks(allFb);
-              setSelectedFeedback(updated);
-              setAnalyzing(false);
-              return {
-                qwen_suggestion: updated.qwen_analysis || "",
-                opencv_suggestion: typeof updated.opencv_rule === "string" ? updated.opencv_rule : "",
-              };
-            }
-          }
-        } catch {}
-      }
-      toast.error("Analysis timed out — click Submit again to retry");
+      const data = await res.json();
+      toast.success("Analysis complete — edit prompts below, then click SEND TRAINING PROMPT");
+      await fetchAll();
+      setAnalyzing(false);
+      return data;
     } catch (err) {
       toast.error(`Analysis failed: ${err.message}`);
+      setAnalyzing(false);
+      return null;
     }
-    setAnalyzing(false);
-    return null;
   };
 
   const handleSubmitPrompts = async (feedbackId, qwenPrompt, opencvRule) => {
