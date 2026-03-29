@@ -222,7 +222,7 @@ function Step2Analyze({ selected, onAnalyze, analyzing, onSubmitPrompts, submitt
           data-testid="analyze-submit-btn"
         >
           {analyzing ? <RefreshCw className="w-[12px] h-[12px] animate-spin" /> : <Brain className="w-[12px] h-[12px]" />}
-          {analyzing ? "ANALYZING WITH GEMINI..." : "SUBMIT TO QWEN FOR ANALYSIS"}
+          {analyzing ? "WAITING FOR GEMINI..." : "SUBMIT TO QWEN FOR ANALYSIS"}
         </button>
       </div>
 
@@ -517,32 +517,44 @@ export default function HybridTraining({ user, onLogout }) {
 
   const handleAnalyze = async (feedbackId, customPrompt) => {
     setAnalyzing(true);
-    let lastErr = "Unknown error";
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        if (attempt > 0) await new Promise(r => setTimeout(r, 3000));
-        const res = await fetch(`${API_BASE}/api/training/analyze/${feedbackId}`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ custom_prompt: customPrompt }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          toast.success("Gemini analysis complete — review results in QWEN and OPENCV fields");
-          await fetchAll();
-          const updated = await (await fetch(`${API_BASE}/api/training/feedbacks`, { headers })).json();
-          setSelectedFeedback(updated.find((f) => f.id === feedbackId) || null);
-          setAnalyzing(false);
-          return data;
-        }
+    try {
+      // 1. Kick off analysis (returns immediately, LLM runs in background)
+      const res = await fetch(`${API_BASE}/api/training/analyze/${feedbackId}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ custom_prompt: customPrompt }),
+      });
+      if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        lastErr = errData.detail || `HTTP ${res.status}`;
-        if (res.status === 401 || res.status === 403 || res.status === 404) break;
-      } catch (e) {
-        lastErr = e.message || "Network error";
+        throw new Error(errData.detail || `HTTP ${res.status}`);
       }
+
+      // 2. Poll feedbacks list (proven to work) until this item is "analyzed"
+      toast.info("Gemini is analyzing — this may take 15-30 seconds...");
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        try {
+          const fbRes = await fetch(`${API_BASE}/api/training/feedbacks`, { headers });
+          if (fbRes.ok) {
+            const allFb = await fbRes.json();
+            const updated = allFb.find(f => f.id === feedbackId);
+            if (updated && updated.status === "analyzed") {
+              toast.success("Gemini analysis complete — review results below");
+              setFeedbacks(allFb);
+              setSelectedFeedback(updated);
+              setAnalyzing(false);
+              return {
+                qwen_suggestion: updated.qwen_analysis || "",
+                opencv_suggestion: typeof updated.opencv_rule === "string" ? updated.opencv_rule : "",
+              };
+            }
+          }
+        } catch {}
+      }
+      toast.error("Analysis timed out — click Submit again to retry");
+    } catch (err) {
+      toast.error(`Analysis failed: ${err.message}`);
     }
-    toast.error(`Analysis failed: ${lastErr}`);
     setAnalyzing(false);
     return null;
   };

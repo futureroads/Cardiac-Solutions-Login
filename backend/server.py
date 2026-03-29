@@ -1027,12 +1027,11 @@ async def list_feedbacks(admin: dict = Depends(require_admin)):
 
 @api_router.post("/training/analyze/{feedback_id}")
 async def analyze_feedback(feedback_id: str, request: Request, admin: dict = Depends(require_admin)):
-    """Submit feedback to LLM (Gemini) for analysis. Accepts optional custom_prompt from the user."""
+    """Kick off LLM analysis as a background task. Returns immediately so the proxy doesn't timeout."""
     fb = await _db.training_feedbacks.find_one({"id": feedback_id}, {"_id": 0})
     if not fb:
         raise HTTPException(status_code=404, detail="Feedback not found")
 
-    # Safely read request body
     custom_prompt = ""
     try:
         body = await request.json()
@@ -1040,6 +1039,20 @@ async def analyze_feedback(feedback_id: str, request: Request, admin: dict = Dep
     except Exception:
         pass
 
+    # Mark as processing
+    await _db.training_feedbacks.update_one(
+        {"id": feedback_id},
+        {"$set": {"status": "processing"}},
+    )
+
+    # Run LLM in background
+    asyncio.create_task(_run_llm_analysis(feedback_id, fb, custom_prompt))
+
+    return {"feedback_id": feedback_id, "status": "processing"}
+
+
+async def _run_llm_analysis(feedback_id: str, fb: dict, custom_prompt: str):
+    """Background task: calls Gemini and saves results to DB."""
     llm_key = os.environ.get("EMERGENT_LLM_KEY", "")
     qwen_prompt_update = ""
     opencv_rule_text = ""
@@ -1083,7 +1096,7 @@ async def analyze_feedback(feedback_id: str, request: Request, admin: dict = Dep
 
             chat = LlmChat(
                 api_key=llm_key,
-                session_id=f"analyze-{feedback_id}",
+                session_id=f"analyze-{feedback_id}-{uuid.uuid4().hex[:6]}",
                 system_message="You are an expert in computer vision model training and AED device monitoring."
             )
             chat.with_model("gemini", "gemini-2.5-flash")
@@ -1127,11 +1140,24 @@ async def analyze_feedback(feedback_id: str, request: Request, admin: dict = Dep
             "opencv_rule": opencv_rule_text,
         }},
     )
+    logger.info(f"Analysis saved for {feedback_id}")
+
+
+@api_router.get("/training/analyze/{feedback_id}/status")
+async def analyze_status(feedback_id: str, admin: dict = Depends(require_admin)):
+    """Poll for LLM analysis result."""
+    fb = await _db.training_feedbacks.find_one({"id": feedback_id}, {"_id": 0})
+    if not fb:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+
+    if fb.get("status") == "processing":
+        return {"status": "processing"}
 
     return {
+        "status": "done",
         "feedback_id": feedback_id,
-        "qwen_suggestion": qwen_prompt_update,
-        "opencv_suggestion": opencv_rule_text,
+        "qwen_suggestion": fb.get("qwen_analysis", ""),
+        "opencv_suggestion": fb.get("opencv_rule", ""),
     }
 
 
