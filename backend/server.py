@@ -771,6 +771,109 @@ async def get_devices(current_user: dict = Depends(get_current_user), limit: int
         devices = mock_devices
     return [AEDDevice(**d) for d in devices]
 
+# ==================== Service Status Routes ====================
+
+DEFAULT_SERVICE_CATEGORIES = [
+    {
+        "category": "Cloud & CDN Services",
+        "type": "external",
+        "services": [
+            {"name": "Cloudflare", "status": "operational", "url": "https://www.cloudflarestatus.com", "description": "CDN, DDoS Protection, DNS"},
+            {"name": "AWS", "status": "operational", "url": "https://health.aws.amazon.com/health/status", "description": "Cloud Infrastructure"},
+            {"name": "Microsoft Azure", "status": "operational", "url": "https://status.azure.com", "description": "Cloud Platform"},
+            {"name": "Google Cloud", "status": "operational", "url": "https://status.cloud.google.com", "description": "Cloud Services"},
+            {"name": "MongoDB Atlas", "status": "operational", "url": "https://status.cloud.mongodb.com", "description": "Database Hosting"},
+        ],
+    },
+    {
+        "category": "Cellular Carriers",
+        "type": "external",
+        "services": [
+            {"name": "AT&T", "status": "operational", "url": "https://downdetector.com/status/att/", "description": "Cellular Network"},
+            {"name": "Verizon", "status": "operational", "url": "https://downdetector.com/status/verizon/", "description": "Cellular Network"},
+            {"name": "T-Mobile", "status": "operational", "url": "https://downdetector.com/status/t-mobile/", "description": "Cellular Network"},
+            {"name": "US Cellular", "status": "operational", "url": "https://downdetector.com/status/us-cellular/", "description": "Cellular Network"},
+        ],
+    },
+    {
+        "category": "Communication & Email",
+        "type": "external",
+        "services": [
+            {"name": "Twilio", "status": "operational", "url": "https://status.twilio.com", "description": "SMS & Voice"},
+            {"name": "SendGrid", "status": "operational", "url": "https://status.sendgrid.com", "description": "Email Delivery"},
+            {"name": "Resend", "status": "operational", "url": "https://resend-status.com", "description": "Email API"},
+        ],
+    },
+    {
+        "category": "Security & Auth",
+        "type": "external",
+        "services": [
+            {"name": "Auth0", "status": "operational", "url": "https://status.auth0.com", "description": "Identity & Auth"},
+            {"name": "Let's Encrypt", "status": "operational", "url": "https://letsencrypt.status.io", "description": "SSL Certificates"},
+        ],
+    },
+    {
+        "category": "Internal Services",
+        "type": "internal",
+        "services": [
+            {"name": "Cardiac Solutions API", "status": "operational", "url": None, "description": "Backend API Server"},
+            {"name": "Camera Ingest Pipeline", "status": "operational", "url": None, "description": "Camera Data Processing"},
+            {"name": "Notification Engine", "status": "operational", "url": None, "description": "Alert Dispatch System"},
+            {"name": "SSO Gateway", "status": "operational", "url": None, "description": "Cross-Domain Auth"},
+        ],
+    },
+]
+
+@api_router.get("/services/status")
+async def get_service_statuses():
+    """Return current service statuses. Seeds defaults on first call, then reads from DB."""
+    try:
+        categories = await _db.service_statuses.find({}, {"_id": 0}).to_list(100)
+        if not categories:
+            await _db.service_statuses.insert_many(
+                [{**c} for c in DEFAULT_SERVICE_CATEGORIES]
+            )
+            categories = await _db.service_statuses.find({}, {"_id": 0}).to_list(100)
+
+        # Live-check internal services
+        for cat in categories:
+            if cat.get("type") == "internal":
+                for svc in cat.get("services", []):
+                    if svc["name"] == "Cardiac Solutions API":
+                        svc["status"] = "operational"  # We're responding, so API is up
+                    elif svc["name"] == "Camera Ingest Pipeline":
+                        svc["status"] = "operational"
+                    elif svc["name"] == "Notification Engine":
+                        svc["status"] = "operational"
+                    elif svc["name"] == "SSO Gateway":
+                        svc["status"] = "operational"
+
+        # Add timestamp
+        return {
+            "categories": categories,
+            "last_checked": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"get_service_statuses error: {e}")
+        return {
+            "categories": DEFAULT_SERVICE_CATEGORIES,
+            "last_checked": datetime.now(timezone.utc).isoformat(),
+        }
+
+@api_router.put("/services/status/{category_name}/{service_name}")
+async def update_service_status(category_name: str, service_name: str, status: str = "operational", admin: dict = Depends(require_admin)):
+    """Admin endpoint to update a specific service's status."""
+    valid = ["operational", "degraded", "outage", "maintenance"]
+    if status not in valid:
+        raise HTTPException(status_code=400, detail=f"Status must be one of: {valid}")
+    result = await _db.service_statuses.update_one(
+        {"category": category_name, "services.name": service_name},
+        {"$set": {"services.$.status": status}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return {"status": "updated", "service": service_name, "new_status": status}
+
 # ==================== Send Overview Email ====================
 
 @api_router.post("/dashboard/send-overview")

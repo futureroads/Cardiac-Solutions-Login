@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { LogOut, Mic, Mail, Loader2, Play, Pause, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { getLedColor, LED_STYLES } from "@/data/serviceStatuses";
+import { getLedColor, LED_STYLES, useServiceStatuses } from "@/data/serviceStatuses";
 
 import API_BASE from "@/apiBase";
 const API_URL = API_BASE;
@@ -15,6 +15,7 @@ export default function Dashboard({ user, onLogout }) {
   const [aiScrollPaused, setAiScrollPaused] = useState(false);
   const [sendingOverview, setSendingOverview] = useState(false);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem("dashboard_view") || 'detailed');
+  const { categories: serviceCategories } = useServiceStatuses(60000);
 
   const token = localStorage.getItem("token") || "";
 
@@ -239,13 +240,13 @@ export default function Dashboard({ user, onLogout }) {
           </div>
           {/* Flashing LED Indicators */}
           <div className="flex items-center gap-[16px]">
-            {(() => { const c = getLedColor("external"); const s = LED_STYLES[c]; return (
+            {(() => { const c = getLedColor(serviceCategories, "external"); const s = LED_STYLES[c]; return (
             <div className="flex items-center gap-[6px] cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate("/outage")} data-testid="led-external-services">
               <span className="w-[10px] h-[10px] rounded-full animate-led-flash" style={{ backgroundColor: s.bg, boxShadow: s.shadow }} />
               <span className="font-orbitron text-[8px] font-bold tracking-wider text-slate-200">EXTERNAL SERVICES</span>
             </div>
             ); })()}
-            {(() => { const c = getLedColor("internal"); const s = LED_STYLES[c]; return (
+            {(() => { const c = getLedColor(serviceCategories, "internal"); const s = LED_STYLES[c]; return (
             <div className="flex items-center gap-[6px] cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate("/outage")} data-testid="led-internal-systems">
               <span className="w-[10px] h-[10px] rounded-full animate-led-flash-alt" style={{ backgroundColor: s.bg, boxShadow: s.shadow }} />
               <span className="font-orbitron text-[8px] font-bold tracking-wider text-slate-200">INTERNAL SYSTEMS</span>

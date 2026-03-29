@@ -8,7 +8,7 @@ import {
   AlertTriangle,
   XCircle,
 } from "lucide-react";
-import { SERVICE_CATEGORIES } from "@/data/serviceStatuses";
+import { useServiceStatuses } from "@/data/serviceStatuses";
 
 const STATUS_CONFIG = {
   operational: { label: "OPERATIONAL", color: "text-green-400", bg: "bg-green-500/15", border: "border-l-green-400", dot: "bg-green-400", glow: "rgba(57,255,20,0.6)" },
@@ -74,6 +74,7 @@ function CategoryPanel({ category }) {
 export default function OutageStatus({ user, onLogout }) {
   const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
+  const { categories: SERVICE_CATEGORIES, lastChecked } = useServiceStatuses(60000);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -146,6 +147,8 @@ export default function OutageStatus({ user, onLogout }) {
                 <span className="text-red-400">{outageCount} OUTAGE</span>
               </>
             )}
+            <span>|</span>
+            <span className="text-cyan-500/50">AUTO-REFRESH 60s</span>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex flex-col items-end gap-[2px]">
