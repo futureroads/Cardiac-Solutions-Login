@@ -132,6 +132,10 @@ export default function OutageStatus({ user, onLogout }) {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
