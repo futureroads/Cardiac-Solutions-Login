@@ -442,7 +442,24 @@ export default function HybridTraining({ user, onLogout }) {
   useEffect(() => { window.scrollTo(0, 0); }, []);
   useEffect(() => { const t = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(t); }, []);
 
-  const syncFromSource = useCallback(async () => {
+  const [serverReady, setServerReady] = useState(false);
+  const [waking, setWaking] = useState(true);
+
+  // Wake server silently — no error toasts, just status
+  const wakeServer = useCallback(async () => {
+    setWaking(true);
+    for (let i = 0; i < 15; i++) {
+      try {
+        const r = await fetch(`${API_BASE}/api/health`);
+        if (r.ok) { setServerReady(true); setWaking(false); return true; }
+      } catch {}
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    setWaking(false);
+    return false;
+  }, []);
+
+  const syncFromSource = useCallback(async (silent) => {
     setSyncing(true);
     let lastErr = null;
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -458,12 +475,11 @@ export default function HybridTraining({ user, onLogout }) {
         const errData = await res.json().catch(() => ({}));
         lastErr = errData.detail || `HTTP ${res.status}`;
         if (res.status === 401 || res.status === 403) break;
-        // 520/502/503 = server waking up, keep retrying
       } catch (e) {
         lastErr = e.message || "Network error";
       }
     }
-    toast.error(`Sync failed: ${lastErr}`);
+    if (!silent) toast.error(`Sync failed: ${lastErr}`);
     setSyncing(false);
     return false;
   }, [token]);
@@ -487,23 +503,17 @@ export default function HybridTraining({ user, onLogout }) {
   }, [token]);
 
   useEffect(() => {
-    // Wake server with aggressive retry, then sync, then fetch
     const init = async () => {
-      // Ping health up to 6 times (covers ~18s of cold start)
-      for (let i = 0; i < 6; i++) {
-        try {
-          const r = await fetch(`${API_BASE}/api/health`);
-          if (r.ok) break;
-        } catch {}
-        await new Promise(r => setTimeout(r, 3000));
+      const awake = await wakeServer();
+      if (awake) {
+        await syncFromSource(true);
+        await fetchAll();
       }
-      await syncFromSource();
-      await fetchAll();
     };
     init();
-    const t = setInterval(fetchAll, 30000);
+    const t = setInterval(() => { if (serverReady) fetchAll(); }, 30000);
     return () => clearInterval(t);
-  }, [fetchAll, syncFromSource]);
+  }, [fetchAll, syncFromSource, wakeServer, serverReady]);
 
   const handleAnalyze = async (feedbackId, customPrompt) => {
     setAnalyzing(true);
@@ -618,13 +628,13 @@ export default function HybridTraining({ user, onLogout }) {
           </div>
           <div className="flex gap-[12px] items-center text-[8px] tracking-wider">
             <button
-              onClick={() => syncFromSource().then(() => fetchAll())}
-              disabled={syncing}
+              onClick={async () => { if (!serverReady) await wakeServer(); syncFromSource().then(() => fetchAll()); }}
+              disabled={syncing || waking}
               className="flex items-center gap-[4px] px-[6px] py-[3px] border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 font-orbitron text-[7px] font-bold tracking-wider rounded-sm hover:bg-cyan-500/20 transition-all disabled:opacity-40"
               data-testid="sync-btn"
             >
-              <RefreshCw className={`w-[10px] h-[10px] ${syncing ? "animate-spin" : ""}`} />
-              {syncing ? "SYNCING..." : "SYNC"}
+              <RefreshCw className={`w-[10px] h-[10px] ${syncing || waking ? "animate-spin" : ""}`} />
+              {waking ? "WAKING..." : syncing ? "SYNCING..." : "SYNC"}
             </button>
             <span className="flex items-center gap-[4px]"><Cpu className="w-[10px] h-[10px]" /> QUEUE: {stats.queue_pending}</span>
             <span>|</span>
@@ -645,6 +655,18 @@ export default function HybridTraining({ user, onLogout }) {
 
         {/* CONTENT */}
         <div className="flex-1 p-[10px]">
+          {waking && !serverReady && (
+            <div className="mb-[8px] flex items-center justify-center gap-[8px] px-[12px] py-[10px] bg-cyan-500/10 border border-cyan-500/30 rounded-sm" data-testid="server-waking-banner">
+              <RefreshCw className="w-[14px] h-[14px] text-cyan-400 animate-spin" />
+              <span className="font-orbitron text-[10px] font-bold tracking-[0.15em] text-cyan-400">CONNECTING TO SERVER — PLEASE WAIT...</span>
+            </div>
+          )}
+          {!waking && !serverReady && (
+            <div className="mb-[8px] flex items-center justify-center gap-[8px] px-[12px] py-[10px] bg-red-500/10 border border-red-500/30 rounded-sm" data-testid="server-offline-banner">
+              <AlertTriangle className="w-[14px] h-[14px] text-red-400" />
+              <span className="font-orbitron text-[10px] font-bold tracking-[0.15em] text-red-400">SERVER UNREACHABLE — CLICK SYNC TO RETRY</span>
+            </div>
+          )}
           <div className="panel relative p-[12px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden min-h-[500px]">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
