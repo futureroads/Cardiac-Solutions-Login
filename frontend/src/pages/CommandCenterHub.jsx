@@ -103,7 +103,7 @@ const ALL_MODULES = [
   },
   {
     moduleKey: "hybrid_training",
-    title: "HYBRID TRAINING",
+    title: "HYBRID FEEDBACK TRAINING",
     status: "ADMIN",
     icon: Brain,
     route: "/hybridtraining",
