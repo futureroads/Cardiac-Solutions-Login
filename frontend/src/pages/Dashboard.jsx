@@ -240,13 +240,13 @@ export default function Dashboard({ user, onLogout }) {
           {/* Flashing LED Indicators */}
           <div className="flex items-center gap-[16px]">
             {(() => { const c = getLedColor("external"); const s = LED_STYLES[c]; return (
-            <div className="flex items-center gap-[6px]" data-testid="led-external-services">
+            <div className="flex items-center gap-[6px] cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate("/outage")} data-testid="led-external-services">
               <span className="w-[10px] h-[10px] rounded-full animate-led-flash" style={{ backgroundColor: s.bg, boxShadow: s.shadow }} />
               <span className="font-orbitron text-[8px] font-bold tracking-wider text-slate-200">EXTERNAL SERVICES</span>
             </div>
             ); })()}
             {(() => { const c = getLedColor("internal"); const s = LED_STYLES[c]; return (
-            <div className="flex items-center gap-[6px]" data-testid="led-internal-systems">
+            <div className="flex items-center gap-[6px] cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate("/outage")} data-testid="led-internal-systems">
               <span className="w-[10px] h-[10px] rounded-full animate-led-flash-alt" style={{ backgroundColor: s.bg, boxShadow: s.shadow }} />
               <span className="font-orbitron text-[8px] font-bold tracking-wider text-slate-200">INTERNAL SYSTEMS</span>
             </div>
