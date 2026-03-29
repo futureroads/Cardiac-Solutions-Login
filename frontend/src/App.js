@@ -43,13 +43,14 @@ function App() {
     setLoading(false);
   }, []);
 
+  const [redirectTo, setRedirectTo] = useState(null);
+
   const handleLogin = (token, userData) => {
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(userData));
     setIsAuthenticated(true);
     setUser(userData);
-    // Always go to hub after fresh login
-    window.history.replaceState(null, '', '/hub');
+    setRedirectTo("/hub");
   };
 
   const handleLogout = () => {
@@ -57,7 +58,8 @@ function App() {
     localStorage.removeItem("user");
     setIsAuthenticated(false);
     setUser(null);
-    window.history.replaceState(null, '', '/');
+    setRedirectTo(null);
+    window.location.href = "/";
   };
 
   if (loading) {
@@ -76,7 +78,7 @@ function App() {
             path="/" 
             element={
               isAuthenticated ? 
-                <Navigate to="/hub" replace /> : 
+                <Navigate to={redirectTo || "/hub"} replace /> : 
                 <LoginPage onLogin={handleLogin} />
             } 
           />
