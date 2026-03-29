@@ -445,9 +445,9 @@ export default function HybridTraining({ user, onLogout }) {
   const syncFromSource = useCallback(async () => {
     setSyncing(true);
     let lastErr = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        if (attempt > 0) await new Promise(r => setTimeout(r, 2000 * attempt));
+        if (attempt > 0) await new Promise(r => setTimeout(r, 3000 * attempt));
         const res = await fetch(`${API_BASE}/api/training/sync`, { headers });
         if (res.ok) {
           const data = await res.json();
@@ -458,6 +458,7 @@ export default function HybridTraining({ user, onLogout }) {
         const errData = await res.json().catch(() => ({}));
         lastErr = errData.detail || `HTTP ${res.status}`;
         if (res.status === 401 || res.status === 403) break;
+        // 520/502/503 = server waking up, keep retrying
       } catch (e) {
         lastErr = e.message || "Network error";
       }
@@ -486,9 +487,16 @@ export default function HybridTraining({ user, onLogout }) {
   }, [token]);
 
   useEffect(() => {
-    // Wake server first, then sync, then fetch
+    // Wake server with aggressive retry, then sync, then fetch
     const init = async () => {
-      try { await fetch(`${API_BASE}/api/health`); } catch {}
+      // Ping health up to 6 times (covers ~18s of cold start)
+      for (let i = 0; i < 6; i++) {
+        try {
+          const r = await fetch(`${API_BASE}/api/health`);
+          if (r.ok) break;
+        } catch {}
+        await new Promise(r => setTimeout(r, 3000));
+      }
       await syncFromSource();
       await fetchAll();
     };
