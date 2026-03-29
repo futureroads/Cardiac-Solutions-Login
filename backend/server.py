@@ -468,23 +468,29 @@ async def login(credentials: UserLogin):
             if del_null.deleted_count > 0:
                 logger.info(f"DB cleanup: deleted {del_null.deleted_count} docs with null/empty username")
 
-            # 2. Resolve duplicate id='user-tony-001' — keep only the one with username='Tony'
-            tony_dupes = await _db.users.find({"id": "user-tony-001"}).to_list(100)
-            if len(tony_dupes) > 1:
-                kept = False
-                for doc in tony_dupes:
-                    if not kept and doc.get("username") == "Tony":
-                        kept = True
-                        continue
-                    await _db.users.delete_one({"_id": doc["_id"]})
-                    logger.info(f"DB cleanup: removed duplicate user-tony-001 (_id={doc['_id']})")
-                if not kept and tony_dupes:
-                    # If none had username='Tony', keep the first one
-                    for doc in tony_dupes[1:]:
-                        await _db.users.delete_one({"_id": doc["_id"]})
-                        logger.info(f"DB cleanup: removed extra user-tony-001 (_id={doc['_id']})")
+            # 2. Remove ALL duplicate 'id' values — keep first occurrence only
+            pipeline = [
+                {"$group": {"_id": "$id", "count": {"$sum": 1}, "docs": {"$push": "$_id"}}},
+                {"$match": {"count": {"$gt": 1}}},
+            ]
+            async for dup in _db.users.aggregate(pipeline):
+                # Keep the first doc, delete the rest
+                for oid in dup["docs"][1:]:
+                    await _db.users.delete_one({"_id": oid})
+                    logger.info(f"DB cleanup: removed duplicate id={dup['_id']} (_id={oid})")
 
-            # 3. Drop old non-sparse indexes before recreating with sparse=True
+            # 3. Remove ALL duplicate 'username' values — keep first occurrence only
+            pipeline2 = [
+                {"$match": {"username": {"$ne": None, "$ne": ""}}},
+                {"$group": {"_id": "$username", "count": {"$sum": 1}, "docs": {"$push": "$_id"}}},
+                {"$match": {"count": {"$gt": 1}}},
+            ]
+            async for dup in _db.users.aggregate(pipeline2):
+                for oid in dup["docs"][1:]:
+                    await _db.users.delete_one({"_id": oid})
+                    logger.info(f"DB cleanup: removed duplicate username={dup['_id']} (_id={oid})")
+
+            # 4. Drop old non-sparse indexes before recreating with sparse=True
             try:
                 await _db.users.drop_index("username_1")
             except Exception:
@@ -502,6 +508,8 @@ async def login(credentials: UserLogin):
         except Exception as e:
             logger.warning(f"Lazy init failed: {e}")
             await log_to_db("ERROR", f"Lazy init failed: {e}", "login")
+            # Mark seed done anyway to prevent re-triggering on every request
+            _seed_done = True
 
     try:
         user = await _db.users.find_one({"username": credentials.username}, {"_id": 0})
@@ -514,14 +522,14 @@ async def login(credentials: UserLogin):
     if not user:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    if not verify_password(credentials.password, user.get("password_hash", "")):
+    if not await asyncio.to_thread(verify_password, credentials.password, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     # Auto-migrate legacy bcrypt hashes to PBKDF2 on successful login
     current_hash = user.get("password_hash", "")
     if current_hash and not current_hash.startswith("pbkdf2:"):
         try:
-            new_hash = hash_password(credentials.password)
+            new_hash = await asyncio.to_thread(hash_password, credentials.password)
             await _db.users.update_one({"id": user["id"]}, {"$set": {"password_hash": new_hash}})
         except Exception:
             pass  # Non-critical
@@ -828,12 +836,21 @@ DEFAULT_SERVICE_CATEGORIES = [
 async def get_service_statuses():
     """Return current service statuses. Seeds defaults on first call, then reads from DB."""
     try:
+        if _db is None:
+            return {"categories": DEFAULT_SERVICE_CATEGORIES, "last_checked": datetime.now(timezone.utc).isoformat()}
+
         categories = await _db.service_statuses.find({}, {"_id": 0}).to_list(100)
         if not categories:
-            await _db.service_statuses.insert_many(
-                [{**c} for c in DEFAULT_SERVICE_CATEGORIES]
-            )
+            try:
+                await _db.service_statuses.insert_many(
+                    [{**c} for c in DEFAULT_SERVICE_CATEGORIES]
+                )
+            except Exception:
+                pass  # Race condition or duplicate — ignore
             categories = await _db.service_statuses.find({}, {"_id": 0}).to_list(100)
+
+        if not categories:
+            categories = DEFAULT_SERVICE_CATEGORIES
 
         # Live-check internal services
         for cat in categories:
