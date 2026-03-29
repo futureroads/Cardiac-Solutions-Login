@@ -13,7 +13,7 @@ import uuid
 print("[SERVER] Module loading started", flush=True)
 
 try:
-    from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
+    from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status, BackgroundTasks
     from fastapi.responses import JSONResponse
     from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
     from dotenv import load_dotenv
@@ -403,21 +403,91 @@ async def seed_users():
     logger.info(f"Seeding complete: {seeded} new users")
 
 _seed_done = False
+_init_running = False
+
+async def _run_lazy_init():
+    """Run DB cleanup and seeding in background. Non-blocking for login."""
+    global _seed_done, _init_running
+    if _seed_done or _init_running:
+        return
+    _init_running = True
+    try:
+        # 1. Delete documents where username is null or missing
+        del_null = await _db.users.delete_many({"$or": [
+            {"username": None},
+            {"username": {"$exists": False}},
+            {"username": ""},
+        ]})
+        if del_null.deleted_count > 0:
+            logger.info(f"DB cleanup: deleted {del_null.deleted_count} docs with null/empty username")
+
+        # 2. Remove ALL duplicate 'id' values — keep first occurrence only
+        pipeline = [
+            {"$group": {"_id": "$id", "count": {"$sum": 1}, "docs": {"$push": "$_id"}}},
+            {"$match": {"count": {"$gt": 1}}},
+        ]
+        async for dup in _db.users.aggregate(pipeline):
+            for oid in dup["docs"][1:]:
+                await _db.users.delete_one({"_id": oid})
+                logger.info(f"DB cleanup: removed duplicate id={dup['_id']} (_id={oid})")
+
+        # 3. Remove ALL duplicate 'username' values — keep first occurrence only
+        pipeline2 = [
+            {"$match": {"username": {"$ne": None, "$ne": ""}}},
+            {"$group": {"_id": "$username", "count": {"$sum": 1}, "docs": {"$push": "$_id"}}},
+            {"$match": {"count": {"$gt": 1}}},
+        ]
+        async for dup in _db.users.aggregate(pipeline2):
+            for oid in dup["docs"][1:]:
+                await _db.users.delete_one({"_id": oid})
+                logger.info(f"DB cleanup: removed duplicate username={dup['_id']} (_id={oid})")
+
+        # 4. Drop old non-sparse indexes before recreating with sparse=True
+        try:
+            await _db.users.drop_index("username_1")
+        except Exception:
+            pass
+        try:
+            await _db.users.drop_index("id_1")
+        except Exception:
+            pass
+
+        await _db.users.create_index("username", unique=True, sparse=True)
+        await _db.users.create_index("id", unique=True, sparse=True)
+        await asyncio.wait_for(seed_users(), timeout=10)
+        _seed_done = True
+        logger.info("Lazy init complete: cleanup + indexes + seed done")
+    except Exception as e:
+        logger.warning(f"Lazy init failed: {e}")
+        try:
+            await log_to_db("ERROR", f"Lazy init failed: {e}", "login")
+        except Exception:
+            pass
+        _seed_done = True  # Prevent re-triggering
+    finally:
+        _init_running = False
 
 @app.on_event("startup")
 async def startup():
-    global _seed_done
-    print("[SERVER] READY (instant start, DB deferred to first request)", flush=True)
-    # Do ALL initialization lazily on first request
-    # This ensures the health check probe succeeds immediately
+    global _mongo_client, _db
+    print("[SERVER] READY (instant start, DB connecting in background)", flush=True)
+    # Eagerly connect to DB so first request doesn't wait
     try:
-        await log_to_db("INFO", "Server started (instant)", f"python={sys.version}")
-    except Exception:
-        pass
+        _mongo_client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+        _db = _mongo_client[db_name]
+        # Fire-and-forget: start lazy init in background
+        asyncio.create_task(_run_lazy_init())
+    except Exception as e:
+        print(f"[SERVER] DB connection deferred: {e}", flush=True)
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    global _mongo_client, _db
     if _db is None:
-        raise HTTPException(status_code=503, detail="Database not available")
+        try:
+            _mongo_client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+            _db = _mongo_client[db_name]
+        except Exception:
+            raise HTTPException(status_code=503, detail="Database not available")
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user_id = payload.get("sub")
@@ -446,7 +516,7 @@ async def require_admin(current_user: dict = Depends(get_current_user)):
 # ==================== Auth Routes ====================
 
 @api_router.post("/auth/login", response_model=TokenResponse)
-async def login(credentials: UserLogin):
+async def login(credentials: UserLogin, background_tasks: BackgroundTasks = None):
     global _seed_done, _mongo_client, _db
     # Reconnect if DB was never initialized
     if _db is None:
@@ -455,61 +525,9 @@ async def login(credentials: UserLogin):
             _db = _mongo_client[db_name]
         except Exception:
             raise HTTPException(status_code=503, detail="Database unavailable")
-    # Lazy seed if startup was skipped
-    if not _seed_done:
-        try:
-            # --- DB cleanup migration (runs once before index creation) ---
-            # 1. Delete documents where username is null or missing
-            del_null = await _db.users.delete_many({"$or": [
-                {"username": None},
-                {"username": {"$exists": False}},
-                {"username": ""},
-            ]})
-            if del_null.deleted_count > 0:
-                logger.info(f"DB cleanup: deleted {del_null.deleted_count} docs with null/empty username")
-
-            # 2. Remove ALL duplicate 'id' values — keep first occurrence only
-            pipeline = [
-                {"$group": {"_id": "$id", "count": {"$sum": 1}, "docs": {"$push": "$_id"}}},
-                {"$match": {"count": {"$gt": 1}}},
-            ]
-            async for dup in _db.users.aggregate(pipeline):
-                # Keep the first doc, delete the rest
-                for oid in dup["docs"][1:]:
-                    await _db.users.delete_one({"_id": oid})
-                    logger.info(f"DB cleanup: removed duplicate id={dup['_id']} (_id={oid})")
-
-            # 3. Remove ALL duplicate 'username' values — keep first occurrence only
-            pipeline2 = [
-                {"$match": {"username": {"$ne": None, "$ne": ""}}},
-                {"$group": {"_id": "$username", "count": {"$sum": 1}, "docs": {"$push": "$_id"}}},
-                {"$match": {"count": {"$gt": 1}}},
-            ]
-            async for dup in _db.users.aggregate(pipeline2):
-                for oid in dup["docs"][1:]:
-                    await _db.users.delete_one({"_id": oid})
-                    logger.info(f"DB cleanup: removed duplicate username={dup['_id']} (_id={oid})")
-
-            # 4. Drop old non-sparse indexes before recreating with sparse=True
-            try:
-                await _db.users.drop_index("username_1")
-            except Exception:
-                pass
-            try:
-                await _db.users.drop_index("id_1")
-            except Exception:
-                pass
-
-            await _db.users.create_index("username", unique=True, sparse=True)
-            await _db.users.create_index("id", unique=True, sparse=True)
-            await asyncio.wait_for(seed_users(), timeout=10)
-            _seed_done = True
-            logger.info("Lazy init complete: cleanup + indexes + seed done")
-        except Exception as e:
-            logger.warning(f"Lazy init failed: {e}")
-            await log_to_db("ERROR", f"Lazy init failed: {e}", "login")
-            # Mark seed done anyway to prevent re-triggering on every request
-            _seed_done = True
+    # Kick off lazy init in background (non-blocking)
+    if not _seed_done and not _init_running:
+        asyncio.create_task(_run_lazy_init())
 
     try:
         user = await _db.users.find_one({"username": credentials.username}, {"_id": 0})
