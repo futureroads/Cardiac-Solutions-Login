@@ -68,16 +68,14 @@ export default function UserAccess({ onLogout }) {
     "Content-Type": "application/json",
   };
 
-  const fetchUsers = useCallback(async (retries = 3) => {
+  const fetchUsers = useCallback(async (retries = 5) => {
     try {
       const res = await fetch(`${API_URL}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) {
-        // Retry on server errors (502, 520, 503, 504)
         if ([502, 503, 504, 520, 521, 522].includes(res.status) && retries > 0) {
-          await new Promise(r => setTimeout(r, 2000));
+          await new Promise(r => setTimeout(r, 3000));
           return fetchUsers(retries - 1);
         }
-        // Try to get JSON error detail, fall back to status text
         let errMsg = res.statusText;
         try {
           const ct = res.headers.get("content-type") || "";
@@ -93,18 +91,23 @@ export default function UserAccess({ onLogout }) {
       setUsers(data);
     } catch (err) {
       if (retries > 0) {
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 3000));
         return fetchUsers(retries - 1);
       }
       console.error("fetchUsers error:", err);
       toast.error("Failed to load users. Server may be restarting — please try again.", {
-        action: { label: "Retry", onClick: () => { setLoading(true); fetchUsers(3); } },
+        action: { label: "Retry", onClick: () => { setLoading(true); fetchUsers(5); } },
         duration: 10000,
       });
     } finally {
       setLoading(false);
     }
   }, [token]);
+
+  // Wake server on page load
+  useEffect(() => {
+    fetch(`${API_URL}/api/health`).catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchUsers();

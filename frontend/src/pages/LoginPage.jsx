@@ -368,6 +368,21 @@ export default function LoginPage({ onLogin }) {
     }, 5000);
   };
 
+  // Wake up the server as soon as login page loads
+  useEffect(() => {
+    const wakeServer = async () => {
+      for (let i = 0; i < 3; i++) {
+        try {
+          await axios.get(`${API.replace('/api', '')}/api/health`, { timeout: 5000 });
+          return;
+        } catch {
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+    };
+    wakeServer();
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -378,11 +393,12 @@ export default function LoginPage({ onLogin }) {
       ? { username, password, name }
       : { username, password };
 
-    // Retry up to 3 times on server errors (520, 502, 503)
+    // Retry up to 5 times with progressive backoff
     let lastError = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const delays = [2000, 3000, 4000, 5000, 5000];
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        const response = await axios.post(`${API}${endpoint}`, payload);
+        const response = await axios.post(`${API}${endpoint}`, payload, { timeout: 15000 });
         
         // Success — start heartbeat animation
         setIsBeating(true);
@@ -400,15 +416,11 @@ export default function LoginPage({ onLogin }) {
       } catch (error) {
         lastError = error;
         const status = error.response?.status;
-        if ([502, 503, 504, 520, 521, 522].includes(status) && attempt < 2) {
-          toast.info("Server is warming up... retrying", { duration: 2000 });
-          await new Promise(r => setTimeout(r, 2500));
-          continue; // retry
-        }
-        if (!error.response && attempt < 2) {
-          toast.info("Connecting to server... retrying", { duration: 2000 });
-          await new Promise(r => setTimeout(r, 2500));
-          continue; // retry on network errors too
+        if (attempt < 4 && ([502, 503, 504, 520, 521, 522].includes(status) || !error.response)) {
+          const msg = attempt === 0 ? "Waking up server..." : `Connecting... attempt ${attempt + 1}/5`;
+          toast.info(msg, { duration: 2000 });
+          await new Promise(r => setTimeout(r, delays[attempt]));
+          continue;
         }
         break; // non-retryable error
       }

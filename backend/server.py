@@ -132,6 +132,11 @@ api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
 
 # Diagnostic endpoint — no DB, no auth, proves server is alive
+@app.get("/api/health")
+async def health():
+    """Ultra-fast health check — no DB, no imports. Wakes up the server."""
+    return {"status": "ok"}
+
 @app.get("/api/version")
 async def version_check():
     import importlib
