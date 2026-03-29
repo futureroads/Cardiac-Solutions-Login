@@ -151,9 +151,12 @@ export default function UserAccess({ onLogout }) {
   };
 
   const retryFetch = async (url, options, retries = 4) => {
+    // Pre-flight warmup ping to wake server
+    try { await fetch(`${API_URL}/api/health`, { signal: AbortSignal.timeout(5000) }); } catch {}
+    
     for (let i = 0; i <= retries; i++) {
       try {
-        const res = await fetch(url, options);
+        const res = await fetch(url, { ...options, signal: AbortSignal.timeout(15000) });
         if ([502, 503, 504, 520, 521, 522].includes(res.status) && i < retries) {
           toast.info(i === 0 ? "Waking up server..." : `Retrying... (${i + 1}/${retries})`, { duration: 2000 });
           await new Promise(r => setTimeout(r, 3000));
