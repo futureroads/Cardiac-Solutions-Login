@@ -520,14 +520,9 @@ export default function BackendManagement({ user, onLogout }) {
         .animate-blink { animation: blink 2s ease-in-out infinite; }
 
         .scrollbar-thin::-webkit-scrollbar { width: 10px; height: 10px; }
-        .scrollbar-thin::-webkit-scrollbar-track { background: rgba(10, 15, 28, 0.8); }
+        .scrollbar-thin::-webkit-scrollbar-track { background: #0a0f1c; }
         .scrollbar-thin::-webkit-scrollbar-thumb { background: #ff2244; border-radius: 5px; }
         .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #ff4466; }
-
-        .backend-mgmt ::-webkit-scrollbar { width: 10px; height: 10px; }
-        .backend-mgmt ::-webkit-scrollbar-track { background: rgba(10, 15, 28, 0.8); }
-        .backend-mgmt ::-webkit-scrollbar-thumb { background: #ff2244; border-radius: 5px; }
-        .backend-mgmt ::-webkit-scrollbar-thumb:hover { background: #ff4466; }
       `}</style>
     </div>
   );

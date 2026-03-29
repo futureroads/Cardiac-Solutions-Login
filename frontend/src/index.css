@@ -52,23 +52,29 @@ code {
   font-family: 'JetBrains Mono', monospace;
 }
 
-/* Custom Scrollbar */
+/* Custom Scrollbar — Wide Red */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--obsidian);
+  background: #0a0f1c;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--slate-mid);
-  border-radius: 3px;
+  background: #ff2244;
+  border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--neon-cyan);
+  background: #ff4466;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: auto;
+  scrollbar-color: #ff2244 #0a0f1c;
 }
 
 /* Holographic Grid Background */
