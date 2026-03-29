@@ -118,8 +118,9 @@ export default function BackendManagement({ user, onLogout }) {
             </button>
             <div className="w-[1px] h-[20px] bg-cyan-500/30" />
             <div className="flex flex-col">
-              <div className="font-orbitron text-[13px] font-black tracking-[0.25em] text-red-500 animate-logo-pulse">
-                BACKEND MANAGEMENT
+              <div className="font-orbitron text-[13px] font-black tracking-[0.25em]" style={{ lineHeight: 1.2 }}>
+                <span className="text-white">CARDIAC</span>{" "}
+                <span className="text-red-500 animate-logo-pulse">SOLUTIONS</span>
               </div>
               <div className="font-orbitron text-[9px] font-bold tracking-[0.2em] text-cyan-400">
                 SYSTEM MONITORING & CONTROL
