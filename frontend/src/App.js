@@ -43,14 +43,13 @@ function App() {
     setLoading(false);
   }, []);
 
-  const [redirectTo, setRedirectTo] = useState(null);
-
   const handleLogin = (token, userData) => {
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(userData));
     setIsAuthenticated(true);
     setUser(userData);
-    setRedirectTo("/hub");
+    // Hard navigate to hub — bypasses all React Router state issues
+    window.location.href = "/hub";
   };
 
   const handleLogout = () => {
@@ -58,7 +57,6 @@ function App() {
     localStorage.removeItem("user");
     setIsAuthenticated(false);
     setUser(null);
-    setRedirectTo(null);
     window.location.href = "/";
   };
 
@@ -78,7 +76,7 @@ function App() {
             path="/" 
             element={
               isAuthenticated ? 
-                <Navigate to={redirectTo || "/hub"} replace /> : 
+                <Navigate to="/hub" replace /> : 
                 <LoginPage onLogin={handleLogin} />
             } 
           />
