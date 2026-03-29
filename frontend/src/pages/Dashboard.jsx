@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { LogOut, Mic, Mail, Loader2, Play, Pause } from "lucide-react";
+import { LogOut, Mic, Mail, Loader2, Play, Pause, ArrowLeft } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import API_BASE from "@/apiBase";
 const API_URL = API_BASE;
 
 export default function Dashboard({ user, onLogout }) {
+  const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isListening, setIsListening] = useState(false);
   const [aiScrollPaused, setAiScrollPaused] = useState(false);
@@ -204,12 +206,34 @@ export default function Dashboard({ user, onLogout }) {
         
         {/* TOP BAR */}
         <div className="col-span-3 flex items-center justify-between px-[18px] py-[7px] border border-cyan-500/30 bg-[rgba(0,18,32,0.93)]" style={{ clipPath: 'polygon(0 0, 100% 0, 98.5% 100%, 1.5% 100%)' }}>
-          <div className="flex flex-col">
-            <div className="font-orbitron text-[13px] font-black tracking-[0.25em] text-red-500 animate-logo-pulse">
-              CARDIAC SOLUTIONS
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate("/hub")}
+              className="flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 transition-colors"
+              data-testid="dashboard-back-btn"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="font-orbitron text-[9px] font-bold tracking-wider">HUB</span>
+            </button>
+            <div className="w-[1px] h-[20px] bg-cyan-500/30" />
+            <div className="flex flex-col">
+              <div className="font-orbitron text-[13px] font-black tracking-[0.25em] text-red-500 animate-logo-pulse">
+                CARDIAC SOLUTIONS
+              </div>
+              <div className="font-orbitron text-[9px] font-bold tracking-[0.2em] text-cyan-400">
+                COMMAND CENTER
+              </div>
             </div>
-            <div className="font-orbitron text-[9px] font-bold tracking-[0.2em] text-cyan-400">
-              COMMAND CENTER
+          </div>
+          {/* Flashing LED Indicators */}
+          <div className="flex items-center gap-[16px]">
+            <div className="flex items-center gap-[6px]" data-testid="led-external-services">
+              <span className="w-[8px] h-[8px] rounded-full bg-green-400 animate-led-flash" style={{ boxShadow: '0 0 8px rgba(57,255,20,0.7), 0 0 16px rgba(57,255,20,0.3)' }} />
+              <span className="font-orbitron text-[8px] font-bold tracking-wider text-green-400">EXTERNAL SERVICES</span>
+            </div>
+            <div className="flex items-center gap-[6px]" data-testid="led-internal-systems">
+              <span className="w-[8px] h-[8px] rounded-full bg-green-400 animate-led-flash-alt" style={{ boxShadow: '0 0 8px rgba(57,255,20,0.7), 0 0 16px rgba(57,255,20,0.3)' }} />
+              <span className="font-orbitron text-[8px] font-bold tracking-wider text-green-400">INTERNAL SYSTEMS</span>
             </div>
           </div>
           {/* View Mode Toggle */}
@@ -980,6 +1004,13 @@ export default function Dashboard({ user, onLogout }) {
         }
         .animate-blink { animation: blink 2s ease-in-out infinite; }
         .animate-blink-fast { animation: blink 1s ease-in-out infinite; }
+
+        @keyframes led-flash {
+          0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(57,255,20,0.7), 0 0 16px rgba(57,255,20,0.3); }
+          50% { opacity: 0.15; box-shadow: 0 0 2px rgba(57,255,20,0.2); }
+        }
+        .animate-led-flash { animation: led-flash 1.4s ease-in-out infinite; }
+        .animate-led-flash-alt { animation: led-flash 1.4s ease-in-out infinite 0.7s; }
         
         @keyframes spin-slow { to { transform: rotate(360deg); } }
         @keyframes spin-reverse { to { transform: rotate(-360deg); } }
