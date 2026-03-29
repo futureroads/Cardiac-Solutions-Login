@@ -303,8 +303,8 @@ export default function LoginPage({ onLogin }) {
   useEffect(() => {
     const checkServer = async () => {
       try {
-        const res = await axios.get(`${API}/health`, { timeout: 5000 });
-        if (res.data?.status === "healthy") {
+        const res = await axios.get(`${API.replace('/api', '')}/api/health`, { timeout: 5000 });
+        if (res.data?.status === "ok") {
           setServerStatus("online");
         } else {
           setServerStatus("offline");
@@ -347,6 +347,20 @@ export default function LoginPage({ onLogin }) {
   const handleHeartClick = () => {
     if (currentScreen !== "heart") return; // Already clicked
     
+    // WAKE UP the server immediately — use the 5s animation to warm it up
+    const wakeUp = async () => {
+      for (let i = 0; i < 5; i++) {
+        try {
+          await axios.get(`${API.replace('/api', '')}/api/health`, { timeout: 5000 });
+          setServerStatus("online");
+          return;
+        } catch {
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      }
+    };
+    wakeUp();
+
     setShockEffect(true);
     setShowSparks(true);
     setIsBeating(true);
