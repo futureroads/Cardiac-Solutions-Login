@@ -48,8 +48,9 @@ function App() {
     localStorage.setItem("user", JSON.stringify(userData));
     setIsAuthenticated(true);
     setUser(userData);
-    // Always go to hub after fresh login
-    window.history.replaceState(null, '', '/hub');
+    // Route admin users to dashboard, others to hub
+    const destination = userData.role === "admin" ? "/dashboard" : "/hub";
+    window.history.replaceState(null, '', destination);
   };
 
   const handleLogout = () => {
@@ -76,7 +77,7 @@ function App() {
             path="/" 
             element={
               isAuthenticated ? 
-                <Navigate to="/hub" replace /> : 
+                <Navigate to={user?.role === "admin" ? "/dashboard" : "/hub"} replace /> : 
                 <LoginPage onLogin={handleLogin} />
             } 
           />
