@@ -150,6 +150,27 @@ export default function UserAccess({ onLogout }) {
     }));
   };
 
+  const retryFetch = async (url, options, retries = 4) => {
+    for (let i = 0; i <= retries; i++) {
+      try {
+        const res = await fetch(url, options);
+        if ([502, 503, 504, 520, 521, 522].includes(res.status) && i < retries) {
+          toast.info(i === 0 ? "Waking up server..." : `Retrying... (${i + 1}/${retries})`, { duration: 2000 });
+          await new Promise(r => setTimeout(r, 3000));
+          continue;
+        }
+        return res;
+      } catch (err) {
+        if (i < retries) {
+          toast.info(i === 0 ? "Waking up server..." : `Retrying... (${i + 1}/${retries})`, { duration: 2000 });
+          await new Promise(r => setTimeout(r, 3000));
+          continue;
+        }
+        throw err;
+      }
+    }
+  };
+
   const handleSave = async () => {
     if (!form.username.trim()) {
       toast.error("Username is required");
@@ -170,7 +191,7 @@ export default function UserAccess({ onLogout }) {
         : `${API_URL}/api/admin/users`;
       const method = editingId ? "PUT" : "POST";
 
-      const res = await fetch(url, { method, headers, body: JSON.stringify(body) });
+      const res = await retryFetch(url, { method, headers, body: JSON.stringify(body) });
 
       if (!res.ok) {
         let errMsg = "Failed to save user";
@@ -197,7 +218,7 @@ export default function UserAccess({ onLogout }) {
   const handleDelete = async (userId, username) => {
     if (!window.confirm(`Delete user "${username}"?`)) return;
     try {
-      const res = await fetch(`${API_URL}/api/admin/users/${userId}`, {
+      const res = await retryFetch(`${API_URL}/api/admin/users/${userId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
