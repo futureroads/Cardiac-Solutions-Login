@@ -225,17 +225,6 @@ export default function Dashboard({ user, onLogout }) {
               </div>
             </div>
           </div>
-          {/* Flashing LED Indicators */}
-          <div className="flex items-center gap-[16px]">
-            <div className="flex items-center gap-[6px]" data-testid="led-external-services">
-              <span className="w-[8px] h-[8px] rounded-full bg-green-400 animate-led-flash" style={{ boxShadow: '0 0 8px rgba(57,255,20,0.7), 0 0 16px rgba(57,255,20,0.3)' }} />
-              <span className="font-orbitron text-[8px] font-bold tracking-wider text-green-400">EXTERNAL SERVICES</span>
-            </div>
-            <div className="flex items-center gap-[6px]" data-testid="led-internal-systems">
-              <span className="w-[8px] h-[8px] rounded-full bg-green-400 animate-led-flash-alt" style={{ boxShadow: '0 0 8px rgba(57,255,20,0.7), 0 0 16px rgba(57,255,20,0.3)' }} />
-              <span className="font-orbitron text-[8px] font-bold tracking-wider text-green-400">INTERNAL SYSTEMS</span>
-            </div>
-          </div>
           {/* View Mode Toggle */}
           <div className="flex items-center gap-[6px]" data-testid="view-mode-toggle">
             <span className={`font-orbitron text-[7px] font-bold tracking-wider transition-colors ${viewMode === 'simple' ? 'text-cyan-400' : 'text-cyan-500/35'}`}>SIMPLE</span>
@@ -247,12 +236,18 @@ export default function Dashboard({ user, onLogout }) {
             </button>
             <span className={`font-orbitron text-[7px] font-bold tracking-wider transition-colors ${viewMode === 'detailed' ? 'text-cyan-400' : 'text-cyan-500/35'}`}>DETAILED</span>
           </div>
+          {/* Flashing LED Indicators */}
+          <div className="flex items-center gap-[16px]">
+            <div className="flex items-center gap-[6px]" data-testid="led-external-services">
+              <span className="w-[10px] h-[10px] rounded-full bg-[#39ff14] animate-led-flash" style={{ boxShadow: '0 0 10px #39ff14, 0 0 22px rgba(57,255,20,0.6), 0 0 40px rgba(57,255,20,0.25)' }} />
+              <span className="font-orbitron text-[8px] font-bold tracking-wider text-cyan-500/50">EXTERNAL SERVICES</span>
+            </div>
+            <div className="flex items-center gap-[6px]" data-testid="led-internal-systems">
+              <span className="w-[10px] h-[10px] rounded-full bg-[#39ff14] animate-led-flash-alt" style={{ boxShadow: '0 0 10px #39ff14, 0 0 22px rgba(57,255,20,0.6), 0 0 40px rgba(57,255,20,0.25)' }} />
+              <span className="font-orbitron text-[8px] font-bold tracking-wider text-cyan-500/50">INTERNAL SYSTEMS</span>
+            </div>
+          </div>
           <div className="flex gap-[18px] items-center text-[9px] tracking-wider">
-            <span className="flex items-center gap-1">
-              <span className="w-[5px] h-[5px] rounded-full bg-green-400 animate-blink" />
-              AI MONITOR ACTIVE
-            </span>
-            <span>|</span>
             <span>{stats.total.toLocaleString()} DEVICES</span>
             <span>|</span>
             <span className="flex items-center gap-1">
@@ -1006,7 +1001,7 @@ export default function Dashboard({ user, onLogout }) {
         .animate-blink-fast { animation: blink 1s ease-in-out infinite; }
 
         @keyframes led-flash {
-          0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(57,255,20,0.7), 0 0 16px rgba(57,255,20,0.3); }
+          0%, 100% { opacity: 1; box-shadow: 0 0 10px #39ff14, 0 0 22px rgba(57,255,20,0.6), 0 0 40px rgba(57,255,20,0.25); }
           50% { opacity: 0.15; box-shadow: 0 0 2px rgba(57,255,20,0.2); }
         }
         .animate-led-flash { animation: led-flash 1.4s ease-in-out infinite; }
