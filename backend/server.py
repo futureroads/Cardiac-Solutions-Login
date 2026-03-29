@@ -1026,11 +1026,13 @@ async def list_feedbacks(admin: dict = Depends(require_admin)):
     return items
 
 @api_router.post("/training/analyze/{feedback_id}")
-async def analyze_feedback(feedback_id: str, admin: dict = Depends(require_admin)):
-    """Submit feedback to LLM (Gemini) for analysis. Returns suggested Qwen prompt and OpenCV rule."""
+async def analyze_feedback(feedback_id: str, body: dict = None, admin: dict = Depends(require_admin)):
+    """Submit feedback to LLM (Gemini) for analysis. Accepts optional custom_prompt from the user."""
     fb = await _db.training_feedbacks.find_one({"id": feedback_id}, {"_id": 0})
     if not fb:
         raise HTTPException(status_code=404, detail="Feedback not found")
+
+    custom_prompt = (body or {}).get("custom_prompt", "").strip() if body else ""
 
     llm_key = os.environ.get("EMERGENT_LLM_KEY", "")
     qwen_prompt_update = ""
@@ -1040,26 +1042,38 @@ async def analyze_feedback(feedback_id: str, admin: dict = Depends(require_admin
         try:
             from emergentintegrations.llm.chat import LlmChat, UserMessage
 
-            prompt_text = (
-                f"You are an AI training specialist for AED (Automated External Defibrillator) monitoring cameras.\n\n"
-                f"A human reviewer found a classification error:\n"
-                f"- AED Unit: {fb.get('sentinel_id', fb.get('aed_id', 'Unknown'))}\n"
-                f"- Subscriber: {fb.get('subscriber', 'Unknown')}\n"
-                f"- AI classified status: {fb['assigned_status']}\n"
-                f"- Correct status should be: {fb['correct_status']}\n"
-                f"- Reviewer comments: {fb.get('details', 'None')}\n"
-                f"- Image URL: {fb.get('s3_url', 'N/A')}\n\n"
-                f"Generate TWO separate sections:\n\n"
-                f"SECTION 1 - QWEN RETRAINING PROMPT:\n"
-                f"Write a precise prompt/instruction that would retrain the Qwen vision model to correctly classify "
-                f"this type of AED image from '{fb['assigned_status']}' to '{fb['correct_status']}'. "
-                f"Include specific visual cues, edge cases, and confidence adjustments.\n\n"
-                f"SECTION 2 - OPENCV RULE UPDATE:\n"
-                f"Write a specific OpenCV preprocessing/postprocessing rule that would help catch this misclassification. "
-                f"Include the condition trigger, the image analysis check to perform, and the corrective action.\n\n"
-                f"Format your response EXACTLY as:\n"
-                f"===QWEN===\n[qwen prompt here]\n===OPENCV===\n[opencv rule here]"
-            )
+            if custom_prompt:
+                prompt_text = (
+                    f"{custom_prompt}\n\n"
+                    f"--- FEEDBACK DATA ---\n"
+                    f"AED Unit: {fb.get('sentinel_id', fb.get('aed_id', 'Unknown'))}\n"
+                    f"Subscriber: {fb.get('subscriber', 'Unknown')}\n"
+                    f"AI classified status: {fb['assigned_status']}\n"
+                    f"Correct status: {fb['correct_status']}\n"
+                    f"Comments: {fb.get('details', 'None')}\n"
+                    f"Image: {fb.get('s3_url', 'N/A')}\n\n"
+                    f"Format your response EXACTLY as:\n"
+                    f"===QWEN===\n[qwen retraining prompt]\n===OPENCV===\n[opencv rule update]"
+                )
+            else:
+                prompt_text = (
+                    f"You are an AI training specialist for AED monitoring cameras.\n\n"
+                    f"A human reviewer found a classification error:\n"
+                    f"- AED Unit: {fb.get('sentinel_id', fb.get('aed_id', 'Unknown'))}\n"
+                    f"- Subscriber: {fb.get('subscriber', 'Unknown')}\n"
+                    f"- AI classified status: {fb['assigned_status']}\n"
+                    f"- Correct status: {fb['correct_status']}\n"
+                    f"- Comments: {fb.get('details', 'None')}\n"
+                    f"- Image: {fb.get('s3_url', 'N/A')}\n\n"
+                    f"Generate TWO sections:\n\n"
+                    f"SECTION 1 - QWEN RETRAINING PROMPT:\n"
+                    f"Write a precise prompt to retrain the Qwen vision model to correctly classify "
+                    f"this type of AED image from '{fb['assigned_status']}' to '{fb['correct_status']}'.\n\n"
+                    f"SECTION 2 - OPENCV RULE UPDATE:\n"
+                    f"Write a specific OpenCV preprocessing rule to catch this misclassification.\n\n"
+                    f"Format your response EXACTLY as:\n"
+                    f"===QWEN===\n[qwen prompt here]\n===OPENCV===\n[opencv rule here]"
+                )
 
             chat = LlmChat(
                 api_key=llm_key,
@@ -1084,8 +1098,6 @@ async def analyze_feedback(feedback_id: str, admin: dict = Depends(require_admin
         except Exception as e:
             logger.warning(f"LLM analysis failed, using fallback: {e}")
             await log_to_db("WARNING", f"LLM analysis failed: {e}", f"analyze/{feedback_id}")
-            qwen_prompt_update = ""
-            opencv_rule_text = ""
 
     if not qwen_prompt_update:
         qwen_prompt_update = (

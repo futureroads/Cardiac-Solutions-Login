@@ -143,15 +143,24 @@ function Step1Queue({ feedbacks, onSelect, selectedId }) {
 
 // ======================== STEP 2: Analyze ========================
 function Step2Analyze({ selected, onAnalyze, analyzing, onSubmitPrompts, submittingPrompts }) {
+  const [geminiPrompt, setGeminiPrompt] = useState("");
   const [qwenPrompt, setQwenPrompt] = useState("");
   const [opencvRule, setOpencvRule] = useState("");
-  const [hasAnalyzed, setHasAnalyzed] = useState(false);
 
   useEffect(() => {
     if (selected) {
       setQwenPrompt(selected.qwen_analysis || "");
       setOpencvRule(typeof selected.opencv_rule === "string" ? selected.opencv_rule : selected.opencv_rule?.description || "");
-      setHasAnalyzed(selected.status !== "pending");
+      setGeminiPrompt(
+        `Analyze this AED feedback correction:\n` +
+        `- AED Unit: ${selected.sentinel_id || selected.aed_id}\n` +
+        `- Subscriber: ${selected.subscriber || "Unknown"}\n` +
+        `- AI classified as: ${selected.assigned_status}\n` +
+        `- Correct status: ${selected.correct_status}\n` +
+        `- Comments: ${selected.details || "None"}\n\n` +
+        `Generate a retraining prompt for Qwen to correctly classify this type of AED image, ` +
+        `and an OpenCV preprocessing rule to catch this misclassification.`
+      );
     }
   }, [selected]);
 
@@ -165,17 +174,18 @@ function Step2Analyze({ selected, onAnalyze, analyzing, onSubmitPrompts, submitt
   }
 
   const handleAnalyze = async (id) => {
-    const result = await onAnalyze(id);
+    const result = await onAnalyze(id, geminiPrompt);
     if (result) {
       setQwenPrompt(result.qwen_suggestion || "");
       setOpencvRule(result.opencv_suggestion || "");
-      setHasAnalyzed(true);
     }
   };
 
   return (
     <div className="flex flex-col gap-[8px]" data-testid="step2-analyze">
       <div className="plabel"><Brain className="w-[12px] h-[12px]" /> Analyze Feedback</div>
+
+      {/* Feedback summary */}
       <div className="bg-cyan-500/5 border border-cyan-500/15 p-[10px] rounded-sm">
         <div className="grid grid-cols-2 gap-[6px]">
           <div><span className="text-[7px] text-cyan-500/40 tracking-wider">SENTINEL ID</span><div className="font-orbitron text-[11px] font-bold text-slate-200">{selected.sentinel_id || selected.aed_id}</div></div>
@@ -193,35 +203,44 @@ function Step2Analyze({ selected, onAnalyze, analyzing, onSubmitPrompts, submitt
         )}
       </div>
 
-      {selected.status === "pending" && !hasAnalyzed && (
-        <button
-          onClick={() => handleAnalyze(selected.id)}
-          disabled={analyzing}
-          className="flex items-center justify-center gap-[6px] px-[12px] py-[8px] border border-cyan-400 bg-cyan-500/15 text-cyan-400 font-orbitron text-[9px] font-bold tracking-wider rounded-sm hover:bg-cyan-500/25 transition-all disabled:opacity-40"
-          data-testid="analyze-submit-btn"
-        >
-          {analyzing ? <RefreshCw className="w-[12px] h-[12px] animate-spin" /> : <Brain className="w-[12px] h-[12px]" />}
-          {analyzing ? "ANALYZING WITH AI..." : "SUBMIT TO QWEN FOR ANALYSIS"}
-        </button>
-      )}
+      {/* Editable prompt to Gemini */}
+      <div>
+        <label className="font-orbitron text-[8px] font-bold tracking-[0.2em] text-cyan-400 flex items-center gap-[6px] mb-[4px]">
+          <Brain className="w-[10px] h-[10px]" /> PROMPT TO GEMINI
+          <span className="text-[7px] text-cyan-500/30 font-normal tracking-normal ml-[4px]">— edit this to customize what Gemini analyzes</span>
+        </label>
+        <textarea
+          value={geminiPrompt}
+          onChange={(e) => setGeminiPrompt(e.target.value)}
+          placeholder="Write your prompt to Gemini here..."
+          rows={5}
+          className="w-full bg-[rgba(0,20,40,0.8)] border border-cyan-500/30 rounded-sm px-[10px] py-[8px] text-[10px] text-slate-200 font-mono placeholder:text-cyan-500/25 focus:border-cyan-400 focus:outline-none resize-y"
+          data-testid="gemini-prompt-input"
+        />
+      </div>
 
-      {(hasAnalyzed || selected.status !== "pending") && (
-        <div className="flex items-center gap-[6px] px-[10px] py-[6px] bg-green-500/10 border border-green-500/20 rounded-sm">
-          <CheckCircle2 className="w-[12px] h-[12px] text-green-400" />
-          <span className="font-orbitron text-[8px] font-bold text-green-400 tracking-wider">AI ANALYSIS COMPLETE — EDIT PROMPTS BELOW OR SUBMIT</span>
-        </div>
-      )}
+      {/* Submit to Gemini button */}
+      <button
+        onClick={() => handleAnalyze(selected.id)}
+        disabled={analyzing || !geminiPrompt.trim()}
+        className="flex items-center justify-center gap-[6px] px-[12px] py-[8px] border border-cyan-400 bg-cyan-500/15 text-cyan-400 font-orbitron text-[9px] font-bold tracking-wider rounded-sm hover:bg-cyan-500/25 transition-all disabled:opacity-40"
+        data-testid="analyze-submit-btn"
+      >
+        {analyzing ? <RefreshCw className="w-[12px] h-[12px] animate-spin" /> : <Brain className="w-[12px] h-[12px]" />}
+        {analyzing ? "ANALYZING WITH GEMINI..." : "SUBMIT TO QWEN FOR ANALYSIS"}
+      </button>
 
-      {/* QWEN + OPENCV Prompt Fields */}
-      <div className="flex flex-col gap-[6px] mt-[4px]">
+      {/* QWEN + OPENCV Result/Edit Fields — always visible */}
+      <div className="flex flex-col gap-[6px] mt-[2px]">
         <div>
           <label className="font-orbitron text-[8px] font-bold tracking-[0.2em] text-cyan-400 flex items-center gap-[6px] mb-[4px]">
             <Brain className="w-[10px] h-[10px]" /> QWEN
+            <span className="text-[7px] text-cyan-500/30 font-normal tracking-normal ml-[4px]">— Gemini result or paste your own retraining prompt</span>
           </label>
           <textarea
             value={qwenPrompt}
             onChange={(e) => setQwenPrompt(e.target.value)}
-            placeholder="Paste or edit Qwen retraining prompt here..."
+            placeholder="Qwen retraining prompt will appear here after analysis, or paste your own..."
             rows={5}
             className="w-full bg-[rgba(0,20,40,0.8)] border border-cyan-500/30 rounded-sm px-[10px] py-[8px] text-[10px] text-slate-200 font-mono placeholder:text-cyan-500/25 focus:border-cyan-400 focus:outline-none resize-y"
             data-testid="qwen-prompt-input"
@@ -230,11 +249,12 @@ function Step2Analyze({ selected, onAnalyze, analyzing, onSubmitPrompts, submitt
         <div>
           <label className="font-orbitron text-[8px] font-bold tracking-[0.2em] text-orange-400 flex items-center gap-[6px] mb-[4px]">
             <Eye className="w-[10px] h-[10px]" /> OPENCV
+            <span className="text-[7px] text-orange-500/30 font-normal tracking-normal ml-[4px]">— Gemini result or paste your own rule update</span>
           </label>
           <textarea
             value={opencvRule}
             onChange={(e) => setOpencvRule(e.target.value)}
-            placeholder="Paste or edit OpenCV rule update here..."
+            placeholder="OpenCV rule update will appear here after analysis, or paste your own..."
             rows={5}
             className="w-full bg-[rgba(0,20,40,0.8)] border border-orange-500/30 rounded-sm px-[10px] py-[8px] text-[10px] text-slate-200 font-mono placeholder:text-orange-500/25 focus:border-orange-400 focus:outline-none resize-y"
             data-testid="opencv-rule-input"
@@ -479,13 +499,17 @@ export default function HybridTraining({ user, onLogout }) {
     return () => clearInterval(t);
   }, [fetchAll, syncFromSource]);
 
-  const handleAnalyze = async (feedbackId) => {
+  const handleAnalyze = async (feedbackId, customPrompt) => {
     setAnalyzing(true);
     try {
-      const res = await fetch(`${API_BASE}/api/training/analyze/${feedbackId}`, { method: "POST", headers });
+      const res = await fetch(`${API_BASE}/api/training/analyze/${feedbackId}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ custom_prompt: customPrompt }),
+      });
       if (!res.ok) throw new Error("Analysis failed");
       const data = await res.json();
-      toast.success("AI analysis complete — review and edit prompts below");
+      toast.success("Gemini analysis complete — review results in QWEN and OPENCV fields");
       await fetchAll();
       const updated = await (await fetch(`${API_BASE}/api/training/feedbacks`, { headers })).json();
       setSelectedFeedback(updated.find((f) => f.id === feedbackId) || null);
