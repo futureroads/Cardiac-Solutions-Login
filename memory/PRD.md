@@ -50,6 +50,7 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 ## What's Been Implemented (continued)
 - [x] **Backend Management page (2026-03-28)** — Internal `/backend` route with Camera Overview (Total Cameras, Total Checked In Past 24 Hrs, Online/Offline, Camera Endpoint), Server Resources, Database Status, Runtime Info, Microservices, Event Log. JARVIS theme. Admin-only access.
 - [x] **Outage Status page (2026-03-28)** — Internal `/outage` route monitoring 18 services across 5 categories (Cloud/CDN, Cellular, Communication, Security, Internal). Cloudflare correctly shows OPERATIONAL. Clickable rows link to real status pages. Admin-only access.
+- [x] **Hybrid Training page (2026-03-29)** — Internal `/hybridtraining` route for monitoring OpenCV + Qwen hybrid AI training pipeline. 5-step workflow: Feedback Queue → Analyze with Qwen → View Updates → Apply to Qwen/OpenCV → Monitor AED Status. Full CRUD API. Qwen/OpenCV API calls MOCKED. Admin-only.
 
 ## Prioritized Backlog
 

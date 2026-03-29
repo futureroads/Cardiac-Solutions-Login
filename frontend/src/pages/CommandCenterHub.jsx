@@ -14,6 +14,7 @@ import {
   Users,
   Server,
   AlertTriangle,
+  Brain,
 } from "lucide-react";
 
 const ALL_MODULES = [
@@ -98,6 +99,16 @@ const ALL_MODULES = [
     route: "/outage",
     description:
       "Monitor the real time status of major cloud services, cellular carriers and more.",
+    badgeCount: null,
+  },
+  {
+    moduleKey: "hybrid_training",
+    title: "HYBRID TRAINING",
+    status: "ADMIN",
+    icon: Brain,
+    route: "/hybridtraining",
+    description:
+      "Monitor and manage OpenCV + Qwen hybrid AI training pipeline. Review user feedback, analyze misclassifications, and apply model updates.",
     badgeCount: null,
   },
 ];

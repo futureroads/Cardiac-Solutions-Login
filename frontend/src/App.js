@@ -7,6 +7,7 @@ import CommandCenterHub from "./pages/CommandCenterHub";
 import UserAccess from "./pages/UserAccess";
 import BackendManagement from "./pages/BackendManagement";
 import OutageStatus from "./pages/OutageStatus";
+import HybridTraining from "./pages/HybridTraining";
 import { Toaster } from "./components/ui/sonner";
 
 function App() {
@@ -117,6 +118,14 @@ function App() {
             element={
               isAuthenticated && user?.role === "admin" ? 
                 <OutageStatus user={user} onLogout={handleLogout} /> : 
+                <Navigate to="/hub" replace />
+            } 
+          />
+          <Route 
+            path="/hybridtraining" 
+            element={
+              isAuthenticated && user?.role === "admin" ? 
+                <HybridTraining user={user} onLogout={handleLogout} /> : 
                 <Navigate to="/hub" replace />
             } 
           />

@@ -279,7 +279,7 @@ SEED_USERS = [
         "phone": "",
         "role": "admin",
         "department": "Admin",
-        "allowed_modules": ALL_MODULE_IDS + ["user_access", "backend", "outage_status"],
+        "allowed_modules": ALL_MODULE_IDS + ["user_access", "backend", "outage_status", "hybrid_training"],
         "plain_password": "@@U1s9m6c7@@",
         "created_at": "2024-01-01T00:00:00Z"
     },
@@ -913,6 +913,213 @@ async def update_service_status(category_name: str, service_name: str, status: s
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Service not found")
     return {"status": "updated", "service": service_name, "new_status": status}
+
+# ==================== Hybrid Training Routes ====================
+
+VALID_STATUSES = ["READY", "NOT READY", "NOT PRESENT", "REPOSITION", "UNKNOWN"]
+
+@api_router.post("/training/feedback")
+async def submit_feedback(data: dict):
+    """Receive feedback from external system or manual entry."""
+    required = ["aed_id", "assigned_status", "correct_status"]
+    for f in required:
+        if f not in data:
+            raise HTTPException(status_code=400, detail=f"Missing field: {f}")
+    if data["assigned_status"] not in VALID_STATUSES or data["correct_status"] not in VALID_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Status must be one of: {VALID_STATUSES}")
+
+    doc = {
+        "id": f"fb-{uuid.uuid4().hex[:8]}",
+        "aed_id": data["aed_id"],
+        "image_url": data.get("image_url", ""),
+        "assigned_status": data["assigned_status"],
+        "correct_status": data["correct_status"],
+        "details": data.get("details", ""),
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
+        "status": "pending",
+        "qwen_analysis": None,
+        "opencv_rule": None,
+    }
+    await _db.training_feedbacks.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.get("/training/feedbacks")
+async def list_feedbacks(admin: dict = Depends(require_admin)):
+    """List all training feedbacks."""
+    items = await _db.training_feedbacks.find({}, {"_id": 0}).sort("submitted_at", -1).to_list(500)
+    return items
+
+@api_router.post("/training/analyze/{feedback_id}")
+async def analyze_feedback(feedback_id: str, admin: dict = Depends(require_admin)):
+    """Submit feedback to Qwen for analysis. Returns suggested prompt update and OpenCV rule. MOCKED."""
+    fb = await _db.training_feedbacks.find_one({"id": feedback_id}, {"_id": 0})
+    if not fb:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+
+    # MOCKED: In production, this calls the Qwen API
+    qwen_prompt_update = (
+        f"When analyzing AED camera images, if the device appears to be in a '{fb['assigned_status']}' state "
+        f"but the physical positioning suggests '{fb['correct_status']}', prioritize the spatial and orientation "
+        f"indicators over general readiness cues. Specifically for AED unit patterns similar to {fb['aed_id']}: "
+        f"{fb['details'] or 'Review edge cases where device angle or partial occlusion may mislead classification.'} "
+        f"Update classification confidence threshold for '{fb['assigned_status']}' vs '{fb['correct_status']}' boundary cases."
+    )
+
+    opencv_rule = {
+        "rule_id": f"rule-{uuid.uuid4().hex[:6]}",
+        "condition": f"status_mismatch_{fb['assigned_status'].lower().replace(' ', '_')}_to_{fb['correct_status'].lower().replace(' ', '_')}",
+        "description": (
+            f"Add preprocessing check: when initial classification is '{fb['assigned_status']}', "
+            f"run secondary contour analysis for '{fb['correct_status']}' indicators. "
+            f"If confidence delta < 15%, flag for '{fb['correct_status']}' reassignment."
+        ),
+        "parameters": {
+            "source_status": fb["assigned_status"],
+            "target_status": fb["correct_status"],
+            "confidence_threshold": 0.85,
+            "secondary_check": True,
+        },
+    }
+
+    # Save analysis results
+    await _db.training_feedbacks.update_one(
+        {"id": feedback_id},
+        {"$set": {
+            "status": "analyzed",
+            "qwen_analysis": qwen_prompt_update,
+            "opencv_rule": opencv_rule,
+        }},
+    )
+
+    # Create update records
+    ts = datetime.now(timezone.utc).isoformat()
+    qwen_update = {
+        "id": f"upd-{uuid.uuid4().hex[:8]}",
+        "feedback_id": feedback_id,
+        "aed_id": fb["aed_id"],
+        "type": "qwen_prompt",
+        "content": qwen_prompt_update,
+        "status": "pending",
+        "created_at": ts,
+        "applied_at": None,
+    }
+    opencv_update = {
+        "id": f"upd-{uuid.uuid4().hex[:8]}",
+        "feedback_id": feedback_id,
+        "aed_id": fb["aed_id"],
+        "type": "opencv_rule",
+        "content": opencv_rule["description"],
+        "rule_data": opencv_rule,
+        "status": "pending",
+        "created_at": ts,
+        "applied_at": None,
+    }
+    await _db.training_updates.insert_one(qwen_update)
+    await _db.training_updates.insert_one(opencv_update)
+    qwen_update.pop("_id", None)
+    opencv_update.pop("_id", None)
+
+    return {"qwen_update": qwen_update, "opencv_update": opencv_update}
+
+@api_router.get("/training/updates")
+async def list_updates(admin: dict = Depends(require_admin)):
+    """List all training updates (prompt + rule)."""
+    items = await _db.training_updates.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return items
+
+@api_router.post("/training/apply/{update_id}")
+async def apply_update(update_id: str, admin: dict = Depends(require_admin)):
+    """Apply a training update (send to Qwen or OpenCV). MOCKED."""
+    upd = await _db.training_updates.find_one({"id": update_id}, {"_id": 0})
+    if not upd:
+        raise HTTPException(status_code=404, detail="Update not found")
+
+    # MOCKED: In production, this sends to Qwen API or OpenCV config endpoint
+    ts = datetime.now(timezone.utc).isoformat()
+    await _db.training_updates.update_one(
+        {"id": update_id},
+        {"$set": {"status": "applied", "applied_at": ts}},
+    )
+
+    # Update the parent feedback status
+    fb = await _db.training_feedbacks.find_one({"id": upd["feedback_id"]}, {"_id": 0})
+    if fb:
+        # Check if both updates for this feedback are applied
+        related = await _db.training_updates.find({"feedback_id": upd["feedback_id"]}, {"_id": 0}).to_list(10)
+        all_applied = all(u["status"] == "applied" for u in related)
+        if all_applied:
+            await _db.training_feedbacks.update_one(
+                {"id": upd["feedback_id"]},
+                {"$set": {"status": "monitoring"}},
+            )
+            # Create monitor record
+            monitor = {
+                "id": f"mon-{uuid.uuid4().hex[:8]}",
+                "feedback_id": upd["feedback_id"],
+                "aed_id": fb["aed_id"],
+                "assigned_status": fb["assigned_status"],
+                "correct_status": fb["correct_status"],
+                "current_status": fb["assigned_status"],
+                "last_checked": ts,
+                "resolved": False,
+                "created_at": ts,
+                "check_history": [{"date": ts, "status": fb["assigned_status"]}],
+            }
+            await _db.training_monitors.insert_one(monitor)
+            monitor.pop("_id", None)
+
+    return {"status": "applied", "update_id": update_id, "applied_at": ts}
+
+@api_router.get("/training/monitors")
+async def list_monitors(admin: dict = Depends(require_admin)):
+    """List all monitored AED IDs with status tracking."""
+    items = await _db.training_monitors.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return items
+
+@api_router.post("/training/monitors/{monitor_id}/check")
+async def check_monitor(monitor_id: str, admin: dict = Depends(require_admin)):
+    """Simulate daily status check for a monitored AED. MOCKED."""
+    mon = await _db.training_monitors.find_one({"id": monitor_id}, {"_id": 0})
+    if not mon:
+        raise HTTPException(status_code=404, detail="Monitor not found")
+
+    # MOCKED: In production, this queries the actual AED status
+    import random
+    possible = [mon["correct_status"]] * 4 + [mon["assigned_status"]]  # 80% chance of correct
+    new_status = random.choice(possible)
+    ts = datetime.now(timezone.utc).isoformat()
+    resolved = new_status == mon["correct_status"]
+
+    history = mon.get("check_history", [])
+    history.append({"date": ts, "status": new_status})
+
+    await _db.training_monitors.update_one(
+        {"id": monitor_id},
+        {"$set": {
+            "current_status": new_status,
+            "last_checked": ts,
+            "resolved": resolved,
+            "check_history": history,
+        }},
+    )
+    return {"monitor_id": monitor_id, "new_status": new_status, "resolved": resolved, "checked_at": ts}
+
+@api_router.get("/training/stats")
+async def training_stats(admin: dict = Depends(require_admin)):
+    """Get training pipeline stats."""
+    pending = await _db.training_feedbacks.count_documents({"status": "pending"})
+    analyzed = await _db.training_feedbacks.count_documents({"status": "analyzed"})
+    monitoring = await _db.training_feedbacks.count_documents({"status": "monitoring"})
+    resolved = await _db.training_monitors.count_documents({"resolved": True})
+    total_monitors = await _db.training_monitors.count_documents({})
+    return {
+        "queue_pending": pending,
+        "analyzed": analyzed,
+        "monitoring": monitoring,
+        "resolved": resolved,
+        "total_monitors": total_monitors,
+    }
 
 # ==================== Send Overview Email ====================
 
