@@ -27,7 +27,16 @@ const MODULE_OPTIONS = [
   { id: "survival_path", title: "Survival Path" },
 ];
 
-const ROLE_OPTIONS = ["C Level", "Director", "Manager", "Supervisor", "Employee"];
+const ROLE_OPTIONS = ["admin", "C Level", "Director", "Manager", "Supervisor", "Employee"];
+
+const ROLE_DISPLAY = {
+  admin: "ADMIN",
+  "C Level": "C LEVEL",
+  Director: "DIRECTOR",
+  Manager: "MANAGER",
+  Supervisor: "SUPERVISOR",
+  Employee: "EMPLOYEE",
+};
 
 const DEPARTMENT_OPTIONS = ["Admin", "Sales", "Service", "Shipping", "Warehouse", "Accounting"];
 

@@ -626,7 +626,7 @@ async def create_user(data: AdminUserCreate, admin: dict = Depends(require_admin
             "role": data.role or "Employee",
             "department": data.department or "",
             "allowed_modules": data.allowed_modules or [],
-            "password_hash": hash_password(data.password),
+            "password_hash": await asyncio.to_thread(hash_password, data.password),
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         await _db.users.insert_one(doc)
@@ -654,7 +654,7 @@ async def update_user(user_id: str, data: AdminUserUpdate, admin: dict = Depends
             update["username"] = data.username
             update["name"] = data.username
         if data.password is not None and data.password != "":
-            update["password_hash"] = hash_password(data.password)
+            update["password_hash"] = await asyncio.to_thread(hash_password, data.password)
         if data.email is not None:
             update["email"] = data.email
         if data.phone is not None:
