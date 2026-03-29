@@ -444,11 +444,13 @@ export default function HybridTraining({ user, onLogout }) {
 
   const [serverReady, setServerReady] = useState(false);
   const [waking, setWaking] = useState(true);
+  const [wakeAttempt, setWakeAttempt] = useState(0);
 
-  // Wake server silently — no error toasts, just status
+  // Wake server — keeps retrying until success (never gives up)
   const wakeServer = useCallback(async () => {
     setWaking(true);
-    for (let i = 0; i < 15; i++) {
+    for (let i = 1; i <= 60; i++) {
+      setWakeAttempt(i);
       try {
         const r = await fetch(`${API_BASE}/api/health`);
         if (r.ok) { setServerReady(true); setWaking(false); return true; }
@@ -650,13 +652,13 @@ export default function HybridTraining({ user, onLogout }) {
           {waking && !serverReady && (
             <div className="mb-[8px] flex items-center justify-center gap-[8px] px-[12px] py-[10px] bg-cyan-500/10 border border-cyan-500/30 rounded-sm" data-testid="server-waking-banner">
               <RefreshCw className="w-[14px] h-[14px] text-cyan-400 animate-spin" />
-              <span className="font-orbitron text-[10px] font-bold tracking-[0.15em] text-cyan-400">CONNECTING TO SERVER — PLEASE WAIT...</span>
+              <span className="font-orbitron text-[10px] font-bold tracking-[0.15em] text-cyan-400">WAKING UP SERVER — ATTEMPT {wakeAttempt}...</span>
             </div>
           )}
           {!waking && !serverReady && (
-            <div className="mb-[8px] flex items-center justify-center gap-[8px] px-[12px] py-[10px] bg-red-500/10 border border-red-500/30 rounded-sm" data-testid="server-offline-banner">
-              <AlertTriangle className="w-[14px] h-[14px] text-red-400" />
-              <span className="font-orbitron text-[10px] font-bold tracking-[0.15em] text-red-400">SERVER UNREACHABLE — CLICK SYNC TO RETRY</span>
+            <div className="mb-[8px] flex items-center justify-center gap-[8px] px-[12px] py-[10px] bg-orange-500/10 border border-orange-500/30 rounded-sm cursor-pointer hover:bg-orange-500/20 transition-all" data-testid="server-offline-banner" onClick={async () => { const ok = await wakeServer(); if (ok) { syncFromSource(true); fetchAll(); } }}>
+              <AlertTriangle className="w-[14px] h-[14px] text-orange-400" />
+              <span className="font-orbitron text-[10px] font-bold tracking-[0.15em] text-orange-400">SERVER STILL WAKING — CLICK HERE OR WAIT TO RETRY</span>
             </div>
           )}
           <div className="panel relative p-[12px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden min-h-[500px]">
