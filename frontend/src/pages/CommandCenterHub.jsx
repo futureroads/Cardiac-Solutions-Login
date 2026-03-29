@@ -309,8 +309,10 @@ export default function CommandCenterHub({ user, onLogout }) {
   const userModules = user?.allowed_modules || [];
   const authToken = localStorage.getItem("token") || "";
 
-  // Filter modules: show only those the user has access to
-  const visibleModules = ALL_MODULES.filter((m) => userModules.includes(m.moduleKey));
+  // Filter modules: show those the user has access to + admin modules for admin users
+  const visibleModules = ALL_MODULES.filter((m) => 
+    userModules.includes(m.moduleKey) || (user?.role === "admin" && m.status === "ADMIN")
+  );
 
   if (powering) {
     return (
