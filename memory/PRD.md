@@ -20,7 +20,8 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - [x] Hybrid Training page (admin-only) — 5-step workflow: Feedback Queue -> Analyze -> Updates -> Apply -> Monitor
 - [x] Hybrid Training syncs from real Readisys API with 3-attempt retry logic
 - [x] Hybrid Training Step 2: Real Gemini LLM (gemini-2.5-flash) generates Qwen + OpenCV prompt suggestions
-- [x] Hybrid Training Step 2: Editable QWEN and OPENCV text fields for manual prompt editing/pasting
+- [x] Hybrid Training Step 2: Editable "PROMPT TO GEMINI" field pre-filled with feedback context for custom AI instructions
+- [x] Hybrid Training Step 2: Editable QWEN and OPENCV text fields for AI results and manual prompt editing/pasting
 - [x] Hybrid Training Step 2: SUBMIT PROMPTS endpoint saves final prompts as update records
 - [x] Frontend error resilience: auto-retries, health pings, error toasts
 - [x] Production CrashLoopBackOff fix: sparse indexes, null username cleanup, duplicate removal
