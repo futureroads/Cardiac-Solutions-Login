@@ -1027,75 +1027,156 @@ async def list_feedbacks(admin: dict = Depends(require_admin)):
 
 @api_router.post("/training/analyze/{feedback_id}")
 async def analyze_feedback(feedback_id: str, admin: dict = Depends(require_admin)):
-    """Submit feedback to Qwen for analysis. Returns suggested prompt update and OpenCV rule. MOCKED."""
+    """Submit feedback to LLM (Gemini) for analysis. Returns suggested Qwen prompt and OpenCV rule."""
     fb = await _db.training_feedbacks.find_one({"id": feedback_id}, {"_id": 0})
     if not fb:
         raise HTTPException(status_code=404, detail="Feedback not found")
 
-    # MOCKED: In production, this calls the Qwen API
-    qwen_prompt_update = (
-        f"When analyzing AED camera images, if the device appears to be in a '{fb['assigned_status']}' state "
-        f"but the physical positioning suggests '{fb['correct_status']}', prioritize the spatial and orientation "
-        f"indicators over general readiness cues. Specifically for AED unit patterns similar to {fb['aed_id']}: "
-        f"{fb['details'] or 'Review edge cases where device angle or partial occlusion may mislead classification.'} "
-        f"Update classification confidence threshold for '{fb['assigned_status']}' vs '{fb['correct_status']}' boundary cases."
-    )
+    llm_key = os.environ.get("EMERGENT_LLM_KEY", "")
+    qwen_prompt_update = ""
+    opencv_rule_text = ""
 
-    opencv_rule = {
-        "rule_id": f"rule-{uuid.uuid4().hex[:6]}",
-        "condition": f"status_mismatch_{fb['assigned_status'].lower().replace(' ', '_')}_to_{fb['correct_status'].lower().replace(' ', '_')}",
-        "description": (
+    if llm_key:
+        try:
+            from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+            prompt_text = (
+                f"You are an AI training specialist for AED (Automated External Defibrillator) monitoring cameras.\n\n"
+                f"A human reviewer found a classification error:\n"
+                f"- AED Unit: {fb.get('sentinel_id', fb.get('aed_id', 'Unknown'))}\n"
+                f"- Subscriber: {fb.get('subscriber', 'Unknown')}\n"
+                f"- AI classified status: {fb['assigned_status']}\n"
+                f"- Correct status should be: {fb['correct_status']}\n"
+                f"- Reviewer comments: {fb.get('details', 'None')}\n"
+                f"- Image URL: {fb.get('s3_url', 'N/A')}\n\n"
+                f"Generate TWO separate sections:\n\n"
+                f"SECTION 1 - QWEN RETRAINING PROMPT:\n"
+                f"Write a precise prompt/instruction that would retrain the Qwen vision model to correctly classify "
+                f"this type of AED image from '{fb['assigned_status']}' to '{fb['correct_status']}'. "
+                f"Include specific visual cues, edge cases, and confidence adjustments.\n\n"
+                f"SECTION 2 - OPENCV RULE UPDATE:\n"
+                f"Write a specific OpenCV preprocessing/postprocessing rule that would help catch this misclassification. "
+                f"Include the condition trigger, the image analysis check to perform, and the corrective action.\n\n"
+                f"Format your response EXACTLY as:\n"
+                f"===QWEN===\n[qwen prompt here]\n===OPENCV===\n[opencv rule here]"
+            )
+
+            chat = LlmChat(
+                api_key=llm_key,
+                session_id=f"analyze-{feedback_id}",
+                system_message="You are an expert in computer vision model training and AED device monitoring."
+            )
+            chat.with_model("gemini", "gemini-2.5-flash")
+
+            user_msg = UserMessage(text=prompt_text)
+            response = await chat.send_message(user_msg)
+
+            if "===QWEN===" in response and "===OPENCV===" in response:
+                parts = response.split("===OPENCV===")
+                qwen_prompt_update = parts[0].replace("===QWEN===", "").strip()
+                opencv_rule_text = parts[1].strip() if len(parts) > 1 else ""
+            else:
+                mid = len(response) // 2
+                qwen_prompt_update = response[:mid].strip()
+                opencv_rule_text = response[mid:].strip()
+
+            logger.info(f"LLM analysis complete for feedback {feedback_id}")
+        except Exception as e:
+            logger.warning(f"LLM analysis failed, using fallback: {e}")
+            await log_to_db("WARNING", f"LLM analysis failed: {e}", f"analyze/{feedback_id}")
+            qwen_prompt_update = ""
+            opencv_rule_text = ""
+
+    if not qwen_prompt_update:
+        qwen_prompt_update = (
+            f"When analyzing AED camera images, if the device appears to be in a '{fb['assigned_status']}' state "
+            f"but the physical positioning suggests '{fb['correct_status']}', prioritize spatial and orientation "
+            f"indicators over general readiness cues. For AED unit {fb.get('sentinel_id', fb.get('aed_id', ''))}. "
+            f"{fb.get('details') or 'Review edge cases where device angle or partial occlusion may mislead classification.'}"
+        )
+    if not opencv_rule_text:
+        opencv_rule_text = (
             f"Add preprocessing check: when initial classification is '{fb['assigned_status']}', "
             f"run secondary contour analysis for '{fb['correct_status']}' indicators. "
             f"If confidence delta < 15%, flag for '{fb['correct_status']}' reassignment."
-        ),
-        "parameters": {
-            "source_status": fb["assigned_status"],
-            "target_status": fb["correct_status"],
-            "confidence_threshold": 0.85,
-            "secondary_check": True,
-        },
-    }
+        )
 
-    # Save analysis results
     await _db.training_feedbacks.update_one(
         {"id": feedback_id},
         {"$set": {
             "status": "analyzed",
             "qwen_analysis": qwen_prompt_update,
+            "opencv_rule": opencv_rule_text,
+        }},
+    )
+
+    return {
+        "feedback_id": feedback_id,
+        "qwen_suggestion": qwen_prompt_update,
+        "opencv_suggestion": opencv_rule_text,
+    }
+
+
+@api_router.post("/training/submit-prompts/{feedback_id}")
+async def submit_training_prompts(feedback_id: str, data: dict, admin: dict = Depends(require_admin)):
+    """Submit final Qwen prompt and OpenCV rule for a feedback item. Creates update records."""
+    fb = await _db.training_feedbacks.find_one({"id": feedback_id}, {"_id": 0})
+    if not fb:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+
+    qwen_prompt = data.get("qwen_prompt", "").strip()
+    opencv_rule = data.get("opencv_rule", "").strip()
+
+    if not qwen_prompt and not opencv_rule:
+        raise HTTPException(status_code=400, detail="At least one prompt (qwen or opencv) is required")
+
+    # Remove any existing pending updates for this feedback
+    await _db.training_updates.delete_many({"feedback_id": feedback_id, "status": "pending"})
+
+    ts = datetime.now(timezone.utc).isoformat()
+    updates_created = []
+
+    if qwen_prompt:
+        qwen_update = {
+            "id": f"upd-{uuid.uuid4().hex[:8]}",
+            "feedback_id": feedback_id,
+            "aed_id": fb.get("aed_id", fb.get("sentinel_id", "")),
+            "type": "qwen_prompt",
+            "content": qwen_prompt,
+            "status": "pending",
+            "created_at": ts,
+            "applied_at": None,
+        }
+        await _db.training_updates.insert_one(qwen_update)
+        qwen_update.pop("_id", None)
+        updates_created.append(qwen_update)
+
+    if opencv_rule:
+        opencv_update = {
+            "id": f"upd-{uuid.uuid4().hex[:8]}",
+            "feedback_id": feedback_id,
+            "aed_id": fb.get("aed_id", fb.get("sentinel_id", "")),
+            "type": "opencv_rule",
+            "content": opencv_rule,
+            "status": "pending",
+            "created_at": ts,
+            "applied_at": None,
+        }
+        await _db.training_updates.insert_one(opencv_update)
+        opencv_update.pop("_id", None)
+        updates_created.append(opencv_update)
+
+    # Update feedback with final prompts
+    await _db.training_feedbacks.update_one(
+        {"id": feedback_id},
+        {"$set": {
+            "status": "analyzed",
+            "qwen_analysis": qwen_prompt,
             "opencv_rule": opencv_rule,
         }},
     )
 
-    # Create update records
-    ts = datetime.now(timezone.utc).isoformat()
-    qwen_update = {
-        "id": f"upd-{uuid.uuid4().hex[:8]}",
-        "feedback_id": feedback_id,
-        "aed_id": fb["aed_id"],
-        "type": "qwen_prompt",
-        "content": qwen_prompt_update,
-        "status": "pending",
-        "created_at": ts,
-        "applied_at": None,
-    }
-    opencv_update = {
-        "id": f"upd-{uuid.uuid4().hex[:8]}",
-        "feedback_id": feedback_id,
-        "aed_id": fb["aed_id"],
-        "type": "opencv_rule",
-        "content": opencv_rule["description"],
-        "rule_data": opencv_rule,
-        "status": "pending",
-        "created_at": ts,
-        "applied_at": None,
-    }
-    await _db.training_updates.insert_one(qwen_update)
-    await _db.training_updates.insert_one(opencv_update)
-    qwen_update.pop("_id", None)
-    opencv_update.pop("_id", None)
-
-    return {"qwen_update": qwen_update, "opencv_update": opencv_update}
+    return {"feedback_id": feedback_id, "updates_created": len(updates_created), "updates": updates_created}
 
 @api_router.get("/training/updates")
 async def list_updates(admin: dict = Depends(require_admin)):

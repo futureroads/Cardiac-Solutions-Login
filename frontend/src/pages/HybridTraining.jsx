@@ -142,7 +142,19 @@ function Step1Queue({ feedbacks, onSelect, selectedId }) {
 }
 
 // ======================== STEP 2: Analyze ========================
-function Step2Analyze({ selected, onAnalyze, analyzing }) {
+function Step2Analyze({ selected, onAnalyze, analyzing, onSubmitPrompts, submittingPrompts }) {
+  const [qwenPrompt, setQwenPrompt] = useState("");
+  const [opencvRule, setOpencvRule] = useState("");
+  const [hasAnalyzed, setHasAnalyzed] = useState(false);
+
+  useEffect(() => {
+    if (selected) {
+      setQwenPrompt(selected.qwen_analysis || "");
+      setOpencvRule(typeof selected.opencv_rule === "string" ? selected.opencv_rule : selected.opencv_rule?.description || "");
+      setHasAnalyzed(selected.status !== "pending");
+    }
+  }, [selected]);
+
   if (!selected) {
     return (
       <div className="flex flex-col items-center justify-center py-[40px] text-cyan-500/30" data-testid="step2-empty">
@@ -151,6 +163,16 @@ function Step2Analyze({ selected, onAnalyze, analyzing }) {
       </div>
     );
   }
+
+  const handleAnalyze = async (id) => {
+    const result = await onAnalyze(id);
+    if (result) {
+      setQwenPrompt(result.qwen_suggestion || "");
+      setOpencvRule(result.opencv_suggestion || "");
+      setHasAnalyzed(true);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-[8px]" data-testid="step2-analyze">
       <div className="plabel"><Brain className="w-[12px] h-[12px]" /> Analyze Feedback</div>
@@ -170,28 +192,64 @@ function Step2Analyze({ selected, onAnalyze, analyzing }) {
           <div className="mt-[6px]"><span className="text-[7px] text-cyan-500/40 tracking-wider">IMAGE</span><div className="text-[8px] text-cyan-400/60 mt-[2px] truncate">{selected.s3_url}</div></div>
         )}
       </div>
-      {selected.status === "pending" ? (
+
+      {selected.status === "pending" && !hasAnalyzed && (
         <button
-          onClick={() => onAnalyze(selected.id)}
+          onClick={() => handleAnalyze(selected.id)}
           disabled={analyzing}
           className="flex items-center justify-center gap-[6px] px-[12px] py-[8px] border border-cyan-400 bg-cyan-500/15 text-cyan-400 font-orbitron text-[9px] font-bold tracking-wider rounded-sm hover:bg-cyan-500/25 transition-all disabled:opacity-40"
           data-testid="analyze-submit-btn"
         >
           {analyzing ? <RefreshCw className="w-[12px] h-[12px] animate-spin" /> : <Brain className="w-[12px] h-[12px]" />}
-          {analyzing ? "ANALYZING WITH QWEN..." : "SUBMIT TO QWEN FOR ANALYSIS"}
+          {analyzing ? "ANALYZING WITH AI..." : "SUBMIT TO QWEN FOR ANALYSIS"}
         </button>
-      ) : (
+      )}
+
+      {(hasAnalyzed || selected.status !== "pending") && (
         <div className="flex items-center gap-[6px] px-[10px] py-[6px] bg-green-500/10 border border-green-500/20 rounded-sm">
           <CheckCircle2 className="w-[12px] h-[12px] text-green-400" />
-          <span className="font-orbitron text-[8px] font-bold text-green-400 tracking-wider">ANALYSIS COMPLETE — SEE UPDATES IN STEP 3</span>
+          <span className="font-orbitron text-[8px] font-bold text-green-400 tracking-wider">AI ANALYSIS COMPLETE — EDIT PROMPTS BELOW OR SUBMIT</span>
         </div>
       )}
-      {selected.qwen_analysis && (
-        <div className="bg-cyan-500/5 border border-cyan-500/15 p-[8px] rounded-sm">
-          <div className="text-[7px] text-cyan-500/40 tracking-wider mb-[4px]">QWEN ANALYSIS RESULT</div>
-          <div className="text-[9px] text-slate-200/80 leading-relaxed">{selected.qwen_analysis}</div>
+
+      {/* QWEN + OPENCV Prompt Fields */}
+      <div className="flex flex-col gap-[6px] mt-[4px]">
+        <div>
+          <label className="font-orbitron text-[8px] font-bold tracking-[0.2em] text-cyan-400 flex items-center gap-[6px] mb-[4px]">
+            <Brain className="w-[10px] h-[10px]" /> QWEN
+          </label>
+          <textarea
+            value={qwenPrompt}
+            onChange={(e) => setQwenPrompt(e.target.value)}
+            placeholder="Paste or edit Qwen retraining prompt here..."
+            rows={5}
+            className="w-full bg-[rgba(0,20,40,0.8)] border border-cyan-500/30 rounded-sm px-[10px] py-[8px] text-[10px] text-slate-200 font-mono placeholder:text-cyan-500/25 focus:border-cyan-400 focus:outline-none resize-y"
+            data-testid="qwen-prompt-input"
+          />
         </div>
-      )}
+        <div>
+          <label className="font-orbitron text-[8px] font-bold tracking-[0.2em] text-orange-400 flex items-center gap-[6px] mb-[4px]">
+            <Eye className="w-[10px] h-[10px]" /> OPENCV
+          </label>
+          <textarea
+            value={opencvRule}
+            onChange={(e) => setOpencvRule(e.target.value)}
+            placeholder="Paste or edit OpenCV rule update here..."
+            rows={5}
+            className="w-full bg-[rgba(0,20,40,0.8)] border border-orange-500/30 rounded-sm px-[10px] py-[8px] text-[10px] text-slate-200 font-mono placeholder:text-orange-500/25 focus:border-orange-400 focus:outline-none resize-y"
+            data-testid="opencv-rule-input"
+          />
+        </div>
+        <button
+          onClick={() => onSubmitPrompts(selected.id, qwenPrompt, opencvRule)}
+          disabled={submittingPrompts || (!qwenPrompt.trim() && !opencvRule.trim())}
+          className="flex items-center justify-center gap-[6px] px-[12px] py-[8px] border border-green-500 bg-green-500/15 text-green-400 font-orbitron text-[9px] font-bold tracking-wider rounded-sm hover:bg-green-500/25 transition-all disabled:opacity-30"
+          data-testid="submit-prompts-btn"
+        >
+          {submittingPrompts ? <RefreshCw className="w-[12px] h-[12px] animate-spin" /> : <Send className="w-[12px] h-[12px]" />}
+          {submittingPrompts ? "SUBMITTING..." : "SUBMIT PROMPTS"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -356,6 +414,7 @@ export default function HybridTraining({ user, onLogout }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [applying, setApplying] = useState(null);
   const [checking, setChecking] = useState(null);
+  const [submittingPrompts, setSubmittingPrompts] = useState(false);
 
   const [syncing, setSyncing] = useState(false);
 
@@ -425,15 +484,39 @@ export default function HybridTraining({ user, onLogout }) {
     try {
       const res = await fetch(`${API_BASE}/api/training/analyze/${feedbackId}`, { method: "POST", headers });
       if (!res.ok) throw new Error("Analysis failed");
-      toast.success("Qwen analysis complete — check Step 3 for updates");
+      const data = await res.json();
+      toast.success("AI analysis complete — review and edit prompts below");
+      await fetchAll();
+      const updated = await (await fetch(`${API_BASE}/api/training/feedbacks`, { headers })).json();
+      setSelectedFeedback(updated.find((f) => f.id === feedbackId) || null);
+      return data;
+    } catch (err) {
+      toast.error("Analysis failed: " + err.message);
+      return null;
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleSubmitPrompts = async (feedbackId, qwenPrompt, opencvRule) => {
+    setSubmittingPrompts(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/training/submit-prompts/${feedbackId}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ qwen_prompt: qwenPrompt, opencv_rule: opencvRule }),
+      });
+      if (!res.ok) throw new Error("Submit failed");
+      const data = await res.json();
+      toast.success(`${data.updates_created} update(s) submitted — see Step 3`);
       await fetchAll();
       const updated = await (await fetch(`${API_BASE}/api/training/feedbacks`, { headers })).json();
       setSelectedFeedback(updated.find((f) => f.id === feedbackId) || null);
       setActiveStep(3);
     } catch (err) {
-      toast.error("Analysis failed: " + err.message);
+      toast.error("Submit failed: " + err.message);
     } finally {
-      setAnalyzing(false);
+      setSubmittingPrompts(false);
     }
   };
 
@@ -527,7 +610,7 @@ export default function HybridTraining({ user, onLogout }) {
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             {activeStep === 1 && <Step1Queue feedbacks={feedbacks} onSelect={handleSelectFeedback} selectedId={selectedFeedback?.id} />}
-            {activeStep === 2 && <Step2Analyze selected={selectedFeedback} onAnalyze={handleAnalyze} analyzing={analyzing} />}
+            {activeStep === 2 && <Step2Analyze selected={selectedFeedback} onAnalyze={handleAnalyze} analyzing={analyzing} onSubmitPrompts={handleSubmitPrompts} submittingPrompts={submittingPrompts} />}
             {activeStep === 3 && <Step3Updates updates={updates} />}
             {activeStep === 4 && <Step4Apply updates={updates} onApply={handleApply} applying={applying} />}
             {activeStep === 5 && <Step5Monitor monitors={monitors} onCheck={handleCheck} checking={checking} />}
