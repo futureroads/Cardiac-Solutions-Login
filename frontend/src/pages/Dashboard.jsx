@@ -674,7 +674,8 @@ export default function Dashboard({ user, onLogout }) {
                   {/* Needle */}
                   {(() => {
                     const pct = Math.round(parseFloat(pctReady));
-                    const angle = Math.PI + (pct / 100) * Math.PI;
+                    const visualPct = pct * 0.88;
+                    const angle = Math.PI + (visualPct / 100) * Math.PI;
                     const nx = 60 + 38 * Math.cos(angle);
                     const ny = 65 + 38 * Math.sin(angle);
                     return <line x1="60" y1="65" x2={nx} y2={ny} stroke="#ffffff" strokeWidth="2" strokeLinecap="round" style={{ filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.6))' }} />;
