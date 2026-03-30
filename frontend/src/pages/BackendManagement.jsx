@@ -63,7 +63,7 @@ export default function BackendManagement({ user, onLogout }) {
     checkedIn24h: 3200,
     online: 3108,
     offline: 192,
-    endpoint: "camera.cardiac-solutions.ai",
+    endpoint: process.env.REACT_APP_CAMERA_ENDPOINT || "camera.example.com",
   };
 
   const serverStats = {
@@ -273,7 +273,7 @@ export default function BackendManagement({ user, onLogout }) {
                       return `${mm}/${dd}/${yy} 01:00 AM`;
                     };
                     const items = [
-                      { label: "URL", value: "readiness.cardiac-solutions.ai", icon: Link, color: "text-cyan-400", isLink: true },
+                      { label: "URL", value: process.env.REACT_APP_READINESS_URL || "readiness.example.com", icon: Link, color: "text-cyan-400", isLink: true },
                       { label: "User Name", value: "readiness_admin", icon: User, color: "text-slate-200" },
                       { label: "Password", value: "••••••••••", icon: Key, color: "text-slate-200" },
                       { label: "Daily Access Time", value: "1:00 AM", icon: CalendarClock, color: "text-cyan-400" },

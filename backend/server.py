@@ -593,8 +593,8 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 # ==================== Cross-Domain SSO Token ====================
 
 ALLOWED_CROSS_DOMAIN_TARGETS = {
-    "report": "https://report.cardiac-solutions.ai/auth",
-    "notifications": "https://notifications.cardiac-solutions.ai/auth",
+    "report": os.environ.get("SSO_REPORT_URL"),
+    "notifications": os.environ.get("SSO_NOTIFICATIONS_URL"),
 }
 
 class CrossDomainTokenRequest(BaseModel):
@@ -919,7 +919,7 @@ async def update_service_status(category_name: str, service_name: str, status: s
 # ==================== Hybrid Training Routes ====================
 
 VALID_STATUSES = ["READY", "NOT READY", "NOT PRESENT", "REPOSITION", "UNKNOWN"]
-FEEDBACK_SOURCE_URL = "https://readisys.survivalpath.ai/api/reports/aed-status-feedback"
+FEEDBACK_SOURCE_URL = os.environ.get("FEEDBACK_SOURCE_URL")
 
 @api_router.get("/training/sync")
 async def sync_feedbacks(admin: dict = Depends(require_admin)):
