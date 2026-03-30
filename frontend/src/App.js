@@ -45,6 +45,16 @@ function App() {
     setLoading(false);
   }, []);
 
+  // Keep-alive: ping server every 45s while logged in to prevent pod sleep
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const API_BASE = process.env.REACT_APP_BACKEND_URL || "";
+    const ping = () => fetch(`${API_BASE}/api/health`).catch(() => {});
+    ping(); // immediate ping on login
+    const interval = setInterval(ping, 45000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
   const handleLogin = (token, userData) => {
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(userData));
