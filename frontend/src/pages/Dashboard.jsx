@@ -685,11 +685,11 @@ export default function Dashboard({ user, onLogout }) {
                 </svg>
               </div>
               {(() => {
-                const pct = Math.round(parseFloat(pctReady));
+                const pct = parseFloat(pctReady);
                 const color = pct < 40 ? '#ff2244' : pct < 70 ? '#ffff00' : '#22b814';
                 return (
                   <span className="font-orbitron text-[22px] font-black mt-[4px]" style={{ color, textShadow: `0 0 12px ${color}80` }}>
-                    {pct}%
+                    {pctReady}%
                   </span>
                 );
               })()}
