@@ -16,8 +16,22 @@ export default function Dashboard({ user, onLogout }) {
   const [sendingOverview, setSendingOverview] = useState(false);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem("dashboard_view") || 'detailed');
   const { categories: serviceCategories } = useServiceStatuses(60000);
+  const [liveStats, setLiveStats] = useState(null);
 
   const token = localStorage.getItem("token") || "";
+
+  // Fetch real status overview from Readisys
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/status-overview`);
+        if (res.ok) setLiveStats(await res.json());
+      } catch {}
+    };
+    fetchStatus();
+    const t = setInterval(fetchStatus, 60000);
+    return () => clearInterval(t);
+  }, []);
 
   // Cross-domain SSO redirect helper
   const ssoRedirect = async (target) => {
@@ -68,10 +82,12 @@ export default function Dashboard({ user, onLogout }) {
     }
   };
 
-  // Mock data
+  // Real data from Readisys, with fallback
   const stats = {
-    total: 3300,
-    ready: 3201,
+    total: liveStats ? liveStats.total_cameras : 0,
+    ready: liveStats ? Math.round(liveStats.total_cameras * liveStats.percent_ready / 100) : 0,
+    subscribers: liveStats ? liveStats.total_subscribers : 0,
+    pctReady: liveStats ? liveStats.percent_ready : 0,
     lost: 62,
     service: 28,
     dispatch: 9,
@@ -82,7 +98,7 @@ export default function Dashboard({ user, onLogout }) {
     openTickets: 10
   };
 
-  const pctReady = ((stats.ready / stats.total) * 100).toFixed(1);
+  const pctReady = stats.pctReady.toFixed(1);
 
   const aiRecommendations = [
     { type: 'INFO', msg: 'Tech R. Chen has 4 open tickets in SW region. Recommend reassigning AED-0772 (Phoenix) to nearest available tech.' },
@@ -693,8 +709,8 @@ export default function Dashboard({ user, onLogout }) {
             <div className="plabel">Customer Notifications</div>
             <div className="grid grid-cols-2 gap-[6px] pt-[6px]">
               {[
-                { label: 'Total Subscribers', value: 46, color: 'text-white' },
-                { label: 'Total AEDs', value: '3,078', color: 'text-cyan-400' },
+                { label: 'Total Subscribers', value: stats.subscribers.toLocaleString(), color: 'text-white' },
+                { label: 'Total AEDs', value: stats.total.toLocaleString(), color: 'text-cyan-400' },
                 { label: 'Action Issues', value: 843, color: 'text-yellow-400' },
                 { label: 'Resolved', value: 12, color: 'text-green-600' },
               ].map((item, i) => (

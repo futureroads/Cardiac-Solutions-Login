@@ -1390,6 +1390,22 @@ async def send_overview_email(current_user: dict = Depends(get_current_user)):
         logger.error(f"Failed to send overview email: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
+
+# ==================== Status Overview (proxied from Readisys) ====================
+
+@api_router.get("/status-overview")
+async def status_overview():
+    """Proxy to Readisys status overview API for real-time dashboard data."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get("https://readisys.survivalpath.ai/api/status-overview")
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as e:
+        logger.warning(f"status-overview fetch failed: {e}")
+        return {"total_subscribers": 0, "total_cameras": 0, "percent_ready": 0}
+
 # ==================== Customer Portal ====================
 
 @api_router.post("/customers")
