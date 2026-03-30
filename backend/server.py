@@ -102,7 +102,7 @@ async def log_to_db(level, message, context=""):
         pass  # Can't log the log failure
 
 # All available module IDs
-ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path", "hybrid_training"]
+ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path", "hybrid_training", "customer_portal"]
 
 # Create the main app
 app = FastAPI(title="Cardiac Solutions API")
@@ -1389,6 +1389,72 @@ async def send_overview_email(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"Failed to send overview email: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+
+# ==================== Customer Portal ====================
+
+@api_router.post("/customers")
+async def save_customer(data: dict, admin: dict = Depends(require_admin)):
+    """Save a new customer with their AED units."""
+    ts = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": f"cust-{uuid.uuid4().hex[:8]}",
+        "site_name": data.get("site_name", ""),
+        "unit_count": data.get("unit_count", 0),
+        "address": data.get("address", ""),
+        "city": data.get("city", ""),
+        "state": data.get("state", ""),
+        "zip_code": data.get("zip_code", ""),
+        "first_name": data.get("first_name", ""),
+        "last_name": data.get("last_name", ""),
+        "email": data.get("email", ""),
+        "phone": data.get("phone", ""),
+        "aed_units": data.get("aed_units", []),
+        "created_by": admin.get("username", ""),
+        "created_at": ts,
+        "updated_at": ts,
+    }
+    await _db.customers.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.get("/customers")
+async def list_customers(admin: dict = Depends(require_admin)):
+    """List all customers."""
+    customers = await _db.customers.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return customers
+
+@api_router.get("/customers/{customer_id}")
+async def get_customer(customer_id: str, admin: dict = Depends(require_admin)):
+    """Get a single customer by ID."""
+    doc = await _db.customers.find_one({"id": customer_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    return doc
+
+@api_router.put("/customers/{customer_id}")
+async def update_customer(customer_id: str, data: dict, admin: dict = Depends(require_admin)):
+    """Update an existing customer."""
+    existing = await _db.customers.find_one({"id": customer_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    update = {
+        "site_name": data.get("site_name", ""),
+        "unit_count": data.get("unit_count", 0),
+        "address": data.get("address", ""),
+        "city": data.get("city", ""),
+        "state": data.get("state", ""),
+        "zip_code": data.get("zip_code", ""),
+        "first_name": data.get("first_name", ""),
+        "last_name": data.get("last_name", ""),
+        "email": data.get("email", ""),
+        "phone": data.get("phone", ""),
+        "aed_units": data.get("aed_units", []),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await _db.customers.update_one({"id": customer_id}, {"$set": update})
+    updated = await _db.customers.find_one({"id": customer_id}, {"_id": 0})
+    return updated
+
 
 # ==================== Health Check ====================
 

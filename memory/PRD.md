@@ -22,7 +22,8 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - [x] Hybrid Training Step 2: Real Gemini LLM (gemini-2.5-flash) generates Qwen + OpenCV prompt suggestions
 - [x] Hybrid Training Step 2: Editable "PROMPT TO GEMINI" field pre-filled with feedback context for custom AI instructions
 - [x] Hybrid Training Step 2: Editable QWEN and OPENCV text fields for AI results and manual prompt editing/pasting
-- [x] Hybrid Training Step 2: SUBMIT PROMPTS endpoint saves final prompts as update records
+- [x] Customer Portal page (admin-only) — Customer Information form + AED Units table with CRUD
+- [x] Customer Portal backend API: POST/GET/PUT /api/customers
 - [x] Frontend error resilience: auto-retries, health pings, error toasts
 - [x] Production CrashLoopBackOff fix: sparse indexes, null username cleanup, duplicate removal
 - [x] Seed always updates allowed_modules for existing users (no fast-path skip)

@@ -8,6 +8,7 @@ import UserAccess from "./pages/UserAccess";
 import BackendManagement from "./pages/BackendManagement";
 import OutageStatus from "./pages/OutageStatus";
 import HybridTraining from "./pages/HybridTraining";
+import CustomerPortal from "./pages/CustomerPortal";
 import { Toaster } from "./components/ui/sonner";
 
 function App() {
@@ -126,6 +127,14 @@ function App() {
             element={
               isAuthenticated && user?.role === "admin" ? 
                 <HybridTraining user={user} onLogout={handleLogout} /> : 
+                <Navigate to="/hub" replace />
+            } 
+          />
+          <Route 
+            path="/customerportal" 
+            element={
+              isAuthenticated && user?.role === "admin" ? 
+                <CustomerPortal user={user} onLogout={handleLogout} /> : 
                 <Navigate to="/hub" replace />
             } 
           />

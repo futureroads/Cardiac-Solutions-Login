@@ -15,6 +15,7 @@ import {
   Server,
   AlertTriangle,
   Brain,
+  Building2,
 } from "lucide-react";
 
 const ALL_MODULES = [
@@ -109,6 +110,16 @@ const ALL_MODULES = [
     route: "/hybridtraining",
     description:
       "Monitor and manage OpenCV + Qwen hybrid AI training pipeline. Review user feedback, analyze misclassifications, and apply model updates.",
+    badgeCount: null,
+  },
+  {
+    moduleKey: "customer_portal",
+    title: "CUSTOMER PORTAL",
+    status: "ADMIN",
+    icon: Building2,
+    route: "/customerportal",
+    description:
+      "Add and manage customer site information, contact details, and AED unit inventory with serial numbers, locations, and service dates.",
     badgeCount: null,
   },
 ];
