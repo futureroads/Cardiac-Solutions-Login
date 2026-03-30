@@ -146,9 +146,12 @@ function ModuleCard({ module, index, onNavigate, authToken }) {
   const handleClick = async () => {
     if (module.crossDomainTarget) {
       setLoading(true);
+      // Wake server first
+      try { await fetch(`${API_BASE}/api/health`); } catch {}
       // SSO flow with retry: get signed token, then redirect
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < 4; attempt++) {
         try {
+          if (attempt > 0) await new Promise(r => setTimeout(r, 2000));
           const res = await fetch(`${API_BASE}/api/auth/cross-domain-token`, {
             method: "POST",
             headers: {
@@ -157,20 +160,21 @@ function ModuleCard({ module, index, onNavigate, authToken }) {
             },
             body: JSON.stringify({ target: module.crossDomainTarget }),
           });
-          if ([502, 503, 520, 521].includes(res.status) && attempt < 2) {
-            await new Promise(r => setTimeout(r, 1500));
+          if ([502, 503, 520, 521].includes(res.status) && attempt < 3) {
             continue;
           }
-          if (!res.ok) throw new Error("Token request failed");
+          if (!res.ok) throw new Error(`Server returned ${res.status}`);
           const data = await res.json();
-          window.open(data.redirect_url, "_blank", "noopener,noreferrer");
+          const win = window.open(data.redirect_url, "_blank", "noopener,noreferrer");
+          if (!win) {
+            window.location.href = data.redirect_url;
+          }
           break;
         } catch (err) {
-          if (attempt < 2) {
-            await new Promise(r => setTimeout(r, 1500));
-            continue;
+          if (attempt >= 3) {
+            console.error("Cross-domain SSO error:", err);
+            alert("Could not open " + module.title + " — server may be waking up. Please try again.");
           }
-          console.error("Cross-domain SSO error:", err);
         }
       }
       setLoading(false);
