@@ -47,7 +47,7 @@ const ALL_MODULES = [
     status: "IN DEV",
     icon: FileCheck,
     route: null,
-    externalUrl: process.env.REACT_APP_SERVICE_TICKETS_URL,
+    externalUrl: "https://service.cardiac-solutions.ai",
     description:
       "Field technician dispatch, ticket lifecycle management, and AED service workflow from open to confirmed.",
     badgeCount: null,
