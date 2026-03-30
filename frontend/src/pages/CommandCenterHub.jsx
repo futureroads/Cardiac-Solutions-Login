@@ -75,7 +75,7 @@ const ALL_MODULES = [
   {
     moduleKey: "user_access",
     title: "USER ACCESS",
-    status: "ADMIN",
+    status: "IN DEV",
     icon: Users,
     route: "/user-access",
     description:
@@ -85,7 +85,7 @@ const ALL_MODULES = [
   {
     moduleKey: "backend",
     title: "BACKEND",
-    status: "ADMIN",
+    status: "IN DEV",
     icon: Server,
     route: "/backend",
     description:
@@ -95,7 +95,7 @@ const ALL_MODULES = [
   {
     moduleKey: "outage_status",
     title: "OUTAGE STATUS",
-    status: "ADMIN",
+    status: "IN DEV",
     icon: AlertTriangle,
     route: "/outage",
     description:
@@ -105,7 +105,7 @@ const ALL_MODULES = [
   {
     moduleKey: "hybrid_training",
     title: "HYBRID FEEDBACK TRAINING",
-    status: "ADMIN",
+    status: "IN DEV",
     icon: Brain,
     route: "/hybridtraining",
     description:
@@ -115,7 +115,7 @@ const ALL_MODULES = [
   {
     moduleKey: "customer_portal",
     title: "CUSTOMER PORTAL",
-    status: "ADMIN",
+    status: "IN DEV",
     icon: Building2,
     route: "/customerportal",
     description:
@@ -322,7 +322,7 @@ export default function CommandCenterHub({ user, onLogout }) {
 
   // Filter modules: show those the user has access to + admin modules for admin users
   const visibleModules = ALL_MODULES.filter((m) => 
-    userModules.includes(m.moduleKey) || (user?.role === "admin" && m.status === "ADMIN")
+    userModules.includes(m.moduleKey) || user?.role === "admin"
   );
 
   if (powering) {
