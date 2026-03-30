@@ -1393,17 +1393,26 @@ async def send_overview_email(current_user: dict = Depends(get_current_user)):
 
 # ==================== Status Overview (proxied from Readisys) ====================
 
+_status_cache = {"data": None, "ts": 0}
+
 @api_router.get("/status-overview")
 async def status_overview():
-    """Proxy to Readisys status overview API for real-time dashboard data."""
-    import httpx
+    """Proxy to Readisys status overview API. Caches for 30s."""
+    import httpx, time
+    now = time.time()
+    if _status_cache["data"] and (now - _status_cache["ts"]) < 30:
+        return _status_cache["data"]
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=8) as client:
             resp = await client.get("https://readisys.survivalpath.ai/api/status-overview")
             resp.raise_for_status()
-            return resp.json()
+            _status_cache["data"] = resp.json()
+            _status_cache["ts"] = now
+            return _status_cache["data"]
     except Exception as e:
         logger.warning(f"status-overview fetch failed: {e}")
+        if _status_cache["data"]:
+            return _status_cache["data"]
         return {"total_subscribers": 0, "total_cameras": 0, "percent_ready": 0}
 
 # ==================== Customer Portal ====================

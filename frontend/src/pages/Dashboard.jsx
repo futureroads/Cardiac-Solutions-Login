@@ -22,15 +22,25 @@ export default function Dashboard({ user, onLogout }) {
 
   // Fetch real status overview from Readisys
   useEffect(() => {
+    let attempts = 0;
     const fetchStatus = async () => {
       try {
         const res = await fetch(`${API_URL}/api/status-overview`);
-        if (res.ok) setLiveStats(await res.json());
+        if (res.ok) {
+          const data = await res.json();
+          if (data.total_cameras > 0) {
+            setLiveStats(data);
+            attempts = 10; // stop fast retries
+          }
+        }
       } catch {}
+      attempts++;
     };
     fetchStatus();
-    const t = setInterval(fetchStatus, 60000);
-    return () => clearInterval(t);
+    // Retry every 5s for first 30s, then every 60s
+    const fast = setInterval(() => { if (attempts < 6) fetchStatus(); }, 5000);
+    const slow = setInterval(fetchStatus, 60000);
+    return () => { clearInterval(fast); clearInterval(slow); };
   }, []);
 
   // Cross-domain SSO redirect helper
