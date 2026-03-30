@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, LogOut, Brain, Eye, Send, CheckCircle2, Clock, AlertTriangle,
@@ -437,7 +437,7 @@ export default function HybridTraining({ user, onLogout }) {
   const [syncing, setSyncing] = useState(false);
 
   const token = localStorage.getItem("token") || "";
-  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  const headers = useMemo(() => ({ Authorization: `Bearer ${token}`, "Content-Type": "application/json" }), [token]);
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
   useEffect(() => { const t = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(t); }, []);
@@ -484,7 +484,7 @@ export default function HybridTraining({ user, onLogout }) {
     if (!silent) toast.error(`Sync failed: ${lastErr}`);
     setSyncing(false);
     return false;
-  }, [token]);
+  }, [headers]);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -502,7 +502,7 @@ export default function HybridTraining({ user, onLogout }) {
     } catch (e) {
       console.error("fetchAll error:", e);
     }
-  }, [token]);
+  }, [headers]);
 
   useEffect(() => {
     const init = async () => {

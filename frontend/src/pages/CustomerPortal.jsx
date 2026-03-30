@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -29,10 +29,10 @@ const EMPTY_AED = {
 export default function CustomerPortal({ user, onLogout }) {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
-  const headers = {
+  const headers = useMemo(() => ({
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
-  };
+  }), [token]);
 
   const [saving, setSaving] = useState(false);
   const [customer, setCustomer] = useState({
@@ -81,7 +81,7 @@ export default function CustomerPortal({ user, onLogout }) {
     } finally {
       setSaving(false);
     }
-  }, [customer, aedUnits]);
+  }, [customer, aedUnits, headers]);
 
   return (
     <div
