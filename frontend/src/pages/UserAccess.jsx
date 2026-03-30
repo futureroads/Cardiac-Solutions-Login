@@ -25,6 +25,11 @@ const MODULE_OPTIONS = [
   { id: "service_tickets", title: "Service Tickets" },
   { id: "dashboard", title: "Dashboard" },
   { id: "survival_path", title: "Survival Path" },
+  { id: "user_access", title: "User Access" },
+  { id: "backend", title: "Backend" },
+  { id: "outage_status", title: "Outage Status" },
+  { id: "hybrid_training", title: "Hybrid Training" },
+  { id: "customer_portal", title: "Customer Portal" },
 ];
 
 const ROLE_OPTIONS = ["admin", "C Level", "Director", "Manager", "Supervisor", "Employee"];
