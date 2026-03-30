@@ -700,6 +700,7 @@ export default function Dashboard({ user, onLogout }) {
                   <div className="font-orbitron text-[9px] font-bold mt-[4px] tracking-wider" style={{ color }}>{stats.ready.toLocaleString()} READY</div>
                 );
               })()}
+              <div className="font-orbitron text-[9px] font-bold mt-[2px] tracking-wider text-cyan-400">{stats.total.toLocaleString()} TOTAL AEDs</div>
             </div>
           </div>
 
