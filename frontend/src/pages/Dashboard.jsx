@@ -110,12 +110,35 @@ export default function Dashboard({ user, onLogout }) {
 
   const pctReady = stats.pctReady.toFixed(1);
 
-  const aiRecommendations = [
-    { type: 'INFO', msg: 'Tech R. Chen has 4 open tickets in SW region. Recommend reassigning AED-0772 (Phoenix) to nearest available tech.' },
-    { type: 'ACT', msg: 'Battery degradation on AED-1204 & AED-1205 (Seattle). Schedule combined service visit.' },
-    { type: 'WARN', msg: '3 devices in Miami-Dade lost contact within 12h — possible network outage. Check ISP before dispatching.' },
-    { type: 'ACT', msg: "AED-0881 Chicago O'Hare offline 48h — escalate to SVC-0038. Risk: critical public venue." },
-    { type: 'ACT', msg: 'Dispatch tech to AED-0293 (Tampa Intl) — lost contact 6h, high-traffic zone. Recommend same-day response.' },
+  const [bpData, setBpData] = useState(null);
+
+  // Fetch expiring/expired B/P data for DI scroll
+  useEffect(() => {
+    let attempts = 0;
+    const fetchBP = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/status-overview/expiring-expired-bp`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.devices && data.devices.length > 0) {
+            setBpData(data);
+            attempts = 10;
+          }
+        }
+      } catch {}
+      attempts++;
+    };
+    fetchBP();
+    const fast = setInterval(() => { if (attempts < 6) fetchBP(); }, 5000);
+    const slow = setInterval(fetchBP, 120000);
+    return () => { clearInterval(fast); clearInterval(slow); };
+  }, []);
+
+  const aiRecommendations = bpData && bpData.devices ? bpData.devices.map(dev => ({
+    type: dev.detailed_status === 'EXPIRED B/P' ? 'ACT' : 'WARN',
+    msg: `${dev.sentinel_id} (${dev.subscriber}) — ${dev.days_summary}. Location: ${dev.location.split('·').slice(0, 3).join('·').trim()}`
+  })) : [
+    { type: 'ACT', msg: 'Loading device alerts...' },
   ];
 
   const statusChanges = [

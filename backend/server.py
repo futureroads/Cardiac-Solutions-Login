@@ -1394,6 +1394,7 @@ async def send_overview_email(current_user: dict = Depends(get_current_user)):
 # ==================== Status Overview (proxied from Readisys) ====================
 
 _status_cache = {"data": None, "ts": 0}
+_bp_cache = {"data": None, "ts": 0}
 
 @api_router.get("/status-overview")
 async def status_overview():
@@ -1414,6 +1415,27 @@ async def status_overview():
         if _status_cache["data"]:
             return _status_cache["data"]
         return {"total_subscribers": 0, "total_cameras": 0, "percent_ready": 0}
+
+
+@api_router.get("/status-overview/expiring-expired-bp")
+async def expiring_expired_bp():
+    """Proxy to Readisys expiring/expired B/P API. Caches for 60s."""
+    import httpx, time
+    now = time.time()
+    if _bp_cache["data"] and (now - _bp_cache["ts"]) < 60:
+        return _bp_cache["data"]
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp")
+            resp.raise_for_status()
+            _bp_cache["data"] = resp.json()
+            _bp_cache["ts"] = now
+            return _bp_cache["data"]
+    except Exception as e:
+        logger.warning(f"expiring-expired-bp fetch failed: {e}")
+        if _bp_cache["data"]:
+            return _bp_cache["data"]
+        return {"totals": {"expired_bp": 0, "expiring_batt_pads": 0}, "devices": [], "by_subscriber": []}
 
 # ==================== Customer Portal ====================
 
