@@ -41,6 +41,23 @@ export default function Dashboard({ user, onLogout }) {
     const pct = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
     el.scrollTop = pct * (el.scrollHeight - el.clientHeight);
   };
+  const diThumbDrag = (e) => {
+    e.preventDefault();
+    const el = diRef.current;
+    const track = diTrackRef.current;
+    if (!el || !track) return;
+    const rect = track.getBoundingClientRect();
+    const onMove = (ev) => {
+      const pct = Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
+      el.scrollTop = pct * (el.scrollHeight - el.clientHeight);
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
   const [sendingOverview, setSendingOverview] = useState(false);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem("dashboard_view") || 'detailed');
   const { categories: serviceCategories } = useServiceStatuses(60000);
@@ -604,7 +621,7 @@ export default function Dashboard({ user, onLogout }) {
             {aiHovered && (
               <div ref={diTrackRef} onClick={diTrackClick}
                 style={{ position: 'absolute', top: 0, right: 0, width: 10, height: '100%', background: 'rgba(0,40,80,0.5)', borderRadius: 5, cursor: 'pointer', zIndex: 20 }}>
-                <div style={{ position: 'absolute', top: `${diScrollPct * 80}%`, width: '100%', height: '20%', background: '#0088ff', borderRadius: 5, boxShadow: '0 0 6px rgba(0,136,255,0.5)', minHeight: 30 }} />
+                <div onMouseDown={diThumbDrag} style={{ position: 'absolute', top: `${diScrollPct * 80}%`, width: '100%', height: '20%', background: '#0088ff', borderRadius: 5, boxShadow: '0 0 6px rgba(0,136,255,0.5)', minHeight: 30, cursor: 'grab' }} />
               </div>
             )}
             </div>
@@ -1006,7 +1023,7 @@ export default function Dashboard({ user, onLogout }) {
             {aiHovered && (
               <div ref={diTrackRef} onClick={diTrackClick}
                 style={{ position: 'absolute', top: 0, right: 0, width: 10, height: '100%', background: 'rgba(0,40,80,0.5)', borderRadius: 5, cursor: 'pointer', zIndex: 20 }}>
-                <div style={{ position: 'absolute', top: `${diScrollPct * 80}%`, width: '100%', height: '20%', background: '#0088ff', borderRadius: 5, boxShadow: '0 0 6px rgba(0,136,255,0.5)', minHeight: 30 }} />
+                <div onMouseDown={diThumbDrag} style={{ position: 'absolute', top: `${diScrollPct * 80}%`, width: '100%', height: '20%', background: '#0088ff', borderRadius: 5, boxShadow: '0 0 6px rgba(0,136,255,0.5)', minHeight: 30, cursor: 'grab' }} />
               </div>
             )}
             </div>
