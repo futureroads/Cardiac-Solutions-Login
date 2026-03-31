@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { LogOut, Mic, Mail, Loader2, Play, Pause, ArrowLeft, AlertTriangle, RefreshCw } from "lucide-react";
@@ -14,6 +14,17 @@ export default function Dashboard({ user, onLogout }) {
   const [isListening, setIsListening] = useState(false);
   const [aiScrollPaused, setAiScrollPaused] = useState(false);
   const [aiHovered, setAiHovered] = useState(false);
+  const diTouchTimer = useRef(null);
+
+  const diEnter = () => setAiHovered(true);
+  const diLeave = () => setAiHovered(false);
+  const diTouchStart = (e) => {
+    setAiHovered(true);
+    clearTimeout(diTouchTimer.current);
+  };
+  const diTouchEnd = () => {
+    diTouchTimer.current = setTimeout(() => setAiHovered(false), 3000);
+  };
   const [sendingOverview, setSendingOverview] = useState(false);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem("dashboard_view") || 'detailed');
   const { categories: serviceCategories } = useServiceStatuses(60000);
@@ -537,9 +548,11 @@ export default function Dashboard({ user, onLogout }) {
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
             <div
               className="max-h-[220px] relative di-scroll-area"
-              style={{ overflowY: aiHovered ? 'auto' : 'hidden' }}
-              onMouseEnter={() => setAiHovered(true)}
-              onMouseLeave={() => setAiHovered(false)}
+              style={{ overflowY: aiHovered ? 'auto' : 'hidden', touchAction: aiHovered ? 'pan-y' : 'auto' }}
+              onMouseEnter={diEnter}
+              onMouseLeave={diLeave}
+              onTouchStart={diTouchStart}
+              onTouchEnd={diTouchEnd}
             >
               <div className="ai-scroll-container">
                 <div className={`ai-scroll-content ${(aiScrollPaused || aiHovered) ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
@@ -926,9 +939,11 @@ export default function Dashboard({ user, onLogout }) {
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
             <div
               className="relative di-scroll-area"
-              style={{ height: 'calc(100% - 25px)', overflowY: aiHovered ? 'auto' : 'hidden' }}
-              onMouseEnter={() => setAiHovered(true)}
-              onMouseLeave={() => setAiHovered(false)}
+              style={{ height: 'calc(100% - 25px)', overflowY: aiHovered ? 'auto' : 'hidden', touchAction: aiHovered ? 'pan-y' : 'auto' }}
+              onMouseEnter={diEnter}
+              onMouseLeave={diLeave}
+              onTouchStart={diTouchStart}
+              onTouchEnd={diTouchEnd}
             >
               <div className="ai-scroll-container">
                 <div className={`ai-scroll-content ${(aiScrollPaused || aiHovered) ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
