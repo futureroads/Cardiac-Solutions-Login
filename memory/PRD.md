@@ -64,7 +64,6 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - Enable real email delivery (Resend API key)
 
 ### P2 (Medium)
-- Wire dashboard to real backend APIs
 - Build Survival Path module page
 - Export to CSV, historical charts
 
@@ -75,7 +74,10 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - Implement real-time AED device status
 
 ## Known Issues
-- Production cold start / "asleep" timeouts (BLOCKED on platform infrastructure)
+- Production cold start / "asleep" timeouts (MITIGATED with cache pre-warming + keep-alive pings)
 - Steps 4-5 (Apply/Monitor) still use MOCKED endpoints — Apply doesn't call real Qwen/OpenCV backends
 - Email sending is MOCKED (no RESEND_API_KEY configured)
-- Dashboard stats/subscribers/devices are MOCKED
+- Dashboard subscribers/devices/tickets are still MOCKED — only System Status and DI scroll are real
+
+## Changelog
+- 2026-03-31: Fixed Dashboard System Status showing 0 on cold start. Root cause: frontend was using `data.total_cameras` but Readisys API returns `data.totals.total`. Added backend cache pre-warming on startup, loading/error states in UI with RETRY button, and proper data mapping from Readisys nested `totals` object.
