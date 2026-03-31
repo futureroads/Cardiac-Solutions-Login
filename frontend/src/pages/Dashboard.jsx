@@ -16,17 +16,18 @@ export default function Dashboard({ user, onLogout }) {
   const [sendingOverview, setSendingOverview] = useState(false);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem("dashboard_view") || 'detailed');
   const { categories: serviceCategories } = useServiceStatuses(60000);
-  const [liveStats, setLiveStats] = useState(null);
+  const [liveStats, setLiveStats] = useState(() => {
+    try { const c = localStorage.getItem("dash_status_cache"); return c ? JSON.parse(c) : null; } catch { return null; }
+  });
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState(null);
 
   const token = localStorage.getItem("token") || "";
 
-  // Fetch real status overview from Readisys
+  // Fetch real status overview from Readisys — never stops retrying
   useEffect(() => {
-    let attempts = 0;
     let cancelled = false;
-    let gotData = false;
+    let hasData = !!liveStats;
     const fetchStatus = async () => {
       try {
         const res = await fetch(`${API_URL}/api/status-overview`);
@@ -34,54 +35,27 @@ export default function Dashboard({ user, onLogout }) {
         if (res.ok) {
           const data = await res.json();
           if (data._error) {
-            setStatusError(data._error);
+            // Backend says API unavailable — keep trying
+            if (!hasData) setStatusError(data._error);
             setStatusLoading(false);
-          } else if (data.totals && data.totals.total > 0) {
-            setLiveStats(data);
-            setStatusError(null);
-            setStatusLoading(false);
-            gotData = true;
-            attempts = 10;
           } else if (data.totals) {
-            // Has structure but total is 0 — still accept it
             setLiveStats(data);
             setStatusError(null);
             setStatusLoading(false);
-            gotData = true;
-            attempts = 10;
-          } else {
-            // Unexpected shape — keep retrying
-            if (attempts >= 4) {
-              setStatusError("No data available");
-              setStatusLoading(false);
-            }
-          }
-        } else {
-          if (attempts >= 3) {
-            setStatusError(`Server error (${res.status})`);
-            setStatusLoading(false);
+            hasData = true;
+            try { localStorage.setItem("dash_status_cache", JSON.stringify(data)); } catch {}
           }
         }
       } catch {
-        if (attempts >= 3 && !cancelled) {
-          setStatusError("Unable to reach server");
-          setStatusLoading(false);
-        }
+        // Network error — keep trying silently if we have cached data
+        if (!hasData) setStatusLoading(false);
       }
-      attempts++;
     };
     fetchStatus();
-    const fast = setInterval(() => { if (attempts < 6) fetchStatus(); }, 5000);
-    const slow = setInterval(fetchStatus, 60000);
-    // Safety: if still no data after 25s, show error with retry
-    const safetyTimer = setTimeout(() => {
-      if (!cancelled && !gotData) {
-        setStatusError("Connection timed out");
-        setStatusLoading(false);
-      }
-    }, 25000);
-    return () => { cancelled = true; clearInterval(fast); clearInterval(slow); clearTimeout(safetyTimer); };
-  }, []);
+    // Retry every 10s until data arrives, then every 2 min to refresh
+    const poll = setInterval(fetchStatus, 10000);
+    return () => { cancelled = true; clearInterval(poll); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cross-domain SSO redirect helper
   const ssoRedirect = async (target) => {
@@ -156,38 +130,48 @@ export default function Dashboard({ user, onLogout }) {
     setStatusLoading(true);
     setStatusError(null);
     fetch(`${API_URL}/api/status-overview`)
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : Promise.reject('error'))
       .then(data => {
-        if (data._error) { setStatusError(data._error); }
-        else if (data.totals) { setLiveStats(data); setStatusError(null); }
-        else { setStatusError("No data available"); }
+        if (data.totals) {
+          setLiveStats(data);
+          setStatusError(null);
+          try { localStorage.setItem("dash_status_cache", JSON.stringify(data)); } catch {}
+        } else if (data._error) {
+          setStatusError(data._error);
+        }
         setStatusLoading(false);
       })
-      .catch(() => { setStatusError("Connection failed"); setStatusLoading(false); });
+      .catch(() => { setStatusError("Connection failed — retrying automatically"); setStatusLoading(false); });
   };
 
   const retryBP = () => {
     setBpLoading(true);
     setBpError(null);
     fetch(`${API_URL}/api/status-overview/expiring-expired-bp`)
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : Promise.reject('error'))
       .then(data => {
-        if (data._error) { setBpError(data._error); }
-        else if (data.devices && data.devices.length > 0) { setBpData(data); setBpError(null); }
-        else { setBpError("No data returned"); }
+        if (data.devices && data.devices.length > 0) {
+          setBpData(data);
+          setBpError(null);
+          try { localStorage.setItem("dash_bp_cache", JSON.stringify(data)); } catch {}
+        } else if (data._error) {
+          setBpError(data._error);
+        }
         setBpLoading(false);
       })
       .catch(() => { setBpError("Connection failed"); setBpLoading(false); });
   };
 
-  const [bpData, setBpData] = useState(null);
+  const [bpData, setBpData] = useState(() => {
+    try { const c = localStorage.getItem("dash_bp_cache"); return c ? JSON.parse(c) : null; } catch { return null; }
+  });
   const [bpLoading, setBpLoading] = useState(true);
   const [bpError, setBpError] = useState(null);
 
-  // Fetch expiring/expired B/P data for DI scroll
+  // Fetch expiring/expired B/P data for DI scroll — never stops retrying
   useEffect(() => {
-    let attempts = 0;
     let cancelled = false;
+    let hasData = !!bpData;
     const fetchBP = async () => {
       try {
         const res = await fetch(`${API_URL}/api/status-overview/expiring-expired-bp`);
@@ -195,33 +179,24 @@ export default function Dashboard({ user, onLogout }) {
         if (res.ok) {
           const data = await res.json();
           if (data._error) {
-            setBpError(data._error);
+            if (!hasData) setBpError(data._error);
             setBpLoading(false);
           } else if (data.devices && data.devices.length > 0) {
             setBpData(data);
             setBpError(null);
             setBpLoading(false);
-            attempts = 10;
-          }
-        } else {
-          if (attempts >= 5) {
-            setBpError("Server returned an error");
-            setBpLoading(false);
+            hasData = true;
+            try { localStorage.setItem("dash_bp_cache", JSON.stringify(data)); } catch {}
           }
         }
       } catch {
-        if (attempts >= 5 && !cancelled) {
-          setBpError("Unable to reach server");
-          setBpLoading(false);
-        }
+        if (!hasData) setBpLoading(false);
       }
-      attempts++;
     };
     fetchBP();
-    const fast = setInterval(() => { if (attempts < 6) fetchBP(); }, 5000);
-    const slow = setInterval(fetchBP, 120000);
-    return () => { cancelled = true; clearInterval(fast); clearInterval(slow); };
-  }, []);
+    const poll = setInterval(fetchBP, 10000);
+    return () => { cancelled = true; clearInterval(poll); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const aiRecommendations = bpError ? [
     { type: 'ERR', msg: `DI feed unavailable: ${bpError}. Retrying...` },
