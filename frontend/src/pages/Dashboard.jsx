@@ -24,10 +24,12 @@ export default function Dashboard({ user, onLogout }) {
 
   const token = localStorage.getItem("token") || "";
 
-  // Fetch real status overview from Readisys — never stops retrying
+  // Fetch real status overview from Readisys, then BP — sequential, never stops retrying
   useEffect(() => {
     let cancelled = false;
-    let hasData = !!liveStats;
+    let hasStatus = !!liveStats;
+    let hasBP = !!bpData;
+
     const fetchStatus = async () => {
       try {
         const res = await fetch(`${API_URL}/api/status-overview`);
@@ -35,25 +37,51 @@ export default function Dashboard({ user, onLogout }) {
         if (res.ok) {
           const data = await res.json();
           if (data._error) {
-            // Backend says API unavailable — keep trying
-            if (!hasData) setStatusError(data._error);
+            if (!hasStatus) setStatusError(data._error);
             setStatusLoading(false);
           } else if (data.totals) {
             setLiveStats(data);
             setStatusError(null);
             setStatusLoading(false);
-            hasData = true;
+            hasStatus = true;
             try { localStorage.setItem("dash_status_cache", JSON.stringify(data)); } catch {}
           }
         }
       } catch {
-        // Network error — keep trying silently if we have cached data
-        if (!hasData) setStatusLoading(false);
+        if (!hasStatus) setStatusLoading(false);
       }
     };
-    fetchStatus();
-    // Retry every 10s until data arrives, then every 2 min to refresh
-    const poll = setInterval(fetchStatus, 10000);
+
+    const fetchBP = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/status-overview/expiring-expired-bp`);
+        if (cancelled) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (data._error) {
+            if (!hasBP) setBpError(data._error);
+            setBpLoading(false);
+          } else if (data.devices && data.devices.length > 0) {
+            setBpData(data);
+            setBpError(null);
+            setBpLoading(false);
+            hasBP = true;
+            try { localStorage.setItem("dash_bp_cache", JSON.stringify(data)); } catch {}
+          }
+        }
+      } catch {
+        if (!hasBP) setBpLoading(false);
+      }
+    };
+
+    // Sequential: status first, then BP
+    const fetchAll = async () => {
+      await fetchStatus();
+      if (!cancelled) await fetchBP();
+    };
+
+    fetchAll();
+    const poll = setInterval(fetchAll, 10000);
     return () => { cancelled = true; clearInterval(poll); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -167,36 +195,6 @@ export default function Dashboard({ user, onLogout }) {
   });
   const [bpLoading, setBpLoading] = useState(true);
   const [bpError, setBpError] = useState(null);
-
-  // Fetch expiring/expired B/P data for DI scroll — never stops retrying
-  useEffect(() => {
-    let cancelled = false;
-    let hasData = !!bpData;
-    const fetchBP = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/status-overview/expiring-expired-bp`);
-        if (cancelled) return;
-        if (res.ok) {
-          const data = await res.json();
-          if (data._error) {
-            if (!hasData) setBpError(data._error);
-            setBpLoading(false);
-          } else if (data.devices && data.devices.length > 0) {
-            setBpData(data);
-            setBpError(null);
-            setBpLoading(false);
-            hasData = true;
-            try { localStorage.setItem("dash_bp_cache", JSON.stringify(data)); } catch {}
-          }
-        }
-      } catch {
-        if (!hasData) setBpLoading(false);
-      }
-    };
-    fetchBP();
-    const poll = setInterval(fetchBP, 10000);
-    return () => { cancelled = true; clearInterval(poll); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const aiRecommendations = bpError ? [
     { type: 'ERR', msg: `DI feed unavailable: ${bpError}. Retrying...` },
