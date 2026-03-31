@@ -572,7 +572,7 @@ export default function Dashboard({ user, onLogout }) {
               <span className="text-[9px] text-cyan-500/60 tracking-wider font-orbitron font-bold">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
-            {lastUpdated && <div className="font-orbitron text-[7px] text-cyan-500/50 tracking-wider mt-[-2px] mb-[4px]">READISYS DATA UPDATED: {lastUpdated}</div>}
+            {lastUpdated && <div className="font-orbitron text-[7px] text-cyan-500/50 tracking-wider mt-[-2px] mb-[4px]">READINESS DATA UPDATED: {lastUpdated}</div>}
             <div style={{ position: 'relative' }}>
             <div
               ref={diRef}
@@ -975,7 +975,7 @@ export default function Dashboard({ user, onLogout }) {
               <span className="text-[9px] text-cyan-500/60 tracking-wider font-orbitron font-bold">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
-            {lastUpdated && <div className="font-orbitron text-[7px] text-cyan-500/50 tracking-wider mt-[-2px] mb-[4px]">READISYS DATA UPDATED: {lastUpdated}</div>}
+            {lastUpdated && <div className="font-orbitron text-[7px] text-cyan-500/50 tracking-wider mt-[-2px] mb-[4px]">READINESS DATA UPDATED: {lastUpdated}</div>}
             <div style={{ position: 'relative' }}>
             <div
               className="relative di-scroll-area"
