@@ -26,6 +26,7 @@ export default function Dashboard({ user, onLogout }) {
   useEffect(() => {
     let attempts = 0;
     let cancelled = false;
+    let gotData = false;
     const fetchStatus = async () => {
       try {
         const res = await fetch(`${API_URL}/api/status-overview`);
@@ -35,21 +36,23 @@ export default function Dashboard({ user, onLogout }) {
           if (data._error) {
             setStatusError(data._error);
             setStatusLoading(false);
-          } else if (data.totals) {
+          } else if (data.totals && data.totals.total > 0) {
             setLiveStats(data);
             setStatusError(null);
             setStatusLoading(false);
+            gotData = true;
             attempts = 10;
-          } else if (data.total_subscribers !== undefined) {
-            // Fallback: accept any valid-looking response
+          } else if (data.totals) {
+            // Has structure but total is 0 — still accept it
             setLiveStats(data);
             setStatusError(null);
             setStatusLoading(false);
+            gotData = true;
             attempts = 10;
           } else {
-            // Got a response but unexpected shape — stop loading after retries
-            if (attempts >= 3) {
-              setStatusError("Unexpected data format");
+            // Unexpected shape — keep retrying
+            if (attempts >= 4) {
+              setStatusError("No data available");
               setStatusLoading(false);
             }
           }
@@ -70,10 +73,13 @@ export default function Dashboard({ user, onLogout }) {
     fetchStatus();
     const fast = setInterval(() => { if (attempts < 6) fetchStatus(); }, 5000);
     const slow = setInterval(fetchStatus, 60000);
-    // Safety: always stop loading after 20s
+    // Safety: if still no data after 25s, show error with retry
     const safetyTimer = setTimeout(() => {
-      if (!cancelled) setStatusLoading(false);
-    }, 20000);
+      if (!cancelled && !gotData) {
+        setStatusError("Connection timed out");
+        setStatusLoading(false);
+      }
+    }, 25000);
     return () => { cancelled = true; clearInterval(fast); clearInterval(slow); clearTimeout(safetyTimer); };
   }, []);
 
@@ -153,8 +159,8 @@ export default function Dashboard({ user, onLogout }) {
       .then(r => r.json())
       .then(data => {
         if (data._error) { setStatusError(data._error); }
-        else if (data.totals || data.total_subscribers !== undefined) { setLiveStats(data); setStatusError(null); }
-        else { setStatusError("No data returned"); }
+        else if (data.totals) { setLiveStats(data); setStatusError(null); }
+        else { setStatusError("No data available"); }
         setStatusLoading(false);
       })
       .catch(() => { setStatusError("Connection failed"); setStatusLoading(false); });
@@ -228,8 +234,8 @@ export default function Dashboard({ user, onLogout }) {
     { type: 'SYS', msg: 'No device alerts at this time.' },
   ];
 
-  // Dynamic scroll speed: ~0.8 seconds per item for comfortable reading
-  const scrollDuration = Math.max(60, aiRecommendations.length * 0.8);
+  // Dynamic scroll speed: ~3 seconds per item for comfortable reading
+  const scrollDuration = Math.max(60, aiRecommendations.length * 3);
 
   const statusChanges = [
     { location: 'Miami-Dade FL', status: 'Lost Contact', delta: '+3', positive: false },
@@ -393,10 +399,12 @@ export default function Dashboard({ user, onLogout }) {
             ); })()}
           </div>
           <div className="flex gap-[18px] items-center text-[9px] tracking-wider">
-            {statusLoading && !liveStats ? (
+            {!liveStats && statusLoading ? (
               <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> LOADING...</span>
-            ) : statusError && !liveStats ? (
+            ) : !liveStats && statusError ? (
               <span className="flex items-center gap-1 text-yellow-400"><AlertTriangle className="w-3 h-3" /> OFFLINE</span>
+            ) : !liveStats ? (
+              <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> LOADING...</span>
             ) : (
               <span>{stats.total.toLocaleString()} DEVICES</span>
             )}
@@ -426,18 +434,18 @@ export default function Dashboard({ user, onLogout }) {
             <div className="panel-glow" />
             <div className="plabel">System Status</div>
             <div className="flex flex-col items-center py-[10px]">
-              {statusLoading && !liveStats ? (
-                <div className="flex flex-col items-center gap-3 py-4" data-testid="status-loading">
-                  <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-                  <span className="font-orbitron text-[9px] text-cyan-500/60 tracking-wider">CONNECTING TO READISYS...</span>
-                </div>
-              ) : statusError && !liveStats ? (
+              {!liveStats && statusError ? (
                 <div className="flex flex-col items-center gap-3 py-4" data-testid="status-error">
                   <AlertTriangle className="w-8 h-8 text-yellow-400" />
                   <span className="font-orbitron text-[8px] text-yellow-400/80 tracking-wider text-center">{statusError}</span>
                   <button onClick={(e) => { e.stopPropagation(); retryStatus(); }} className="font-orbitron text-[7px] font-bold tracking-wider px-3 py-1 border border-cyan-500/40 bg-cyan-500/10 text-cyan-400 rounded-sm hover:bg-cyan-500/20 transition-all flex items-center gap-1" data-testid="status-retry-btn">
                     <RefreshCw className="w-3 h-3" /> RETRY
                   </button>
+                </div>
+              ) : !liveStats ? (
+                <div className="flex flex-col items-center gap-3 py-4" data-testid="status-loading">
+                  <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+                  <span className="font-orbitron text-[9px] text-cyan-500/60 tracking-wider">CONNECTING TO READISYS...</span>
                 </div>
               ) : (
               <>
@@ -484,10 +492,10 @@ export default function Dashboard({ user, onLogout }) {
             {/* Status Breakdown */}
             <div className="plabel">Status Breakdown</div>
             {[
-              { name: 'READY', val: stats.ready, pct: (stats.ready/stats.total*100), color: 'green' },
-              { name: 'LOST CONTACT', val: stats.lost, pct: (stats.lost/stats.total*100), color: 'yellow' },
-              { name: 'NEEDS SERVICE', val: stats.service, pct: (stats.service/stats.total*100), color: 'orange' },
-              { name: 'DISPATCHED', val: stats.dispatch, pct: (stats.dispatch/stats.total*100), color: 'cyan' },
+              { name: 'READY', val: stats.ready, pct: stats.total ? (stats.ready/stats.total*100) : 0, color: 'green' },
+              { name: 'LOST CONTACT', val: stats.lost, pct: stats.total ? (stats.lost/stats.total*100) : 0, color: 'yellow' },
+              { name: 'NEEDS SERVICE', val: stats.service, pct: stats.total ? (stats.service/stats.total*100) : 0, color: 'orange' },
+              { name: 'DISPATCHED', val: stats.dispatch, pct: stats.total ? (stats.dispatch/stats.total*100) : 0, color: 'cyan' },
             ].map((item, i) => (
               <div key={i}>
                 <div className="flex justify-between items-center mb-[2px]">
@@ -766,18 +774,18 @@ export default function Dashboard({ user, onLogout }) {
             <div className="panel-glow" />
             <div className="plabel">System Status</div>
             <div className="flex flex-col items-center py-[10px]">
-              {statusLoading && !liveStats ? (
-                <div className="flex flex-col items-center gap-3 py-4" data-testid="simple-status-loading">
-                  <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-                  <span className="font-orbitron text-[9px] text-cyan-500/60 tracking-wider">CONNECTING TO READISYS...</span>
-                </div>
-              ) : statusError && !liveStats ? (
+              {!liveStats && statusError ? (
                 <div className="flex flex-col items-center gap-3 py-4" data-testid="simple-status-error">
                   <AlertTriangle className="w-8 h-8 text-yellow-400" />
                   <span className="font-orbitron text-[8px] text-yellow-400/80 tracking-wider text-center">{statusError}</span>
                   <button onClick={(e) => { e.stopPropagation(); retryStatus(); }} className="font-orbitron text-[7px] font-bold tracking-wider px-3 py-1 border border-cyan-500/40 bg-cyan-500/10 text-cyan-400 rounded-sm hover:bg-cyan-500/20 transition-all flex items-center gap-1">
                     <RefreshCw className="w-3 h-3" /> RETRY
                   </button>
+                </div>
+              ) : !liveStats ? (
+                <div className="flex flex-col items-center gap-3 py-4" data-testid="simple-status-loading">
+                  <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+                  <span className="font-orbitron text-[9px] text-cyan-500/60 tracking-wider">CONNECTING TO READISYS...</span>
                 </div>
               ) : (
               <>
