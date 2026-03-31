@@ -212,7 +212,7 @@ export default function Dashboard({ user, onLogout }) {
       bpData.devices.forEach(dev => {
         items.push({
           type: dev.detailed_status === 'EXPIRED B/P' ? 'ACT' : 'WARN',
-          msg: `${dev.subscriber} — ${dev.sentinel_id} — ${dev.days_summary}. Location: ${dev.location.split('·').slice(0, 3).join('·').trim()}`
+          msg: `${dev.subscriber} — ${dev.sentinel_id} — ${dev.days_summary.replace(/Battery /g, 'Battery Expiring ')}. Location: ${dev.location.split('·').slice(0, 3).join('·').trim()}`
         });
       });
     }
