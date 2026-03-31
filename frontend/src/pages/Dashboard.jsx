@@ -1185,10 +1185,12 @@ export default function Dashboard({ user, onLogout }) {
           animation: ai-scroll 180s linear infinite;
         }
         .ai-scroll-container:hover .ai-scroll-content {
-          animation-play-state: paused;
+          animation: none;
+          transform: none;
         }
         .ai-scroll-content.ai-scroll-paused {
-          animation-play-state: paused;
+          animation: none;
+          transform: none;
         }
         @keyframes ai-scroll {
           0% { transform: translateY(0); }
