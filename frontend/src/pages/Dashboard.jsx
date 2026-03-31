@@ -602,7 +602,7 @@ export default function Dashboard({ user, onLogout }) {
               style={{ overflowY: 'auto', overscrollBehavior: 'contain', touchAction: aiHovered ? 'pan-y' : 'auto' }}
               onScroll={diOnScroll}
             >
-              <div className="ai-scroll-container">
+              <div className={`ai-scroll-container ${aiHovered ? 'ai-scroll-manual' : ''}`}>
                 <div className={`ai-scroll-content ${(aiScrollPaused || aiHovered) ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
                     <div key={i} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
@@ -1005,7 +1005,7 @@ export default function Dashboard({ user, onLogout }) {
               style={{ height: 'calc(100% - 25px)', overflowY: 'auto', overscrollBehavior: 'contain', touchAction: aiHovered ? 'pan-y' : 'auto' }}
               onScroll={diOnScroll}
             >
-              <div className="ai-scroll-container">
+              <div className={`ai-scroll-container ${aiHovered ? 'ai-scroll-manual' : ''}`}>
                 <div className={`ai-scroll-content ${(aiScrollPaused || aiHovered) ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
                     <div key={i} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
@@ -1181,13 +1181,14 @@ export default function Dashboard({ user, onLogout }) {
           overflow: hidden;
           height: 100%;
         }
+        .ai-scroll-container.ai-scroll-manual {
+          overflow: visible;
+          height: auto;
+        }
         .ai-scroll-content {
           animation: ai-scroll 180s linear infinite;
         }
-        .ai-scroll-container:hover .ai-scroll-content {
-          animation: none;
-          transform: none;
-        }
+        .ai-scroll-container.ai-scroll-manual .ai-scroll-content,
         .ai-scroll-content.ai-scroll-paused {
           animation: none;
           transform: none;
