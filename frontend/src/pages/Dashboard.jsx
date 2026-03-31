@@ -200,12 +200,23 @@ export default function Dashboard({ user, onLogout }) {
     { type: 'ERR', msg: `DI feed unavailable: ${bpError}. Retrying...` },
   ] : bpLoading ? [
     { type: 'SYS', msg: 'Connecting to Readisys API... Stand by.' },
-  ] : bpData && bpData.devices ? bpData.devices.map(dev => ({
-    type: dev.detailed_status === 'EXPIRED B/P' ? 'ACT' : 'WARN',
-    msg: `${dev.subscriber} — ${dev.sentinel_id} — ${dev.days_summary}. Location: ${dev.location.split('·').slice(0, 3).join('·').trim()}`
-  })) : [
-    { type: 'SYS', msg: 'No device alerts at this time.' },
-  ];
+  ] : (() => {
+    const items = [];
+    // Add P0-P24 and P25-P49 battery alerts from telemetry
+    const bd = liveStats?.totals?.telemetry_distribution?.battery || {};
+    if (bd.p0_24 > 0) items.push({ type: 'ACT', msg: `TELEMETRY BATTERY P0-P24: ${bd.p0_24} devices at critical battery level. Immediate attention required.` });
+    if (bd.p25_49 > 0) items.push({ type: 'WARN', msg: `TELEMETRY BATTERY P25-P49: ${bd.p25_49} devices at low battery level. Schedule replacement.` });
+    // Add device-level BP alerts
+    if (bpData && bpData.devices) {
+      bpData.devices.forEach(dev => {
+        items.push({
+          type: dev.detailed_status === 'EXPIRED B/P' ? 'ACT' : 'WARN',
+          msg: `${dev.subscriber} — ${dev.sentinel_id} — ${dev.days_summary}. Location: ${dev.location.split('·').slice(0, 3).join('·').trim()}`
+        });
+      });
+    }
+    return items.length > 0 ? items : [{ type: 'SYS', msg: 'No device alerts at this time.' }];
+  })();
 
   // Dynamic scroll speed: ~3 seconds per item for comfortable reading
   const scrollDuration = Math.max(60, aiRecommendations.length * 3);
@@ -240,24 +251,24 @@ export default function Dashboard({ user, onLogout }) {
     },
   ];
 
+  const batteryDist = liveStats?.totals?.telemetry_distribution?.battery || {};
   const cameraBattery = {
-    overall: 90,
+    overall: batteryDist.p75_100 && stats.total ? Math.round(batteryDist.p75_100 / stats.total * 100) : 90,
     levels: [
-      { label: 'Dead', count: 66, pct: 2 },
-      { label: '1/4', count: 99, pct: 3 },
-      { label: '1/2', count: 165, pct: 5 },
-      { label: '3/4', count: 495, pct: 15 },
-      { label: 'Full', count: 2475, pct: 75 },
+      { label: 'P0-24', count: batteryDist.p0_24 || 0, pct: stats.total ? Math.round((batteryDist.p0_24 || 0) / stats.total * 100) : 0 },
+      { label: 'P25-49', count: batteryDist.p25_49 || 0, pct: stats.total ? Math.round((batteryDist.p25_49 || 0) / stats.total * 100) : 0 },
+      { label: 'P50-74', count: batteryDist.p50_74 || 0, pct: stats.total ? Math.round((batteryDist.p50_74 || 0) / stats.total * 100) : 0 },
+      { label: 'P75-100', count: batteryDist.p75_100 || 0, pct: stats.total ? Math.round((batteryDist.p75_100 || 0) / stats.total * 100) : 0 },
     ]
   };
 
+  const cellularDist = liveStats?.totals?.telemetry_distribution?.cellular || {};
   const cameraCellular = [
-    { bars: 0, count: 33, label: 'X' },
-    { bars: 1, count: 52, label: '1' },
-    { bars: 2, count: 115, label: '2' },
-    { bars: 3, count: 280, label: '3' },
-    { bars: 4, count: 620, label: '4' },
-    { bars: 5, count: 2200, label: '5' },
+    { bars: 0, count: cellularDist.BAD || 0, label: 'BAD' },
+    { bars: 1, count: cellularDist.LOW || 0, label: 'LOW' },
+    { bars: 2, count: cellularDist.MEDIUM || 0, label: 'MED' },
+    { bars: 3, count: cellularDist.HIGH || 0, label: 'HIGH' },
+    { bars: 4, count: cellularDist.UNKNOWN || 0, label: 'UNK' },
   ];
 
   const tickets = [
