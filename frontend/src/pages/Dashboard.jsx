@@ -202,7 +202,7 @@ export default function Dashboard({ user, onLogout }) {
     { type: 'SYS', msg: 'Connecting to Readisys API... Stand by.' },
   ] : bpData && bpData.devices ? bpData.devices.map(dev => ({
     type: dev.detailed_status === 'EXPIRED B/P' ? 'ACT' : 'WARN',
-    msg: `${dev.sentinel_id} (${dev.subscriber}) — ${dev.days_summary}. Location: ${dev.location.split('·').slice(0, 3).join('·').trim()}`
+    msg: `${dev.subscriber} — ${dev.sentinel_id} — ${dev.days_summary}. Location: ${dev.location.split('·').slice(0, 3).join('·').trim()}`
   })) : [
     { type: 'SYS', msg: 'No device alerts at this time.' },
   ];
