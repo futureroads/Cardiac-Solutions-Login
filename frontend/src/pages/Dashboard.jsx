@@ -14,16 +14,32 @@ export default function Dashboard({ user, onLogout }) {
   const [isListening, setIsListening] = useState(false);
   const [aiScrollPaused, setAiScrollPaused] = useState(false);
   const [aiHovered, setAiHovered] = useState(false);
+  const [diScrollPct, setDiScrollPct] = useState(0);
+  const diRef = useRef(null);
   const diTouchTimer = useRef(null);
+  const diTrackRef = useRef(null);
 
   const diEnter = () => setAiHovered(true);
   const diLeave = () => setAiHovered(false);
-  const diTouchStart = (e) => {
+  const diTouchStart = () => {
     setAiHovered(true);
     clearTimeout(diTouchTimer.current);
   };
   const diTouchEnd = () => {
     diTouchTimer.current = setTimeout(() => setAiHovered(false), 3000);
+  };
+  const diOnScroll = (e) => {
+    const el = e.target;
+    const maxScroll = el.scrollHeight - el.clientHeight;
+    if (maxScroll > 0) setDiScrollPct(el.scrollTop / maxScroll);
+  };
+  const diTrackClick = (e) => {
+    const el = diRef.current;
+    const track = diTrackRef.current;
+    if (!el || !track) return;
+    const rect = track.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    el.scrollTop = pct * (el.scrollHeight - el.clientHeight);
   };
   const [sendingOverview, setSendingOverview] = useState(false);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem("dashboard_view") || 'detailed');
@@ -546,13 +562,16 @@ export default function Dashboard({ user, onLogout }) {
               <span className="text-[9px] text-cyan-500/60 tracking-wider font-orbitron font-bold">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
+            <div style={{ position: 'relative' }}>
             <div
+              ref={diRef}
               className="max-h-[220px] relative di-scroll-area"
-              style={{ overflowY: aiHovered ? 'auto' : 'hidden', overscrollBehavior: 'contain', touchAction: aiHovered ? 'pan-y' : 'auto' }}
+              style={{ overflowY: 'auto', overscrollBehavior: 'contain', touchAction: aiHovered ? 'pan-y' : 'auto' }}
               onMouseEnter={diEnter}
               onMouseLeave={diLeave}
               onTouchStart={diTouchStart}
               onTouchEnd={diTouchEnd}
+              onScroll={diOnScroll}
             >
               <div className="ai-scroll-container">
                 <div className={`ai-scroll-content ${(aiScrollPaused || aiHovered) ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
@@ -568,6 +587,14 @@ export default function Dashboard({ user, onLogout }) {
               </div>
               <div className="absolute top-0 left-0 right-0 h-[16px] bg-gradient-to-b from-[rgba(0,18,32,0.93)] to-transparent pointer-events-none z-10" />
               <div className="absolute bottom-0 left-0 right-0 h-[32px] bg-gradient-to-t from-[rgba(0,18,32,0.93)] to-transparent pointer-events-none z-10" />
+            </div>
+            {/* Custom blue scrollbar — only visible on hover */}
+            {aiHovered && (
+              <div ref={diTrackRef} onClick={diTrackClick}
+                style={{ position: 'absolute', top: 0, right: 0, width: 10, height: '100%', background: 'rgba(0,40,80,0.5)', borderRadius: 5, cursor: 'pointer', zIndex: 20 }}>
+                <div style={{ position: 'absolute', top: `${diScrollPct * 80}%`, width: '100%', height: '20%', background: '#0088ff', borderRadius: 5, boxShadow: '0 0 6px rgba(0,136,255,0.5)', minHeight: 30 }} />
+              </div>
+            )}
             </div>
           </div>
 
@@ -937,13 +964,15 @@ export default function Dashboard({ user, onLogout }) {
               <span className="text-[9px] text-cyan-500/60 tracking-wider font-orbitron font-bold">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
+            <div style={{ position: 'relative' }}>
             <div
               className="relative di-scroll-area"
-              style={{ height: 'calc(100% - 25px)', overflowY: aiHovered ? 'auto' : 'hidden', overscrollBehavior: 'contain', touchAction: aiHovered ? 'pan-y' : 'auto' }}
+              style={{ height: 'calc(100% - 25px)', overflowY: 'auto', overscrollBehavior: 'contain', touchAction: aiHovered ? 'pan-y' : 'auto' }}
               onMouseEnter={diEnter}
               onMouseLeave={diLeave}
               onTouchStart={diTouchStart}
               onTouchEnd={diTouchEnd}
+              onScroll={diOnScroll}
             >
               <div className="ai-scroll-container">
                 <div className={`ai-scroll-content ${(aiScrollPaused || aiHovered) ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
@@ -959,6 +988,13 @@ export default function Dashboard({ user, onLogout }) {
               </div>
               <div className="absolute top-0 left-0 right-0 h-[16px] bg-gradient-to-b from-[rgba(0,18,32,0.93)] to-transparent pointer-events-none z-10" />
               <div className="absolute bottom-0 left-0 right-0 h-[32px] bg-gradient-to-t from-[rgba(0,18,32,0.93)] to-transparent pointer-events-none z-10" />
+            </div>
+            {aiHovered && (
+              <div ref={diTrackRef} onClick={diTrackClick}
+                style={{ position: 'absolute', top: 0, right: 0, width: 10, height: '100%', background: 'rgba(0,40,80,0.5)', borderRadius: 5, cursor: 'pointer', zIndex: 20 }}>
+                <div style={{ position: 'absolute', top: `${diScrollPct * 80}%`, width: '100%', height: '20%', background: '#0088ff', borderRadius: 5, boxShadow: '0 0 6px rgba(0,136,255,0.5)', minHeight: 30 }} />
+              </div>
+            )}
             </div>
           </div>
 
@@ -1128,15 +1164,9 @@ export default function Dashboard({ user, onLogout }) {
           100% { transform: translateY(-50%); }
         }
         
-        /* DI scroll area - visible blue scrollbar on hover */
-        .di-scroll-area { scrollbar-width: thin; scrollbar-color: transparent transparent; }
-        .di-scroll-area:hover { scrollbar-color: #0088cc rgba(0,40,70,0.4); }
-        .di-scroll-area::-webkit-scrollbar { width: 8px; }
-        .di-scroll-area::-webkit-scrollbar-track { background: transparent; border-radius: 4px; }
-        .di-scroll-area::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
-        .di-scroll-area:hover::-webkit-scrollbar-track { background: rgba(0,40,70,0.4); }
-        .di-scroll-area:hover::-webkit-scrollbar-thumb { background: #0088cc; border: 1px solid rgba(0,212,255,0.3); }
-        .di-scroll-area:hover::-webkit-scrollbar-thumb:hover { background: #00aaff; }
+        /* DI scroll area - hide native scrollbar, custom one rendered via React */
+        .di-scroll-area { scrollbar-width: none; -ms-overflow-style: none; }
+        .di-scroll-area::-webkit-scrollbar { display: none; }
         
         .jarvis-dash {
           background: #020c15;
