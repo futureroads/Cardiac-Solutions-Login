@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { LogOut, Mic, Mail, Loader2, Play, Pause, ArrowLeft } from "lucide-react";
+import { LogOut, Mic, Mail, Loader2, Play, Pause, ArrowLeft, AlertTriangle, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { getLedColor, LED_STYLES, useServiceStatuses } from "@/data/serviceStatuses";
 
@@ -17,30 +17,48 @@ export default function Dashboard({ user, onLogout }) {
   const [viewMode, setViewMode] = useState(() => localStorage.getItem("dashboard_view") || 'detailed');
   const { categories: serviceCategories } = useServiceStatuses(60000);
   const [liveStats, setLiveStats] = useState(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState(null);
 
   const token = localStorage.getItem("token") || "";
 
   // Fetch real status overview from Readisys
   useEffect(() => {
     let attempts = 0;
+    let cancelled = false;
     const fetchStatus = async () => {
       try {
         const res = await fetch(`${API_URL}/api/status-overview`);
+        if (cancelled) return;
         if (res.ok) {
           const data = await res.json();
-          if (data.total_cameras > 0) {
+          if (data._error) {
+            setStatusError(data._error);
+            setStatusLoading(false);
+          } else if (data.totals && data.totals.total > 0) {
             setLiveStats(data);
-            attempts = 10; // stop fast retries
+            setStatusError(null);
+            setStatusLoading(false);
+            attempts = 10;
+          }
+        } else {
+          if (attempts >= 5) {
+            setStatusError("Server returned an error");
+            setStatusLoading(false);
           }
         }
-      } catch {}
+      } catch {
+        if (attempts >= 5 && !cancelled) {
+          setStatusError("Unable to reach server");
+          setStatusLoading(false);
+        }
+      }
       attempts++;
     };
     fetchStatus();
-    // Retry every 5s for first 30s, then every 60s
     const fast = setInterval(() => { if (attempts < 6) fetchStatus(); }, 5000);
     const slow = setInterval(fetchStatus, 60000);
-    return () => { clearInterval(fast); clearInterval(slow); };
+    return () => { cancelled = true; clearInterval(fast); clearInterval(slow); };
   }, []);
 
   // Cross-domain SSO redirect helper
@@ -93,15 +111,16 @@ export default function Dashboard({ user, onLogout }) {
   };
 
   // Real data from Readisys, with fallback
+  const totals = liveStats?.totals || {};
   const stats = {
-    total: liveStats ? liveStats.total_cameras : 0,
-    ready: liveStats ? Math.round(liveStats.total_cameras * liveStats.percent_ready / 100) : 0,
+    total: totals.total || 0,
+    ready: totals.ready || 0,
     subscribers: liveStats ? liveStats.total_subscribers : 0,
-    pctReady: liveStats ? liveStats.percent_ready : 0,
-    lost: 62,
-    service: 28,
+    pctReady: totals.percent_ready || 0,
+    lost: totals.detailed_status_counts?.lost_contact || 0,
+    service: (totals.detailed_status_counts?.not_ready || 0) + (totals.detailed_status_counts?.reposition || 0),
     dispatch: 9,
-    alerts: 12,
+    alerts: (totals.detailed_status_counts?.expired_bp || 0) + (totals.detailed_status_counts?.expiring_batt_pads || 0),
     pendingNotifs: 2,
     sentToday: 2,
     devicesAffected: 5,
@@ -110,35 +129,87 @@ export default function Dashboard({ user, onLogout }) {
 
   const pctReady = stats.pctReady.toFixed(1);
 
+  // Retry handler for manual refresh
+  const retryStatus = () => {
+    setStatusLoading(true);
+    setStatusError(null);
+    fetch(`${API_URL}/api/status-overview`)
+      .then(r => r.json())
+      .then(data => {
+        if (data._error) { setStatusError(data._error); }
+        else if (data.totals && data.totals.total > 0) { setLiveStats(data); setStatusError(null); }
+        else { setStatusError("No data returned"); }
+        setStatusLoading(false);
+      })
+      .catch(() => { setStatusError("Connection failed"); setStatusLoading(false); });
+  };
+
+  const retryBP = () => {
+    setBpLoading(true);
+    setBpError(null);
+    fetch(`${API_URL}/api/status-overview/expiring-expired-bp`)
+      .then(r => r.json())
+      .then(data => {
+        if (data._error) { setBpError(data._error); }
+        else if (data.devices && data.devices.length > 0) { setBpData(data); setBpError(null); }
+        else { setBpError("No data returned"); }
+        setBpLoading(false);
+      })
+      .catch(() => { setBpError("Connection failed"); setBpLoading(false); });
+  };
+
   const [bpData, setBpData] = useState(null);
+  const [bpLoading, setBpLoading] = useState(true);
+  const [bpError, setBpError] = useState(null);
 
   // Fetch expiring/expired B/P data for DI scroll
   useEffect(() => {
     let attempts = 0;
+    let cancelled = false;
     const fetchBP = async () => {
       try {
         const res = await fetch(`${API_URL}/api/status-overview/expiring-expired-bp`);
+        if (cancelled) return;
         if (res.ok) {
           const data = await res.json();
-          if (data.devices && data.devices.length > 0) {
+          if (data._error) {
+            setBpError(data._error);
+            setBpLoading(false);
+          } else if (data.devices && data.devices.length > 0) {
             setBpData(data);
+            setBpError(null);
+            setBpLoading(false);
             attempts = 10;
           }
+        } else {
+          if (attempts >= 5) {
+            setBpError("Server returned an error");
+            setBpLoading(false);
+          }
         }
-      } catch {}
+      } catch {
+        if (attempts >= 5 && !cancelled) {
+          setBpError("Unable to reach server");
+          setBpLoading(false);
+        }
+      }
       attempts++;
     };
     fetchBP();
     const fast = setInterval(() => { if (attempts < 6) fetchBP(); }, 5000);
     const slow = setInterval(fetchBP, 120000);
-    return () => { clearInterval(fast); clearInterval(slow); };
+    return () => { cancelled = true; clearInterval(fast); clearInterval(slow); };
   }, []);
 
-  const aiRecommendations = bpData && bpData.devices ? bpData.devices.map(dev => ({
+  const aiRecommendations = bpError ? [
+    { type: 'ERR', msg: `DI feed unavailable: ${bpError}. Retrying...` },
+  ] : bpLoading ? [
+    { type: 'SYS', msg: 'Connecting to Readisys API... Stand by.' },
+  ] : bpData && bpData.devices ? bpData.devices.map(dev => ({
     type: dev.detailed_status === 'EXPIRED B/P' ? 'ACT' : 'WARN',
     msg: `${dev.sentinel_id} (${dev.subscriber}) — ${dev.days_summary}. Location: ${dev.location.split('·').slice(0, 3).join('·').trim()}`
   })) : [
-    { type: 'ACT', msg: 'Loading device alerts...' },
+    { type: 'SYS', msg: 'No device alerts at this time.' },
   ];
 
   const statusChanges = [
@@ -303,7 +374,13 @@ export default function Dashboard({ user, onLogout }) {
             ); })()}
           </div>
           <div className="flex gap-[18px] items-center text-[9px] tracking-wider">
-            <span>{stats.total.toLocaleString()} DEVICES</span>
+            {statusLoading && !liveStats ? (
+              <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> LOADING...</span>
+            ) : statusError && !liveStats ? (
+              <span className="flex items-center gap-1 text-yellow-400"><AlertTriangle className="w-3 h-3" /> OFFLINE</span>
+            ) : (
+              <span>{stats.total.toLocaleString()} DEVICES</span>
+            )}
             <span>|</span>
             <span className="flex items-center gap-1">
               <span className="w-[5px] h-[5px] rounded-full bg-yellow-400 animate-blink-fast" />
@@ -330,6 +407,21 @@ export default function Dashboard({ user, onLogout }) {
             <div className="panel-glow" />
             <div className="plabel">System Status</div>
             <div className="flex flex-col items-center py-[10px]">
+              {statusLoading && !liveStats ? (
+                <div className="flex flex-col items-center gap-3 py-4" data-testid="status-loading">
+                  <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+                  <span className="font-orbitron text-[9px] text-cyan-500/60 tracking-wider">CONNECTING TO READISYS...</span>
+                </div>
+              ) : statusError && !liveStats ? (
+                <div className="flex flex-col items-center gap-3 py-4" data-testid="status-error">
+                  <AlertTriangle className="w-8 h-8 text-yellow-400" />
+                  <span className="font-orbitron text-[8px] text-yellow-400/80 tracking-wider text-center">{statusError}</span>
+                  <button onClick={(e) => { e.stopPropagation(); retryStatus(); }} className="font-orbitron text-[7px] font-bold tracking-wider px-3 py-1 border border-cyan-500/40 bg-cyan-500/10 text-cyan-400 rounded-sm hover:bg-cyan-500/20 transition-all flex items-center gap-1" data-testid="status-retry-btn">
+                    <RefreshCw className="w-3 h-3" /> RETRY
+                  </button>
+                </div>
+              ) : (
+              <>
               <div className="relative w-[105px] h-[105px]">
                 <div className="absolute inset-0 rounded-full border border-cyan-500/30 animate-spin-slow" />
                 <div className="absolute inset-[9px] rounded-full border border-cyan-500/45 border-t-cyan-400 animate-spin-reverse" />
@@ -339,6 +431,8 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
               </div>
               <div className="font-orbitron text-[9px] font-bold text-green-400 mt-[6px] tracking-wider">{stats.ready.toLocaleString()} READY</div>
+              </>
+              )}
             </div>
           </div>
 
@@ -434,7 +528,7 @@ export default function Dashboard({ user, onLogout }) {
                 <div className={`ai-scroll-content ${aiScrollPaused ? 'ai-scroll-paused' : ''}`}>
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
                     <div key={i} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
-                      <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-cyan-500/15 text-cyan-400'}`}>
+                      <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : rec.type === 'ERR' ? 'bg-red-500/20 text-red-400' : rec.type === 'SYS' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-500/15 text-cyan-400'}`}>
                         {rec.type}
                       </span>
                       <span className="text-[11px] text-slate-200/90 leading-relaxed">{rec.msg}</span>
@@ -653,6 +747,21 @@ export default function Dashboard({ user, onLogout }) {
             <div className="panel-glow" />
             <div className="plabel">System Status</div>
             <div className="flex flex-col items-center py-[10px]">
+              {statusLoading && !liveStats ? (
+                <div className="flex flex-col items-center gap-3 py-4" data-testid="simple-status-loading">
+                  <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+                  <span className="font-orbitron text-[9px] text-cyan-500/60 tracking-wider">CONNECTING TO READISYS...</span>
+                </div>
+              ) : statusError && !liveStats ? (
+                <div className="flex flex-col items-center gap-3 py-4" data-testid="simple-status-error">
+                  <AlertTriangle className="w-8 h-8 text-yellow-400" />
+                  <span className="font-orbitron text-[8px] text-yellow-400/80 tracking-wider text-center">{statusError}</span>
+                  <button onClick={(e) => { e.stopPropagation(); retryStatus(); }} className="font-orbitron text-[7px] font-bold tracking-wider px-3 py-1 border border-cyan-500/40 bg-cyan-500/10 text-cyan-400 rounded-sm hover:bg-cyan-500/20 transition-all flex items-center gap-1">
+                    <RefreshCw className="w-3 h-3" /> RETRY
+                  </button>
+                </div>
+              ) : (
+              <>
               <div className="relative w-[120px] h-[75px] flex items-end justify-center overflow-hidden">
                 <svg className="absolute top-0 left-0 w-full" viewBox="0 0 120 70" style={{ height: '70px' }}>
                   {/* Colored zone arcs */}
@@ -734,6 +843,8 @@ export default function Dashboard({ user, onLogout }) {
                 );
               })()}
               <div className="font-orbitron text-[9px] font-bold mt-[2px] tracking-wider text-cyan-400">{stats.total.toLocaleString()} TOTAL AEDs</div>
+              </>
+              )}
             </div>
           </div>
 
@@ -801,7 +912,7 @@ export default function Dashboard({ user, onLogout }) {
                 <div className={`ai-scroll-content ${aiScrollPaused ? 'ai-scroll-paused' : ''}`}>
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
                     <div key={i} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
-                      <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-cyan-500/15 text-cyan-400'}`}>
+                      <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : rec.type === 'ERR' ? 'bg-red-500/20 text-red-400' : rec.type === 'SYS' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-500/15 text-cyan-400'}`}>
                         {rec.type}
                       </span>
                       <span className="text-[11px] text-slate-200/90 leading-relaxed">{rec.msg}</span>

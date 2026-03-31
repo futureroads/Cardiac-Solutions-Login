@@ -474,6 +474,38 @@ async def _run_lazy_init():
     finally:
         _init_running = False
 
+async def _prewarm_caches():
+    """Pre-warm Readisys API caches so first dashboard load has data."""
+    import httpx, time
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=10 + attempt * 5) as client:
+                # Status overview
+                try:
+                    resp = await client.get("https://readisys.survivalpath.ai/api/status-overview")
+                    if resp.status_code == 200:
+                        _status_cache["data"] = resp.json()
+                        _status_cache["ts"] = time.time()
+                        logger.info(f"Cache pre-warm: status-overview OK (attempt {attempt+1})")
+                except Exception as e:
+                    logger.warning(f"Cache pre-warm: status-overview failed attempt {attempt+1}: {e}")
+                # Expiring/expired B/P
+                try:
+                    resp2 = await client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp")
+                    if resp2.status_code == 200:
+                        _bp_cache["data"] = resp2.json()
+                        _bp_cache["ts"] = time.time()
+                        logger.info(f"Cache pre-warm: expiring-bp OK (attempt {attempt+1})")
+                except Exception as e:
+                    logger.warning(f"Cache pre-warm: expiring-bp failed attempt {attempt+1}: {e}")
+            # If both populated, stop retrying
+            if _status_cache["data"] and _bp_cache["data"]:
+                break
+        except Exception as e:
+            logger.warning(f"Cache pre-warm attempt {attempt+1} failed: {e}")
+        if attempt < 2:
+            await asyncio.sleep(2)
+
 @app.on_event("startup")
 async def startup():
     global _mongo_client, _db
@@ -486,6 +518,8 @@ async def startup():
         asyncio.create_task(_run_lazy_init())
     except Exception as e:
         print(f"[SERVER] DB connection deferred: {e}", flush=True)
+    # Pre-warm Readisys caches in background so first dashboard load has data
+    asyncio.create_task(_prewarm_caches())
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     global _mongo_client, _db
@@ -1414,7 +1448,7 @@ async def status_overview():
         logger.warning(f"status-overview fetch failed: {e}")
         if _status_cache["data"]:
             return _status_cache["data"]
-        return {"total_subscribers": 0, "total_cameras": 0, "percent_ready": 0}
+        return {"total_subscribers": 0, "totals": {"total": 0, "ready": 0, "percent_ready": 0}, "_error": "Readisys API unavailable"}
 
 
 @api_router.get("/status-overview/expiring-expired-bp")
@@ -1435,7 +1469,7 @@ async def expiring_expired_bp():
         logger.warning(f"expiring-expired-bp fetch failed: {e}")
         if _bp_cache["data"]:
             return _bp_cache["data"]
-        return {"totals": {"expired_bp": 0, "expiring_batt_pads": 0}, "devices": [], "by_subscriber": []}
+        return {"totals": {"expired_bp": 0, "expiring_batt_pads": 0}, "devices": [], "by_subscriber": [], "_error": "Readisys API unavailable"}
 
 # ==================== Customer Portal ====================
 
