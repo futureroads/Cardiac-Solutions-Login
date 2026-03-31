@@ -249,6 +249,16 @@ export default function Dashboard({ user, onLogout }) {
   // Dynamic scroll speed: ~3 seconds per item for comfortable reading
   const scrollDuration = Math.max(60, aiRecommendations.length * 3);
 
+  // Format the Readisys completion_time for "Last Updated" display
+  const lastUpdated = (() => {
+    const ts = liveStats?.completion_time;
+    if (!ts) return null;
+    try {
+      const d = new Date(ts);
+      return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short' });
+    } catch { return null; }
+  })();
+
   const statusChanges = [
     { location: 'Miami-Dade FL', status: 'Lost Contact', delta: '+3', positive: false },
     { location: 'Chicago IL', status: 'Needs Service', delta: '+2', positive: false },
@@ -562,6 +572,7 @@ export default function Dashboard({ user, onLogout }) {
               <span className="text-[9px] text-cyan-500/60 tracking-wider font-orbitron font-bold">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
+            {lastUpdated && <div className="font-orbitron text-[7px] text-cyan-500/50 tracking-wider mt-[-2px] mb-[4px]">READISYS DATA UPDATED: {lastUpdated}</div>}
             <div style={{ position: 'relative' }}>
             <div
               ref={diRef}
@@ -964,6 +975,7 @@ export default function Dashboard({ user, onLogout }) {
               <span className="text-[9px] text-cyan-500/60 tracking-wider font-orbitron font-bold">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
+            {lastUpdated && <div className="font-orbitron text-[7px] text-cyan-500/50 tracking-wider mt-[-2px] mb-[4px]">READISYS DATA UPDATED: {lastUpdated}</div>}
             <div style={{ position: 'relative' }}>
             <div
               className="relative di-scroll-area"
