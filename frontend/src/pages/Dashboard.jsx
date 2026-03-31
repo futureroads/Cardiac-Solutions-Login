@@ -13,6 +13,7 @@ export default function Dashboard({ user, onLogout }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isListening, setIsListening] = useState(false);
   const [aiScrollPaused, setAiScrollPaused] = useState(false);
+  const [aiHovered, setAiHovered] = useState(false);
   const [sendingOverview, setSendingOverview] = useState(false);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem("dashboard_view") || 'detailed');
   const { categories: serviceCategories } = useServiceStatuses(60000);
@@ -534,9 +535,14 @@ export default function Dashboard({ user, onLogout }) {
               <span className="text-[9px] text-cyan-500/60 tracking-wider font-orbitron font-bold">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
-            <div className="max-h-[220px] overflow-hidden relative">
+            <div
+              className="max-h-[220px] relative di-scroll-area"
+              style={{ overflowY: aiHovered ? 'auto' : 'hidden' }}
+              onMouseEnter={() => setAiHovered(true)}
+              onMouseLeave={() => setAiHovered(false)}
+            >
               <div className="ai-scroll-container">
-                <div className={`ai-scroll-content ${aiScrollPaused ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
+                <div className={`ai-scroll-content ${(aiScrollPaused || aiHovered) ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
                     <div key={i} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
                       <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : rec.type === 'ERR' ? 'bg-red-500/20 text-red-400' : rec.type === 'SYS' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-500/15 text-cyan-400'}`}>
@@ -918,9 +924,14 @@ export default function Dashboard({ user, onLogout }) {
               <span className="text-[9px] text-cyan-500/60 tracking-wider font-orbitron font-bold">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
-            <div className="overflow-hidden relative" style={{ height: 'calc(100% - 25px)' }}>
+            <div
+              className="relative di-scroll-area"
+              style={{ height: 'calc(100% - 25px)', overflowY: aiHovered ? 'auto' : 'hidden' }}
+              onMouseEnter={() => setAiHovered(true)}
+              onMouseLeave={() => setAiHovered(false)}
+            >
               <div className="ai-scroll-container">
-                <div className={`ai-scroll-content ${aiScrollPaused ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
+                <div className={`ai-scroll-content ${(aiScrollPaused || aiHovered) ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
                     <div key={i} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
                       <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : rec.type === 'ERR' ? 'bg-red-500/20 text-red-400' : rec.type === 'SYS' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-500/15 text-cyan-400'}`}>
@@ -1101,6 +1112,12 @@ export default function Dashboard({ user, onLogout }) {
           0% { transform: translateY(0); }
           100% { transform: translateY(-50%); }
         }
+        
+        /* Thin scrollbar for DI manual scroll */
+        .di-scroll-area::-webkit-scrollbar { width: 4px; }
+        .di-scroll-area::-webkit-scrollbar-track { background: transparent; }
+        .di-scroll-area::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.25); border-radius: 2px; }
+        .di-scroll-area::-webkit-scrollbar-thumb:hover { background: rgba(0,212,255,0.45); }
         
         .jarvis-dash {
           background: #020c15;
