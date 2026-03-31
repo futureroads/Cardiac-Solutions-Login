@@ -573,15 +573,16 @@ export default function Dashboard({ user, onLogout }) {
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
             {lastUpdated && <div className="font-orbitron text-[7px] text-cyan-500/50 tracking-wider mt-[-2px] mb-[4px]">READINESS DATA UPDATED: {lastUpdated}</div>}
-            <div style={{ position: 'relative' }}>
-            <div
-              ref={diRef}
-              className="max-h-[220px] relative di-scroll-area"
-              style={{ overflowY: 'auto', overscrollBehavior: 'contain', touchAction: aiHovered ? 'pan-y' : 'auto' }}
+            <div style={{ position: 'relative' }}
               onMouseEnter={diEnter}
               onMouseLeave={diLeave}
               onTouchStart={diTouchStart}
               onTouchEnd={diTouchEnd}
+            >
+            <div
+              ref={diRef}
+              className="max-h-[220px] relative di-scroll-area"
+              style={{ overflowY: 'auto', overscrollBehavior: 'contain', touchAction: aiHovered ? 'pan-y' : 'auto' }}
               onScroll={diOnScroll}
             >
               <div className="ai-scroll-container">
@@ -976,14 +977,15 @@ export default function Dashboard({ user, onLogout }) {
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
             {lastUpdated && <div className="font-orbitron text-[7px] text-cyan-500/50 tracking-wider mt-[-2px] mb-[4px]">READINESS DATA UPDATED: {lastUpdated}</div>}
-            <div style={{ position: 'relative' }}>
-            <div
-              className="relative di-scroll-area"
-              style={{ height: 'calc(100% - 25px)', overflowY: 'auto', overscrollBehavior: 'contain', touchAction: aiHovered ? 'pan-y' : 'auto' }}
+            <div style={{ position: 'relative' }}
               onMouseEnter={diEnter}
               onMouseLeave={diLeave}
               onTouchStart={diTouchStart}
               onTouchEnd={diTouchEnd}
+            >
+            <div
+              className="relative di-scroll-area"
+              style={{ height: 'calc(100% - 25px)', overflowY: 'auto', overscrollBehavior: 'contain', touchAction: aiHovered ? 'pan-y' : 'auto' }}
               onScroll={diOnScroll}
             >
               <div className="ai-scroll-container">
