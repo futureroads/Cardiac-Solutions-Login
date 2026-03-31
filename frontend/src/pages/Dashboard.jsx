@@ -548,7 +548,7 @@ export default function Dashboard({ user, onLogout }) {
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
             <div
               className="max-h-[220px] relative di-scroll-area"
-              style={{ overflowY: aiHovered ? 'auto' : 'hidden', touchAction: aiHovered ? 'pan-y' : 'auto' }}
+              style={{ overflowY: aiHovered ? 'auto' : 'hidden', overscrollBehavior: 'contain', touchAction: aiHovered ? 'pan-y' : 'auto' }}
               onMouseEnter={diEnter}
               onMouseLeave={diLeave}
               onTouchStart={diTouchStart}
@@ -939,7 +939,7 @@ export default function Dashboard({ user, onLogout }) {
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
             <div
               className="relative di-scroll-area"
-              style={{ height: 'calc(100% - 25px)', overflowY: aiHovered ? 'auto' : 'hidden', touchAction: aiHovered ? 'pan-y' : 'auto' }}
+              style={{ height: 'calc(100% - 25px)', overflowY: aiHovered ? 'auto' : 'hidden', overscrollBehavior: 'contain', touchAction: aiHovered ? 'pan-y' : 'auto' }}
               onMouseEnter={diEnter}
               onMouseLeave={diLeave}
               onTouchStart={diTouchStart}
@@ -1128,11 +1128,15 @@ export default function Dashboard({ user, onLogout }) {
           100% { transform: translateY(-50%); }
         }
         
-        /* Thin scrollbar for DI manual scroll */
-        .di-scroll-area::-webkit-scrollbar { width: 4px; }
-        .di-scroll-area::-webkit-scrollbar-track { background: transparent; }
-        .di-scroll-area::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.25); border-radius: 2px; }
-        .di-scroll-area::-webkit-scrollbar-thumb:hover { background: rgba(0,212,255,0.45); }
+        /* DI scroll area - visible blue scrollbar on hover */
+        .di-scroll-area { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+        .di-scroll-area:hover { scrollbar-color: #0088cc rgba(0,40,70,0.4); }
+        .di-scroll-area::-webkit-scrollbar { width: 8px; }
+        .di-scroll-area::-webkit-scrollbar-track { background: transparent; border-radius: 4px; }
+        .di-scroll-area::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+        .di-scroll-area:hover::-webkit-scrollbar-track { background: rgba(0,40,70,0.4); }
+        .di-scroll-area:hover::-webkit-scrollbar-thumb { background: #0088cc; border: 1px solid rgba(0,212,255,0.3); }
+        .di-scroll-area:hover::-webkit-scrollbar-thumb:hover { background: #00aaff; }
         
         .jarvis-dash {
           background: #020c15;
