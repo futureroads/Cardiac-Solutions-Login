@@ -35,20 +35,32 @@ export default function Dashboard({ user, onLogout }) {
           if (data._error) {
             setStatusError(data._error);
             setStatusLoading(false);
-          } else if (data.totals && data.totals.total > 0) {
+          } else if (data.totals) {
             setLiveStats(data);
             setStatusError(null);
             setStatusLoading(false);
             attempts = 10;
+          } else if (data.total_subscribers !== undefined) {
+            // Fallback: accept any valid-looking response
+            setLiveStats(data);
+            setStatusError(null);
+            setStatusLoading(false);
+            attempts = 10;
+          } else {
+            // Got a response but unexpected shape — stop loading after retries
+            if (attempts >= 3) {
+              setStatusError("Unexpected data format");
+              setStatusLoading(false);
+            }
           }
         } else {
-          if (attempts >= 5) {
-            setStatusError("Server returned an error");
+          if (attempts >= 3) {
+            setStatusError(`Server error (${res.status})`);
             setStatusLoading(false);
           }
         }
       } catch {
-        if (attempts >= 5 && !cancelled) {
+        if (attempts >= 3 && !cancelled) {
           setStatusError("Unable to reach server");
           setStatusLoading(false);
         }
@@ -58,7 +70,11 @@ export default function Dashboard({ user, onLogout }) {
     fetchStatus();
     const fast = setInterval(() => { if (attempts < 6) fetchStatus(); }, 5000);
     const slow = setInterval(fetchStatus, 60000);
-    return () => { cancelled = true; clearInterval(fast); clearInterval(slow); };
+    // Safety: always stop loading after 20s
+    const safetyTimer = setTimeout(() => {
+      if (!cancelled) setStatusLoading(false);
+    }, 20000);
+    return () => { cancelled = true; clearInterval(fast); clearInterval(slow); clearTimeout(safetyTimer); };
   }, []);
 
   // Cross-domain SSO redirect helper
@@ -137,7 +153,7 @@ export default function Dashboard({ user, onLogout }) {
       .then(r => r.json())
       .then(data => {
         if (data._error) { setStatusError(data._error); }
-        else if (data.totals && data.totals.total > 0) { setLiveStats(data); setStatusError(null); }
+        else if (data.totals || data.total_subscribers !== undefined) { setLiveStats(data); setStatusError(null); }
         else { setStatusError("No data returned"); }
         setStatusLoading(false);
       })
@@ -211,6 +227,9 @@ export default function Dashboard({ user, onLogout }) {
   })) : [
     { type: 'SYS', msg: 'No device alerts at this time.' },
   ];
+
+  // Dynamic scroll speed: ~0.8 seconds per item for comfortable reading
+  const scrollDuration = Math.max(60, aiRecommendations.length * 0.8);
 
   const statusChanges = [
     { location: 'Miami-Dade FL', status: 'Lost Contact', delta: '+3', positive: false },
@@ -525,7 +544,7 @@ export default function Dashboard({ user, onLogout }) {
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
             <div className="max-h-[220px] overflow-hidden relative">
               <div className="ai-scroll-container">
-                <div className={`ai-scroll-content ${aiScrollPaused ? 'ai-scroll-paused' : ''}`}>
+                <div className={`ai-scroll-content ${aiScrollPaused ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
                     <div key={i} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
                       <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : rec.type === 'ERR' ? 'bg-red-500/20 text-red-400' : rec.type === 'SYS' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-500/15 text-cyan-400'}`}>
@@ -909,7 +928,7 @@ export default function Dashboard({ user, onLogout }) {
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
             <div className="overflow-hidden relative" style={{ height: 'calc(100% - 25px)' }}>
               <div className="ai-scroll-container">
-                <div className={`ai-scroll-content ${aiScrollPaused ? 'ai-scroll-paused' : ''}`}>
+                <div className={`ai-scroll-content ${aiScrollPaused ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
                     <div key={i} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
                       <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : rec.type === 'ERR' ? 'bg-red-500/20 text-red-400' : rec.type === 'SYS' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-500/15 text-cyan-400'}`}>
@@ -1078,7 +1097,7 @@ export default function Dashboard({ user, onLogout }) {
           height: 100%;
         }
         .ai-scroll-content {
-          animation: ai-scroll 25s linear infinite;
+          animation: ai-scroll 180s linear infinite;
         }
         .ai-scroll-container:hover .ai-scroll-content {
           animation-play-state: paused;

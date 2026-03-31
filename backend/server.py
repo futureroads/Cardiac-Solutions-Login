@@ -479,7 +479,7 @@ async def _prewarm_caches():
     import httpx, time
     for attempt in range(3):
         try:
-            async with httpx.AsyncClient(timeout=10 + attempt * 5) as client:
+            async with httpx.AsyncClient(timeout=20 + attempt * 5) as client:
                 # Status overview
                 try:
                     resp = await client.get("https://readisys.survivalpath.ai/api/status-overview")
@@ -1432,13 +1432,13 @@ _bp_cache = {"data": None, "ts": 0}
 
 @api_router.get("/status-overview")
 async def status_overview():
-    """Proxy to Readisys status overview API. Caches for 30s."""
+    """Proxy to Readisys status overview API. Caches for 120s."""
     import httpx, time
     now = time.time()
-    if _status_cache["data"] and (now - _status_cache["ts"]) < 30:
+    if _status_cache["data"] and (now - _status_cache["ts"]) < 120:
         return _status_cache["data"]
     try:
-        async with httpx.AsyncClient(timeout=8) as client:
+        async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.get("https://readisys.survivalpath.ai/api/status-overview")
             resp.raise_for_status()
             _status_cache["data"] = resp.json()
@@ -1453,13 +1453,13 @@ async def status_overview():
 
 @api_router.get("/status-overview/expiring-expired-bp")
 async def expiring_expired_bp():
-    """Proxy to Readisys expiring/expired B/P API. Caches for 60s."""
+    """Proxy to Readisys expiring/expired B/P API. Caches for 120s."""
     import httpx, time
     now = time.time()
-    if _bp_cache["data"] and (now - _bp_cache["ts"]) < 60:
+    if _bp_cache["data"] and (now - _bp_cache["ts"]) < 120:
         return _bp_cache["data"]
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp")
             resp.raise_for_status()
             _bp_cache["data"] = resp.json()
