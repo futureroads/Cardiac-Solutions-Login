@@ -325,7 +325,13 @@ export default function Dashboard({ user, onLogout }) {
     if (!ts) return null;
     try {
       const d = new Date(ts);
-      return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short' });
+      const now = new Date();
+      const isToday = d.toDateString() === now.toDateString();
+      const time = d.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      if (isToday) return `Today ${time}`;
+      const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+      if (d.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
+      return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
     } catch { return null; }
   })();
 
@@ -550,7 +556,7 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
               </div>
               <div className="font-orbitron text-[9px] font-bold text-green-400 mt-[6px] tracking-wider">{stats.ready.toLocaleString()} READY</div>
-              {lastUpdated && <div className="font-orbitron text-[7px] text-cyan-500/45 tracking-wider mt-[3px]">Updated: {lastUpdated}</div>}
+              {lastUpdated && <div className="font-orbitron text-[8px] text-cyan-400/60 tracking-wider mt-[4px]">Updated: {lastUpdated}</div>}
               </>
               )}
             </div>
@@ -643,7 +649,7 @@ export default function Dashboard({ user, onLogout }) {
               <span className="text-[9px] text-cyan-500/60 tracking-wider font-orbitron font-bold">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
-            {lastUpdated && <div className="font-orbitron text-[7px] text-cyan-500/50 tracking-wider mt-[-2px] mb-[4px]">READINESS DATA UPDATED: {lastUpdated}</div>}
+            {lastUpdated && <div className="font-orbitron text-[8px] text-cyan-400/60 tracking-wider mt-[-2px] mb-[4px]">READINESS DATA UPDATED: {lastUpdated}</div>}
             <div style={{ position: 'relative' }}
               onMouseEnter={diEnter}
               onMouseLeave={diLeave}
@@ -659,12 +665,21 @@ export default function Dashboard({ user, onLogout }) {
               <div className={`ai-scroll-container ${aiHovered ? 'ai-scroll-manual' : ''}`}>
                 <div className={`ai-scroll-content ${(aiScrollPaused || aiHovered) ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
-                    <div key={i} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
+                    <React.Fragment key={i}>
+                    {i === aiRecommendations.length && (
+                      <div className="flex items-center gap-2 py-[8px]">
+                        <div className="flex-1 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
+                        <span className="font-orbitron text-[7px] text-cyan-500/35 tracking-[0.2em] flex-shrink-0">END OF EVENTS</span>
+                        <div className="flex-1 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
+                      </div>
+                    )}
+                    <div className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
                       <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : rec.type === 'ERR' ? 'bg-red-500/20 text-red-400' : rec.type === 'SYS' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-500/15 text-cyan-400'}`}>
                         {rec.type}
                       </span>
                       <span className="text-[11px] text-slate-200/90 leading-relaxed">{rec.msg}</span>
                     </div>
+                    </React.Fragment>
                   ))}
                 </div>
               </div>
@@ -983,7 +998,7 @@ export default function Dashboard({ user, onLogout }) {
                 );
               })()}
               <div className="font-orbitron text-[9px] font-bold mt-[2px] tracking-wider text-cyan-400">{stats.total.toLocaleString()} TOTAL AEDs</div>
-              {lastUpdated && <div className="font-orbitron text-[7px] text-cyan-500/45 tracking-wider mt-[3px]">Updated: {lastUpdated}</div>}
+              {lastUpdated && <div className="font-orbitron text-[8px] text-cyan-400/60 tracking-wider mt-[4px]">Updated: {lastUpdated}</div>}
               </>
               )}
             </div>
@@ -1048,7 +1063,7 @@ export default function Dashboard({ user, onLogout }) {
               <span className="text-[9px] text-cyan-500/60 tracking-wider font-orbitron font-bold">{aiScrollPaused ? 'Scroll' : 'Stop'}</span>
             </div>
             <div className="plabel">Decision Intelligence — AI Recommendations</div>
-            {lastUpdated && <div className="font-orbitron text-[7px] text-cyan-500/50 tracking-wider mt-[-2px] mb-[4px]">READINESS DATA UPDATED: {lastUpdated}</div>}
+            {lastUpdated && <div className="font-orbitron text-[8px] text-cyan-400/60 tracking-wider mt-[-2px] mb-[4px]">READINESS DATA UPDATED: {lastUpdated}</div>}
             <div style={{ position: 'relative' }}
               onMouseEnter={diEnter}
               onMouseLeave={diLeave}
@@ -1063,12 +1078,21 @@ export default function Dashboard({ user, onLogout }) {
               <div className={`ai-scroll-container ${aiHovered ? 'ai-scroll-manual' : ''}`}>
                 <div className={`ai-scroll-content ${(aiScrollPaused || aiHovered) ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
-                    <div key={i} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
+                    <React.Fragment key={i}>
+                    {i === aiRecommendations.length && (
+                      <div className="flex items-center gap-2 py-[8px]">
+                        <div className="flex-1 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
+                        <span className="font-orbitron text-[7px] text-cyan-500/35 tracking-[0.2em] flex-shrink-0">END OF EVENTS</span>
+                        <div className="flex-1 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
+                      </div>
+                    )}
+                    <div className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
                       <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : rec.type === 'ERR' ? 'bg-red-500/20 text-red-400' : rec.type === 'SYS' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-500/15 text-cyan-400'}`}>
                         {rec.type}
                       </span>
                       <span className="text-[11px] text-slate-200/90 leading-relaxed">{rec.msg}</span>
                     </div>
+                    </React.Fragment>
                   ))}
                 </div>
               </div>
