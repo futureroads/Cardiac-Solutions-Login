@@ -569,7 +569,7 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
               </div>
               <div className="font-orbitron text-[9px] font-bold text-green-400 mt-[6px] tracking-wider">{stats.ready.toLocaleString()} READY</div>
-              {lastUpdated && <div className="font-orbitron text-[8px] text-cyan-400/60 tracking-wider mt-[4px]">Last Updated: {lastUpdated}</div>}
+              {lastUpdated && <div className="font-orbitron text-[9px] text-cyan-300/80 tracking-wider mt-[5px]">Last Updated: {lastUpdated}</div>}
               </>
               )}
             </div>
@@ -679,10 +679,10 @@ export default function Dashboard({ user, onLogout }) {
                 <div className={`ai-scroll-content ${(aiScrollPaused || aiHovered) ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
                   {diEventList.map((rec) => (
                     rec.type === '_DIVIDER' ? (
-                      <div key={rec._key} className="flex items-center gap-3 py-[14px] my-[2px]">
-                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #06b6d4, #06b6d4, transparent)' }} />
-                        <span className="font-orbitron text-[10px] text-cyan-300 tracking-[0.3em] flex-shrink-0 font-bold" style={{ textShadow: '0 0 8px rgba(6,182,212,0.5)' }}>EVENTS REPEAT</span>
-                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #06b6d4, #06b6d4, transparent)' }} />
+                      <div key={rec._key} className="flex items-center gap-3 py-[16px] my-[6px]">
+                        <div className="flex-1 h-[3px]" style={{ background: 'linear-gradient(to right, transparent 5%, #f59e0b 30%, #f59e0b 70%, transparent 95%)' }} />
+                        <span className="font-orbitron text-[11px] text-yellow-400 tracking-[0.3em] flex-shrink-0 font-bold" style={{ textShadow: '0 0 10px rgba(245,158,11,0.6)' }}>EVENTS REPEAT</span>
+                        <div className="flex-1 h-[3px]" style={{ background: 'linear-gradient(to right, transparent 5%, #f59e0b 30%, #f59e0b 70%, transparent 95%)' }} />
                       </div>
                     ) : (
                     <div key={rec._key} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
@@ -1010,7 +1010,7 @@ export default function Dashboard({ user, onLogout }) {
                 );
               })()}
               <div className="font-orbitron text-[9px] font-bold mt-[2px] tracking-wider text-cyan-400">{stats.total.toLocaleString()} TOTAL AEDs</div>
-              {lastUpdated && <div className="font-orbitron text-[8px] text-cyan-400/60 tracking-wider mt-[4px]">Last Updated: {lastUpdated}</div>}
+              {lastUpdated && <div className="font-orbitron text-[9px] text-cyan-300/80 tracking-wider mt-[5px]">Last Updated: {lastUpdated}</div>}
               </>
               )}
             </div>
@@ -1091,10 +1091,10 @@ export default function Dashboard({ user, onLogout }) {
                 <div className={`ai-scroll-content ${(aiScrollPaused || aiHovered) ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
                   {diEventList.map((rec) => (
                     rec.type === '_DIVIDER' ? (
-                      <div key={rec._key} className="flex items-center gap-3 py-[14px] my-[2px]">
-                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #06b6d4, #06b6d4, transparent)' }} />
-                        <span className="font-orbitron text-[10px] text-cyan-300 tracking-[0.3em] flex-shrink-0 font-bold" style={{ textShadow: '0 0 8px rgba(6,182,212,0.5)' }}>EVENTS REPEAT</span>
-                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #06b6d4, #06b6d4, transparent)' }} />
+                      <div key={rec._key} className="flex items-center gap-3 py-[16px] my-[6px]">
+                        <div className="flex-1 h-[3px]" style={{ background: 'linear-gradient(to right, transparent 5%, #f59e0b 30%, #f59e0b 70%, transparent 95%)' }} />
+                        <span className="font-orbitron text-[11px] text-yellow-400 tracking-[0.3em] flex-shrink-0 font-bold" style={{ textShadow: '0 0 10px rgba(245,158,11,0.6)' }}>EVENTS REPEAT</span>
+                        <div className="flex-1 h-[3px]" style={{ background: 'linear-gradient(to right, transparent 5%, #f59e0b 30%, #f59e0b 70%, transparent 95%)' }} />
                       </div>
                     ) : (
                     <div key={rec._key} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
