@@ -174,6 +174,7 @@ class UserResponse(BaseModel):
     role: Optional[str] = "Employee"
     department: Optional[str] = ""
     allowed_modules: Optional[List[str]] = []
+    di_permissions: Optional[dict] = None
     created_at: str
 
 class TokenResponse(BaseModel):
@@ -198,6 +199,7 @@ class AdminUserUpdate(BaseModel):
     role: Optional[str] = None
     department: Optional[str] = None
     allowed_modules: Optional[List[str]] = None
+    di_permissions: Optional[dict] = None
 
 class AEDDevice(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -606,6 +608,7 @@ async def login(credentials: UserLogin, background_tasks: BackgroundTasks = None
             role=user.get("role", "Employee"),
             department=user.get("department", ""),
             allowed_modules=user.get("allowed_modules", []),
+            di_permissions=user.get("di_permissions"),
             created_at=user.get("created_at", ""),
         )
     )
@@ -621,6 +624,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         role=current_user.get("role", "Employee"),
         department=current_user.get("department", ""),
         allowed_modules=current_user.get("allowed_modules", []),
+        di_permissions=current_user.get("di_permissions"),
         created_at=current_user.get("created_at", ""),
     )
 
@@ -732,6 +736,8 @@ async def update_user(user_id: str, data: AdminUserUpdate, admin: dict = Depends
             update["department"] = data.department
         if data.allowed_modules is not None:
             update["allowed_modules"] = data.allowed_modules
+        if data.di_permissions is not None:
+            update["di_permissions"] = data.di_permissions
 
         if update:
             await _db.users.update_one({"id": user_id}, {"$set": update})

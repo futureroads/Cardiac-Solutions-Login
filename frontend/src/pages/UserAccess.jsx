@@ -45,6 +45,21 @@ const ROLE_DISPLAY = {
 
 const DEPARTMENT_OPTIONS = ["Admin", "Sales", "Service", "Shipping", "Warehouse", "Accounting"];
 
+const DI_EVENT_CATEGORIES = [
+  { id: "expired_bp", label: "Expired B/P" },
+  { id: "expiring_bp", label: "Expiring B/P" },
+  { id: "camera_battery", label: "Camera Battery" },
+  { id: "camera_cellular", label: "Camera Cellular" },
+];
+const DI_LEVELS = ["details", "overview", "none"];
+const DI_LEVEL_LABELS = { details: "DETAILS", overview: "OVERVIEW", none: "HIDDEN" };
+const DI_LEVEL_COLORS = {
+  details: { border: "rgba(34,197,94,0.5)", bg: "rgba(34,197,94,0.1)", text: "#22c55e" },
+  overview: { border: "rgba(234,179,8,0.5)", bg: "rgba(234,179,8,0.1)", text: "#eab308" },
+  none: { border: "rgba(148,163,184,0.15)", bg: "transparent", text: "#64748b" },
+};
+const DEFAULT_DI_PERMISSIONS = Object.fromEntries(DI_EVENT_CATEGORIES.map(c => [c.id, "details"]));
+
 const emptyForm = {
   username: "",
   password: "",
@@ -53,6 +68,7 @@ const emptyForm = {
   role: "Employee",
   department: "",
   allowed_modules: [],
+  di_permissions: { ...DEFAULT_DI_PERMISSIONS },
 };
 
 export default function UserAccess({ onLogout }) {
@@ -134,6 +150,7 @@ export default function UserAccess({ onLogout }) {
       role: user.role || "Employee",
       department: user.department || "",
       allowed_modules: user.allowed_modules || [],
+      di_permissions: user.di_permissions || { ...DEFAULT_DI_PERMISSIONS },
     });
     setShowPassword(false);
     setShowForm(true);
@@ -153,6 +170,15 @@ export default function UserAccess({ onLogout }) {
         ? prev.allowed_modules.filter((m) => m !== moduleId)
         : [...prev.allowed_modules, moduleId],
     }));
+  };
+
+  const cycleDiLevel = (catId) => {
+    setForm((prev) => {
+      const current = (prev.di_permissions || {})[catId] || "details";
+      const idx = DI_LEVELS.indexOf(current);
+      const next = DI_LEVELS[(idx + 1) % DI_LEVELS.length];
+      return { ...prev, di_permissions: { ...prev.di_permissions, [catId]: next } };
+    });
   };
 
   const retryFetch = async (url, options, retries = 4) => {
@@ -484,6 +510,34 @@ export default function UserAccess({ onLogout }) {
                         {active && <Check size={8} color="#020617" strokeWidth={3} />}
                       </div>
                       {mod.title}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* DI Event Permissions */}
+            <div className="mb-5">
+              <label className="font-tech text-[10px] tracking-[0.15em] mb-1 block" style={{ color: "#94a3b8" }}>
+                DI EVENT VISIBILITY
+              </label>
+              <p className="font-tech text-[9px] mb-2" style={{ color: "#64748b" }}>
+                DETAILS = individual events &nbsp;|&nbsp; OVERVIEW = high-level totals &nbsp;|&nbsp; HIDDEN = not shown
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {DI_EVENT_CATEGORIES.map((cat) => {
+                  const level = (form.di_permissions || {})[cat.id] || "details";
+                  const colors = DI_LEVEL_COLORS[level];
+                  return (
+                    <button
+                      key={cat.id}
+                      data-testid={`di-perm-${cat.id}`}
+                      onClick={() => cycleDiLevel(cat.id)}
+                      className="flex items-center justify-between px-3 py-2 rounded-sm font-tech text-[11px] tracking-[0.08em] transition-all"
+                      style={{ border: `1px solid ${colors.border}`, background: colors.bg, color: colors.text }}
+                    >
+                      <span>{cat.label}</span>
+                      <span className="font-bold text-[9px] tracking-[0.15em]">{DI_LEVEL_LABELS[level]}</span>
                     </button>
                   );
                 })}

@@ -241,24 +241,57 @@ export default function Dashboard({ user, onLogout }) {
   const [bpLoading, setBpLoading] = useState(true);
   const [bpError, setBpError] = useState(null);
 
+  // Get user's DI permissions (default: all details)
+  const diPerms = user?.di_permissions || { expired_bp: 'details', expiring_bp: 'details', camera_battery: 'details', camera_cellular: 'details' };
+
   const aiRecommendations = bpError ? [
     { type: 'ERR', msg: `DI feed unavailable: ${bpError}. Retrying...` },
   ] : bpLoading ? [
     { type: 'SYS', msg: 'Connecting to Readisys API... Stand by.' },
   ] : (() => {
     const items = [];
-    // Add P0-P24 and P25-P49 battery alerts from telemetry
     const bd = liveStats?.totals?.telemetry_distribution?.battery || {};
-    if (bd.p0_24 > 0) items.push({ type: 'ACT', msg: `TELEMETRY BATTERY P0-P24: ${bd.p0_24} devices at critical battery level. Immediate attention required.` });
-    if (bd.p25_49 > 0) items.push({ type: 'WARN', msg: `TELEMETRY BATTERY P25-P49: ${bd.p25_49} devices at low battery level. Schedule replacement.` });
-    // Add device-level BP alerts
+    const cd = liveStats?.totals?.telemetry_distribution?.cellular || {};
+
+    // Camera Battery events
+    if (diPerms.camera_battery === 'overview') {
+      const total = (bd.p0_24 || 0) + (bd.p25_49 || 0) + (bd.p50_74 || 0) + (bd.p75_100 || 0);
+      items.push({ type: 'SYS', msg: `CAMERA BATTERY OVERVIEW: ${total} total — P0-24: ${bd.p0_24 || 0}, P25-49: ${bd.p25_49 || 0}, P50-74: ${bd.p50_74 || 0}, P75-100: ${bd.p75_100 || 0}` });
+    } else if (diPerms.camera_battery === 'details') {
+      if (bd.p0_24 > 0) items.push({ type: 'ACT', msg: `CAMERA BATTERY P0-P24: ${bd.p0_24} devices at critical battery level. Immediate attention required.` });
+      if (bd.p25_49 > 0) items.push({ type: 'WARN', msg: `CAMERA BATTERY P25-P49: ${bd.p25_49} devices at low battery level. Schedule replacement.` });
+    }
+
+    // Camera Cellular events
+    if (diPerms.camera_cellular === 'overview') {
+      items.push({ type: 'SYS', msg: `CAMERA CELLULAR OVERVIEW: HIGH: ${cd.HIGH || 0}, MEDIUM: ${cd.MEDIUM || 0}, LOW: ${cd.LOW || 0}, BAD: ${cd.BAD || 0}` });
+    } else if (diPerms.camera_cellular === 'details') {
+      if ((cd.BAD || 0) > 0) items.push({ type: 'ACT', msg: `CAMERA CELLULAR BAD: ${cd.BAD} devices with no signal. Check antenna/location.` });
+      if ((cd.LOW || 0) > 0) items.push({ type: 'WARN', msg: `CAMERA CELLULAR LOW: ${cd.LOW} devices with weak signal.` });
+    }
+
+    // BP device-level alerts
     if (bpData && bpData.devices) {
-      bpData.devices.forEach(dev => {
-        items.push({
-          type: dev.detailed_status === 'EXPIRED B/P' ? 'ACT' : 'WARN',
-          msg: `${dev.subscriber} — ${dev.sentinel_id} — ${dev.days_summary.replace(/Battery /g, 'Battery Expiring ')}. Location: ${dev.location.split('·').slice(0, 3).join('·').trim()}`
+      const expired = bpData.devices.filter(d => d.detailed_status === 'EXPIRED B/P');
+      const expiring = bpData.devices.filter(d => d.detailed_status !== 'EXPIRED B/P');
+
+      // Expired B/P
+      if (diPerms.expired_bp === 'overview') {
+        if (expired.length > 0) items.push({ type: 'ACT', msg: `EXPIRED B/P OVERVIEW: ${expired.length} devices with expired batteries/pads.` });
+      } else if (diPerms.expired_bp === 'details') {
+        expired.forEach(dev => {
+          items.push({ type: 'ACT', msg: `${dev.subscriber} — ${dev.sentinel_id} — ${dev.days_summary.replace(/Battery /g, 'Battery Expiring ')}. Location: ${dev.location.split('·').slice(0, 3).join('·').trim()}` });
         });
-      });
+      }
+
+      // Expiring B/P
+      if (diPerms.expiring_bp === 'overview') {
+        if (expiring.length > 0) items.push({ type: 'WARN', msg: `EXPIRING B/P OVERVIEW: ${expiring.length} devices with expiring batteries/pads.` });
+      } else if (diPerms.expiring_bp === 'details') {
+        expiring.forEach(dev => {
+          items.push({ type: 'WARN', msg: `${dev.subscriber} — ${dev.sentinel_id} — ${dev.days_summary.replace(/Battery /g, 'Battery Expiring ')}. Location: ${dev.location.split('·').slice(0, 3).join('·').trim()}` });
+        });
+      }
     }
     return items.length > 0 ? items : [{ type: 'SYS', msg: 'No device alerts at this time.' }];
   })();
