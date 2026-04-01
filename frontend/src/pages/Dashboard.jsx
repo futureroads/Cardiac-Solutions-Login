@@ -316,8 +316,21 @@ export default function Dashboard({ user, onLogout }) {
     return items.length > 0 ? items : [{ type: 'SYS', msg: 'No device alerts at this time.' }];
   })();
 
+  // Build the doubled event list with a divider at the repeat point
+  const diEventList = (() => {
+    const items = [];
+    aiRecommendations.forEach((rec, i) => {
+      items.push({ ...rec, _key: `a-${i}` });
+    });
+    items.push({ type: '_DIVIDER', msg: '', _key: 'divider' });
+    aiRecommendations.forEach((rec, i) => {
+      items.push({ ...rec, _key: `b-${i}` });
+    });
+    return items;
+  })();
+
   // Dynamic scroll speed: ~3 seconds per item for comfortable reading
-  const scrollDuration = Math.max(60, aiRecommendations.length * 3);
+  const scrollDuration = Math.max(60, diEventList.length * 3);
 
   // Format the Readisys completion_time for "Last Updated" display
   const lastUpdated = (() => {
@@ -664,22 +677,21 @@ export default function Dashboard({ user, onLogout }) {
             >
               <div className={`ai-scroll-container ${aiHovered ? 'ai-scroll-manual' : ''}`}>
                 <div className={`ai-scroll-content ${(aiScrollPaused || aiHovered) ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
-                  {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
-                    <React.Fragment key={i}>
-                    {i === aiRecommendations.length && (
-                      <div className="flex items-center gap-3 py-[12px] my-[4px]">
-                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #0ea5e9, #0ea5e9, transparent)' }} />
-                        <span className="font-orbitron text-[9px] text-cyan-400 tracking-[0.25em] flex-shrink-0 font-bold">EVENTS REPEAT</span>
-                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #0ea5e9, #0ea5e9, transparent)' }} />
+                  {diEventList.map((rec) => (
+                    rec.type === '_DIVIDER' ? (
+                      <div key={rec._key} className="flex items-center gap-3 py-[14px] my-[2px]">
+                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #06b6d4, #06b6d4, transparent)' }} />
+                        <span className="font-orbitron text-[10px] text-cyan-300 tracking-[0.3em] flex-shrink-0 font-bold" style={{ textShadow: '0 0 8px rgba(6,182,212,0.5)' }}>EVENTS REPEAT</span>
+                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #06b6d4, #06b6d4, transparent)' }} />
                       </div>
-                    )}
-                    <div className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
+                    ) : (
+                    <div key={rec._key} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
                       <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : rec.type === 'ERR' ? 'bg-red-500/20 text-red-400' : rec.type === 'SYS' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-500/15 text-cyan-400'}`}>
                         {rec.type}
                       </span>
                       <span className="text-[11px] text-slate-200/90 leading-relaxed">{rec.msg}</span>
                     </div>
-                    </React.Fragment>
+                    )
                   ))}
                 </div>
               </div>
@@ -1077,22 +1089,21 @@ export default function Dashboard({ user, onLogout }) {
             >
               <div className={`ai-scroll-container ${aiHovered ? 'ai-scroll-manual' : ''}`}>
                 <div className={`ai-scroll-content ${(aiScrollPaused || aiHovered) ? 'ai-scroll-paused' : ''}`} style={{ animationDuration: `${scrollDuration}s` }}>
-                  {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
-                    <React.Fragment key={i}>
-                    {i === aiRecommendations.length && (
-                      <div className="flex items-center gap-3 py-[12px] my-[4px]">
-                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #0ea5e9, #0ea5e9, transparent)' }} />
-                        <span className="font-orbitron text-[9px] text-cyan-400 tracking-[0.25em] flex-shrink-0 font-bold">EVENTS REPEAT</span>
-                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #0ea5e9, #0ea5e9, transparent)' }} />
+                  {diEventList.map((rec) => (
+                    rec.type === '_DIVIDER' ? (
+                      <div key={rec._key} className="flex items-center gap-3 py-[14px] my-[2px]">
+                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #06b6d4, #06b6d4, transparent)' }} />
+                        <span className="font-orbitron text-[10px] text-cyan-300 tracking-[0.3em] flex-shrink-0 font-bold" style={{ textShadow: '0 0 8px rgba(6,182,212,0.5)' }}>EVENTS REPEAT</span>
+                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #06b6d4, #06b6d4, transparent)' }} />
                       </div>
-                    )}
-                    <div className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
+                    ) : (
+                    <div key={rec._key} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
                       <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : rec.type === 'ERR' ? 'bg-red-500/20 text-red-400' : rec.type === 'SYS' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-500/15 text-cyan-400'}`}>
                         {rec.type}
                       </span>
                       <span className="text-[11px] text-slate-200/90 leading-relaxed">{rec.msg}</span>
                     </div>
-                    </React.Fragment>
+                    )
                   ))}
                 </div>
               </div>
