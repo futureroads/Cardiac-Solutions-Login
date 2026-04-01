@@ -476,15 +476,28 @@ async def _run_lazy_init():
     finally:
         _init_running = False
 
+def _readisys_auth_headers():
+    """Generate Bearer token headers for Readisys API calls using the cross-domain JWT flow."""
+    payload = {
+        "sub": "system",
+        "role": "Admin",
+        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(timezone.utc) + timedelta(seconds=300),
+        "target": "readisys",
+    }
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return {"Authorization": f"Bearer {token}"}
+
 async def _prewarm_caches():
     """Pre-warm Readisys API caches so first dashboard load has data."""
     import httpx, time
     for attempt in range(3):
         try:
+            headers = _readisys_auth_headers()
             async with httpx.AsyncClient(timeout=20 + attempt * 5) as client:
                 # Status overview
                 try:
-                    resp = await client.get("https://readisys.survivalpath.ai/api/status-overview")
+                    resp = await client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
                     if resp.status_code == 200:
                         _status_cache["data"] = resp.json()
                         _status_cache["ts"] = time.time()
@@ -493,7 +506,7 @@ async def _prewarm_caches():
                     logger.warning(f"Cache pre-warm: status-overview failed attempt {attempt+1}: {e}")
                 # Expiring/expired B/P
                 try:
-                    resp2 = await client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp")
+                    resp2 = await client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp", headers=headers)
                     if resp2.status_code == 200:
                         _bp_cache["data"] = resp2.json()
                         _bp_cache["ts"] = time.time()
@@ -973,7 +986,7 @@ async def sync_feedbacks(admin: dict = Depends(require_admin)):
         try:
             timeout = 10 + (attempt * 5)  # 10s, 15s, 20s
             async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.get(FEEDBACK_SOURCE_URL)
+                resp = await client.get(FEEDBACK_SOURCE_URL, headers=_readisys_auth_headers())
                 resp.raise_for_status()
                 data = resp.json()
                 break
@@ -1444,8 +1457,9 @@ async def status_overview():
     if _status_cache["data"] and (now - _status_cache["ts"]) < 120:
         return _status_cache["data"]
     try:
+        headers = _readisys_auth_headers()
         async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.get("https://readisys.survivalpath.ai/api/status-overview")
+            resp = await client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
             resp.raise_for_status()
             _status_cache["data"] = resp.json()
             _status_cache["ts"] = now
@@ -1465,8 +1479,9 @@ async def expiring_expired_bp():
     if _bp_cache["data"] and (now - _bp_cache["ts"]) < 120:
         return _bp_cache["data"]
     try:
+        headers = _readisys_auth_headers()
         async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp")
+            resp = await client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp", headers=headers)
             resp.raise_for_status()
             _bp_cache["data"] = resp.json()
             _bp_cache["ts"] = now
