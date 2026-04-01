@@ -556,7 +556,7 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
               </div>
               <div className="font-orbitron text-[9px] font-bold text-green-400 mt-[6px] tracking-wider">{stats.ready.toLocaleString()} READY</div>
-              {lastUpdated && <div className="font-orbitron text-[8px] text-cyan-400/60 tracking-wider mt-[4px]">Updated: {lastUpdated}</div>}
+              {lastUpdated && <div className="font-orbitron text-[8px] text-cyan-400/60 tracking-wider mt-[4px]">Last Updated: {lastUpdated}</div>}
               </>
               )}
             </div>
@@ -667,10 +667,10 @@ export default function Dashboard({ user, onLogout }) {
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
                     <React.Fragment key={i}>
                     {i === aiRecommendations.length && (
-                      <div className="flex items-center gap-2 py-[8px]">
-                        <div className="flex-1 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
-                        <span className="font-orbitron text-[7px] text-cyan-500/35 tracking-[0.2em] flex-shrink-0">END OF EVENTS</span>
-                        <div className="flex-1 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
+                      <div className="flex items-center gap-3 py-[12px] my-[4px]">
+                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #0ea5e9, #0ea5e9, transparent)' }} />
+                        <span className="font-orbitron text-[9px] text-cyan-400 tracking-[0.25em] flex-shrink-0 font-bold">EVENTS REPEAT</span>
+                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #0ea5e9, #0ea5e9, transparent)' }} />
                       </div>
                     )}
                     <div className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
@@ -998,7 +998,7 @@ export default function Dashboard({ user, onLogout }) {
                 );
               })()}
               <div className="font-orbitron text-[9px] font-bold mt-[2px] tracking-wider text-cyan-400">{stats.total.toLocaleString()} TOTAL AEDs</div>
-              {lastUpdated && <div className="font-orbitron text-[8px] text-cyan-400/60 tracking-wider mt-[4px]">Updated: {lastUpdated}</div>}
+              {lastUpdated && <div className="font-orbitron text-[8px] text-cyan-400/60 tracking-wider mt-[4px]">Last Updated: {lastUpdated}</div>}
               </>
               )}
             </div>
@@ -1080,10 +1080,10 @@ export default function Dashboard({ user, onLogout }) {
                   {[...aiRecommendations, ...aiRecommendations].map((rec, i) => (
                     <React.Fragment key={i}>
                     {i === aiRecommendations.length && (
-                      <div className="flex items-center gap-2 py-[8px]">
-                        <div className="flex-1 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
-                        <span className="font-orbitron text-[7px] text-cyan-500/35 tracking-[0.2em] flex-shrink-0">END OF EVENTS</span>
-                        <div className="flex-1 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
+                      <div className="flex items-center gap-3 py-[12px] my-[4px]">
+                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #0ea5e9, #0ea5e9, transparent)' }} />
+                        <span className="font-orbitron text-[9px] text-cyan-400 tracking-[0.25em] flex-shrink-0 font-bold">EVENTS REPEAT</span>
+                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, transparent, #0ea5e9, #0ea5e9, transparent)' }} />
                       </div>
                     )}
                     <div className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
