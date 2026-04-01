@@ -534,6 +534,7 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
               </div>
               <div className="font-orbitron text-[9px] font-bold text-green-400 mt-[6px] tracking-wider">{stats.ready.toLocaleString()} READY</div>
+              {lastUpdated && <div className="font-orbitron text-[7px] text-cyan-500/45 tracking-wider mt-[3px]">Updated: {lastUpdated}</div>}
               </>
               )}
             </div>
@@ -966,6 +967,7 @@ export default function Dashboard({ user, onLogout }) {
                 );
               })()}
               <div className="font-orbitron text-[9px] font-bold mt-[2px] tracking-wider text-cyan-400">{stats.total.toLocaleString()} TOTAL AEDs</div>
+              {lastUpdated && <div className="font-orbitron text-[7px] text-cyan-500/45 tracking-wider mt-[3px]">Updated: {lastUpdated}</div>}
               </>
               )}
             </div>
