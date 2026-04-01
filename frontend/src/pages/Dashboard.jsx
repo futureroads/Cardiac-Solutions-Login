@@ -14,6 +14,22 @@ export default function Dashboard({ user, onLogout }) {
   const [isListening, setIsListening] = useState(false);
   const [aiScrollPaused, setAiScrollPaused] = useState(false);
   const [aiHovered, setAiHovered] = useState(false);
+  const [freshUser, setFreshUser] = useState(user);
+
+  // Refresh user data on mount to pick up latest di_permissions
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    fetch(`${API_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) {
+          setFreshUser(data);
+          localStorage.setItem("user", JSON.stringify(data));
+        }
+      })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [diScrollPct, setDiScrollPct] = useState(0);
   const diRef = useRef(null);
   const diTouchTimer = useRef(null);
@@ -242,7 +258,7 @@ export default function Dashboard({ user, onLogout }) {
   const [bpError, setBpError] = useState(null);
 
   // Get user's DI permissions (default: all details)
-  const diPerms = user?.di_permissions || { expired_bp: 'details', expiring_bp: 'details', camera_battery: 'details', camera_cellular: 'details' };
+  const diPerms = freshUser?.di_permissions || { expired_bp: 'details', expiring_bp: 'details', camera_battery: 'details', camera_cellular: 'details' };
 
   const aiRecommendations = bpError ? [
     { type: 'ERR', msg: `DI feed unavailable: ${bpError}. Retrying...` },
