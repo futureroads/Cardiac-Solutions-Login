@@ -264,10 +264,12 @@ export default function Dashboard({ user, onLogout }) {
 
     // Camera Cellular events
     if (diPerms.camera_cellular === 'overview') {
-      items.push({ type: 'SYS', msg: `CAMERA CELLULAR OVERVIEW: HIGH: ${cd.HIGH || 0}, MEDIUM: ${cd.MEDIUM || 0}, LOW: ${cd.LOW || 0}, BAD: ${cd.BAD || 0}` });
+      const cc = bpData?.totals?.camera_cellular || cd;
+      items.push({ type: 'SYS', msg: `CAMERA CELLULAR OVERVIEW: HIGH: ${cc.HIGH || 0}, MEDIUM: ${cc.MEDIUM || 0}, LOW: ${cc.LOW || 0}, BAD: ${cc.BAD || 0}` });
     } else if (diPerms.camera_cellular === 'details') {
-      if ((cd.BAD || 0) > 0) items.push({ type: 'ACT', msg: `CAMERA CELLULAR BAD: ${cd.BAD} devices with no signal. Check antenna/location.` });
-      if ((cd.LOW || 0) > 0) items.push({ type: 'WARN', msg: `CAMERA CELLULAR LOW: ${cd.LOW} devices with weak signal.` });
+      const cc = bpData?.totals?.camera_cellular || cd;
+      if ((cc.BAD || 0) > 0) items.push({ type: 'ACT', msg: `CAMERA CELLULAR BAD: ${cc.BAD} devices with no signal. Check antenna/location.` });
+      if ((cc.LOW || 0) > 0) items.push({ type: 'WARN', msg: `CAMERA CELLULAR LOW: ${cc.LOW} devices with weak signal.` });
     }
 
     // BP device-level alerts
@@ -277,7 +279,8 @@ export default function Dashboard({ user, onLogout }) {
 
       // Expired B/P
       if (diPerms.expired_bp === 'overview') {
-        if (expired.length > 0) items.push({ type: 'ACT', msg: `EXPIRED B/P OVERVIEW: ${expired.length} devices with expired batteries/pads.` });
+        const expiredCount = bpData?.totals?.expired_bp || expired.length;
+        if (expiredCount > 0) items.push({ type: 'ACT', msg: `EXPIRED B/P OVERVIEW: ${expiredCount} devices with expired batteries/pads.` });
       } else if (diPerms.expired_bp === 'details') {
         expired.forEach(dev => {
           items.push({ type: 'ACT', msg: `${dev.subscriber} — ${dev.sentinel_id} — ${dev.days_summary.replace(/Battery /g, 'Battery Expiring ')}. Location: ${dev.location.split('·').slice(0, 3).join('·').trim()}` });
@@ -286,7 +289,8 @@ export default function Dashboard({ user, onLogout }) {
 
       // Expiring B/P
       if (diPerms.expiring_bp === 'overview') {
-        if (expiring.length > 0) items.push({ type: 'WARN', msg: `EXPIRING B/P OVERVIEW: ${expiring.length} devices with expiring batteries/pads.` });
+        const expiringCount = bpData?.totals?.expiring_batt_pads || expiring.length;
+        if (expiringCount > 0) items.push({ type: 'WARN', msg: `EXPIRING B/P OVERVIEW: ${expiringCount} devices with expiring batteries/pads.` });
       } else if (diPerms.expiring_bp === 'details') {
         expiring.forEach(dev => {
           items.push({ type: 'WARN', msg: `${dev.subscriber} — ${dev.sentinel_id} — ${dev.days_summary.replace(/Battery /g, 'Battery Expiring ')}. Location: ${dev.location.split('·').slice(0, 3).join('·').trim()}` });
