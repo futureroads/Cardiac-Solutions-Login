@@ -1651,6 +1651,29 @@ async def service_console_data(current_user: dict = Depends(get_current_user)):
     return result
 
 
+@api_router.get("/service/devices/{subscriber}")
+async def devices_by_subscriber(subscriber: str, current_user: dict = Depends(get_current_user)):
+    """Get device-level details for a specific subscriber from cached Readisys data."""
+    import httpx, time
+    now = time.time()
+    bp_data = _bp_cache["data"] if (_bp_cache["data"] and (now - _bp_cache["ts"]) < 300) else None
+    if not bp_data:
+        try:
+            headers = _readisys_auth_headers()
+            async with httpx.AsyncClient(timeout=20) as client:
+                resp = await client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp", headers=headers)
+                if resp.status_code == 200:
+                    bp_data = resp.json()
+                    _bp_cache["data"] = bp_data
+                    _bp_cache["ts"] = now
+        except Exception as e:
+            return {"devices": [], "_error": str(e)}
+    if not bp_data:
+        return {"devices": []}
+    devices = [d for d in bp_data.get("devices", []) if d.get("subscriber") == subscriber]
+    return {"subscriber": subscriber, "devices": devices, "total": len(devices)}
+
+
 @api_router.get("/service/tickets")
 async def list_tickets(current_user: dict = Depends(get_current_user)):
     """List all service tickets."""

@@ -36,11 +36,107 @@ function IssueBadge({ type, count }) {
   );
 }
 
+// Device detail modal (Need Attention drill-down)
+function DeviceDetailModal({ subscriber, onClose, onCreateTicket }) {
+  const [devices, setDevices] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDevices = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API}/service/devices/${encodeURIComponent(subscriber)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setDevices(data.devices || []);
+        }
+      } catch {}
+      setLoading(false);
+    };
+    fetchDevices();
+  }, [subscriber]);
+
+  const statusColors = {
+    "EXPIRED B/P": "bg-pink-500/20 text-pink-400 border-pink-500/30",
+    "EXPIRING BATT/PADS": "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+    "NOT READY": "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+    "LOST CONTACT": "bg-red-500/20 text-red-400 border-red-500/30",
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[900px] max-w-[95vw] max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()} data-testid="device-detail-modal">
+        {/* Header */}
+        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-700/50">
+          <div>
+            <h2 className="text-xl font-bold text-white">{subscriber} — Need Attention</h2>
+            <p className="text-sm text-slate-400 mt-1">Showing {devices.length} of {devices.length} devices</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+        </div>
+
+        {/* Devices list */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+              <span className="font-orbitron text-[10px] text-cyan-400 tracking-wider ml-3">LOADING DEVICES...</span>
+            </div>
+          ) : devices.length === 0 ? (
+            <div className="text-center py-12 text-slate-500 font-orbitron text-[10px] tracking-wider">NO DEVICES FOUND FOR THIS SUBSCRIBER</div>
+          ) : (
+            <div className="space-y-3">
+              {devices.map((dev, i) => (
+                <div key={dev.sentinel_id || i} className="border border-slate-700/40 bg-slate-900/50 rounded-sm p-4" data-testid={`device-${dev.sentinel_id}`}>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      {/* Device ID and status */}
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <span className="inline-block w-3 h-3 rounded-full bg-green-500/60 shadow-[0_0_4px_rgba(34,197,94,0.4)]" />
+                        <span className="font-orbitron text-sm font-bold text-white">{dev.sentinel_id}</span>
+                        <span className="text-slate-500 text-xs">Hybrid:</span>
+                        <span className={`font-orbitron text-[8px] font-bold px-2 py-0.5 rounded-sm border ${statusColors[dev.detailed_status] || 'bg-slate-500/20 text-slate-400 border-slate-500/30'}`}>
+                          {dev.detailed_status}
+                        </span>
+                      </div>
+                      {/* Location */}
+                      <div className="text-xs text-slate-400 mb-2">{dev.location}</div>
+                      {/* Battery / Pad info */}
+                      <div className="flex items-center gap-4 text-[10px] text-slate-500">
+                        <span>B: <span className={dev.battery_days < 0 ? 'text-red-400' : dev.battery_days < 60 ? 'text-yellow-400' : 'text-green-400'}>{dev.battery_expiration}</span></span>
+                        <span>P: <span className={dev.pad_days < 0 ? 'text-red-400' : dev.pad_days < 60 ? 'text-yellow-400' : 'text-green-400'}>{dev.pad_expiration}</span></span>
+                      </div>
+                      {/* Days summary */}
+                      {dev.days_summary && (
+                        <div className="text-[10px] text-amber-400/80 mt-1">{dev.days_summary}</div>
+                      )}
+                    </div>
+                    {/* Create Ticket button */}
+                    <button
+                      onClick={() => onCreateTicket(subscriber, dev)}
+                      className="flex items-center gap-1.5 font-orbitron text-[9px] px-3 py-2 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 transition-all whitespace-nowrap"
+                      data-testid={`create-ticket-device-${dev.sentinel_id}`}
+                    >
+                      <Wrench className="w-3 h-3" /> Create Ticket
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Create ticket modal
-function CreateTicketModal({ subscriber, onClose, onCreated }) {
+function CreateTicketModal({ subscriber, defaultDescription, onClose, onCreated }) {
   const [issueType, setIssueType] = useState("EXPIRED B/P");
   const [priority, setPriority] = useState("NORMAL");
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState(defaultDescription || "");
   const [saving, setSaving] = useState(false);
 
   const handleCreate = async () => {
@@ -243,6 +339,8 @@ export default function ServiceTickets({ user, onLogout }) {
   const [refreshing, setRefreshing] = useState(false);
   const [createModal, setCreateModal] = useState(null);
   const [ticketModal, setTicketModal] = useState(null);
+  const [deviceModal, setDeviceModal] = useState(null);
+  const [createFromDevice, setCreateFromDevice] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -369,6 +467,9 @@ export default function ServiceTickets({ user, onLogout }) {
                       <IssueBadge type="EXPIRING B/P" count={sub.expiring_bp} />
                     </div>
                     <div className="flex gap-1.5 flex-wrap">
+                      <button onClick={() => setDeviceModal(sub.subscriber)} className="font-orbitron text-[7px] px-2 py-1 border border-red-500/30 text-red-400 rounded-sm hover:bg-red-500/10 transition-all flex items-center gap-1" data-testid={`need-attention-${i}`}>
+                        <AlertTriangle className="w-2.5 h-2.5" /> NEED ATTENTION {sub.issues}
+                      </button>
                       <button onClick={() => setCreateModal(sub.subscriber)} className="font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 transition-all flex items-center gap-1" data-testid={`create-ticket-${i}`}>
                         <Plus className="w-2.5 h-2.5" /> NEW TICKET
                       </button>
@@ -386,10 +487,26 @@ export default function ServiceTickets({ user, onLogout }) {
 
       {/* Modals */}
       {createModal && (
-        <CreateTicketModal subscriber={createModal} onClose={() => setCreateModal(null)} onCreated={() => fetchData()} />
+        <CreateTicketModal
+          subscriber={createModal}
+          defaultDescription={createFromDevice ? `Device: ${createFromDevice.sentinel_id}\nStatus: ${createFromDevice.detailed_status}\nLocation: ${createFromDevice.location}\n${createFromDevice.days_summary || ''}` : ''}
+          onClose={() => { setCreateModal(null); setCreateFromDevice(null); }}
+          onCreated={() => fetchData()}
+        />
       )}
       {ticketModal && (
         <TicketListModal subscriber={ticketModal} onClose={() => setTicketModal(null)} />
+      )}
+      {deviceModal && (
+        <DeviceDetailModal
+          subscriber={deviceModal}
+          onClose={() => setDeviceModal(null)}
+          onCreateTicket={(sub, dev) => {
+            setDeviceModal(null);
+            setCreateFromDevice(dev);
+            setCreateModal(sub);
+          }}
+        />
       )}
     </div>
   );
