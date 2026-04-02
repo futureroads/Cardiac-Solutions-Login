@@ -1774,6 +1774,10 @@ async def create_field_tech(data: dict, current_user: dict = Depends(get_current
         "email": data.get("email", ""),
         "mobile": data.get("mobile", "") or data.get("phone", ""),
         "address": data.get("address", ""),
+        "street": data.get("street", ""),
+        "city": data.get("city", ""),
+        "state": data.get("state", ""),
+        "zip": data.get("zip", ""),
         "area": data.get("area", "") or data.get("region", ""),
         "active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -1787,7 +1791,7 @@ async def create_field_tech(data: dict, current_user: dict = Depends(get_current
 async def update_field_tech(tech_id: str, data: dict, current_user: dict = Depends(get_current_user)):
     """Update a field technician."""
     update_fields = {}
-    for field in ["name", "company", "email", "mobile", "address", "area", "active"]:
+    for field in ["name", "company", "email", "mobile", "address", "street", "city", "state", "zip", "area", "active"]:
         if field in data:
             update_fields[field] = data[field]
     if update_fields:

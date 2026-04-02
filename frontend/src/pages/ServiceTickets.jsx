@@ -429,7 +429,7 @@ function SettingsModal({ onClose }) {
   const [loading, setLoading] = useState(false);
   const [addMode, setAddMode] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ name: "", company: "", email: "", mobile: "", address: "", area: "" });
+  const [form, setForm] = useState({ firstName: "", lastName: "", company: "", area: "", email: "", mobile: "", street: "", city: "", state: "", zip: "" });
   const [sortBy, setSortBy] = useState("name");
 
   const fetchTechs = useCallback(async () => {
@@ -456,18 +456,30 @@ function SettingsModal({ onClose }) {
   });
 
   const handleSave = async () => {
-    if (!form.name.trim()) { toast.error("Name is required"); return; }
+    if (!form.firstName.trim() || !form.lastName.trim()) { toast.error("First and last name are required"); return; }
     const token = localStorage.getItem("token");
     const url = editId ? `${API}/service/field-techs/${editId}` : `${API}/service/field-techs`;
     const method = editId ? "PUT" : "POST";
+    const payload = {
+      name: `${form.firstName.trim()} ${form.lastName.trim()}`,
+      company: form.company,
+      area: form.area,
+      email: form.email,
+      mobile: form.mobile,
+      address: [form.street, form.city, form.state, form.zip].filter(Boolean).join(", "),
+      street: form.street,
+      city: form.city,
+      state: form.state,
+      zip: form.zip,
+    };
     const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(form),
+      body: JSON.stringify(payload),
     });
     if (res.ok) {
       toast.success(editId ? "Tech updated" : "Tech added");
-      setForm({ name: "", company: "", email: "", mobile: "", address: "", area: "" });
+      setForm({ firstName: "", lastName: "", company: "", area: "", email: "", mobile: "", street: "", city: "", state: "", zip: "" });
       setAddMode(false);
       setEditId(null);
       fetchTechs();
@@ -483,7 +495,20 @@ function SettingsModal({ onClose }) {
 
   const startEdit = (tech) => {
     setEditId(tech.id);
-    setForm({ name: tech.name || "", company: tech.company || "", email: tech.email || "", mobile: tech.mobile || tech.phone || "", address: tech.address || "", area: tech.area || tech.region || "" });
+    const nameParts = (tech.name || "").split(" ");
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ") || "";
+    setForm({
+      firstName, lastName,
+      company: tech.company || "",
+      area: tech.area || tech.region || "",
+      email: tech.email || "",
+      mobile: tech.mobile || tech.phone || "",
+      street: tech.street || "",
+      city: tech.city || "",
+      state: tech.state || "",
+      zip: tech.zip || "",
+    });
     setAddMode(true);
   };
 
@@ -536,7 +561,7 @@ function SettingsModal({ onClose }) {
                 </div>
                 <div className="flex items-center gap-2">
                   {!addMode && (
-                    <button onClick={() => { setAddMode(true); setEditId(null); setForm({ name: "", company: "", email: "", mobile: "", address: "", area: "" }); }} className="flex items-center gap-1.5 font-orbitron text-[9px] px-4 py-2 bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/25 transition-all" data-testid="add-tech-btn">
+                    <button onClick={() => { setAddMode(true); setEditId(null); setForm({ firstName: "", lastName: "", company: "", area: "", email: "", mobile: "", street: "", city: "", state: "", zip: "" }); }} className="flex items-center gap-1.5 font-orbitron text-[9px] px-4 py-2 bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/25 transition-all" data-testid="add-tech-btn">
                       <Plus className="w-3 h-3" /> Add Tech
                     </button>
                   )}
@@ -558,36 +583,66 @@ function SettingsModal({ onClose }) {
               {addMode && (
                 <div className="border border-cyan-500/30 bg-slate-900/40 rounded-sm p-5 mb-5" data-testid="tech-form">
                   <div className="font-orbitron text-[10px] text-cyan-400 tracking-wider mb-4">{editId ? "EDIT" : "NEW"} FIELD TECHNICIAN</div>
-                  <div className="grid grid-cols-2 gap-4 mb-3">
+
+                  {/* Personal Information */}
+                  <div className="font-orbitron text-[9px] text-cyan-400 tracking-wider mb-3 pt-1 border-t border-cyan-500/20">PERSONAL INFORMATION</div>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
-                      <div className={labelClass}>Name *</div>
-                      <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className={inputClass} placeholder="Full name" data-testid="tech-name" />
+                      <div className={labelClass}>First Name *</div>
+                      <input value={form.firstName} onChange={e => setForm({...form, firstName: e.target.value})} className={inputClass} placeholder="" data-testid="tech-first-name" />
+                    </div>
+                    <div>
+                      <div className={labelClass}>Last Name *</div>
+                      <input value={form.lastName} onChange={e => setForm({...form, lastName: e.target.value})} className={inputClass} placeholder="" data-testid="tech-last-name" />
                     </div>
                     <div>
                       <div className={labelClass}>Company</div>
-                      <input value={form.company} onChange={e => setForm({...form, company: e.target.value})} className={inputClass} placeholder="e.g. MedTech Support" data-testid="tech-company" />
-                    </div>
-                    <div>
-                      <div className={labelClass}>Email</div>
-                      <input value={form.email} onChange={e => setForm({...form, email: e.target.value})} className={inputClass} placeholder="email@example.com" data-testid="tech-email" />
-                    </div>
-                    <div>
-                      <div className={labelClass}>Mobile</div>
-                      <input value={form.mobile} onChange={e => setForm({...form, mobile: e.target.value})} className={inputClass} placeholder="(555) 555-5555" data-testid="tech-mobile" />
-                    </div>
-                    <div>
-                      <div className={labelClass}>Address</div>
-                      <input value={form.address} onChange={e => setForm({...form, address: e.target.value})} className={inputClass} placeholder="321 Elm Street, Mobile, AL 36601" data-testid="tech-address" />
+                      <input value={form.company} onChange={e => setForm({...form, company: e.target.value})} className={inputClass} placeholder="" data-testid="tech-company" />
                     </div>
                     <div>
                       <div className={labelClass}>Area</div>
-                      <input value={form.area} onChange={e => setForm({...form, area: e.target.value})} className={inputClass} placeholder="Gulf Coast, Southeast, etc." data-testid="tech-area" />
+                      <input value={form.area} onChange={e => setForm({...form, area: e.target.value})} className={inputClass} placeholder="" data-testid="tech-area" />
                     </div>
                   </div>
-                  <div className="flex gap-3 justify-end pt-2">
+
+                  {/* Contact Information */}
+                  <div className="font-orbitron text-[9px] text-cyan-400 tracking-wider mb-3 pt-3 border-t border-cyan-500/20">CONTACT INFORMATION</div>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <div className={labelClass}>Email *</div>
+                      <input value={form.email} onChange={e => setForm({...form, email: e.target.value})} className={inputClass} placeholder="" data-testid="tech-email" />
+                    </div>
+                    <div>
+                      <div className={labelClass}>Mobile #</div>
+                      <input value={form.mobile} onChange={e => setForm({...form, mobile: e.target.value})} className={inputClass} placeholder="" data-testid="tech-mobile" />
+                    </div>
+                  </div>
+
+                  {/* Address */}
+                  <div className="font-orbitron text-[9px] text-cyan-400 tracking-wider mb-3 pt-3 border-t border-cyan-500/20">ADDRESS</div>
+                  <div className="mb-3">
+                    <div className={labelClass}>Street Address</div>
+                    <input value={form.street} onChange={e => setForm({...form, street: e.target.value})} className={inputClass} placeholder="" data-testid="tech-street" />
+                  </div>
+                  <div className="grid grid-cols-[1fr_100px_100px] gap-4 mb-3">
+                    <div>
+                      <div className={labelClass}>City</div>
+                      <input value={form.city} onChange={e => setForm({...form, city: e.target.value})} className={inputClass} placeholder="" data-testid="tech-city" />
+                    </div>
+                    <div>
+                      <div className={labelClass}>State</div>
+                      <input value={form.state} onChange={e => setForm({...form, state: e.target.value})} className={inputClass} placeholder="" data-testid="tech-state" />
+                    </div>
+                    <div>
+                      <div className={labelClass}>Zip</div>
+                      <input value={form.zip} onChange={e => setForm({...form, zip: e.target.value})} className={inputClass} placeholder="" data-testid="tech-zip" />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 justify-end pt-4 border-t border-slate-700/30">
                     <button onClick={() => { setAddMode(false); setEditId(null); }} className="font-orbitron text-[9px] px-4 py-1.5 text-slate-400 hover:text-white transition-colors">Cancel</button>
-                    <button onClick={handleSave} className="font-orbitron text-[9px] px-5 py-1.5 bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 rounded-sm hover:bg-cyan-500/30 transition-all" data-testid="save-tech-btn">
-                      {editId ? "UPDATE" : "SAVE"}
+                    <button onClick={handleSave} className="flex items-center gap-1.5 font-orbitron text-[9px] px-5 py-2 bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 rounded-sm hover:bg-cyan-500/30 transition-all" data-testid="save-tech-btn">
+                      <Wrench className="w-3 h-3" /> {editId ? "Save Changes" : "Save"}
                     </button>
                   </div>
                 </div>
