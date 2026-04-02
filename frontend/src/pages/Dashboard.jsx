@@ -14,6 +14,10 @@ export default function Dashboard({ user, onLogout }) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
+  const [aiScrollPaused, setAiScrollPaused] = useState(false);
+  const [aiHovered, setAiHovered] = useState(false);
+  const [freshUser, setFreshUser] = useState(user);
+
   const cachedAudioRef = useRef(null);
 
   // Preload TTS greeting in background on dashboard mount
@@ -87,9 +91,6 @@ export default function Dashboard({ user, onLogout }) {
       window.speechSynthesis.speak(utterance);
     }
   };
-  const [aiScrollPaused, setAiScrollPaused] = useState(false);
-  const [aiHovered, setAiHovered] = useState(false);
-  const [freshUser, setFreshUser] = useState(user);
 
   // Refresh user data on mount to pick up latest di_permissions
   useEffect(() => {
