@@ -1551,33 +1551,47 @@ async def service_console_data(current_user: dict = Depends(get_current_user)):
 
         # Fetch missing data in PARALLEL instead of sequentially
         if not status_data or not bp_data:
-            async with httpx.AsyncClient(timeout=20) as client:
-                tasks = {}
-                if not status_data:
-                    tasks["status"] = client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
-                if not bp_data:
-                    tasks["bp"] = client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp", headers=headers)
+            try:
+                async with httpx.AsyncClient(timeout=25) as client:
+                    tasks = {}
+                    if not status_data:
+                        tasks["status"] = client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
+                    if not bp_data:
+                        tasks["bp"] = client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp", headers=headers)
 
-                results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-                keys = list(tasks.keys())
+                    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+                    keys = list(tasks.keys())
 
-                for i, key in enumerate(keys):
-                    resp = results[i]
-                    if isinstance(resp, Exception):
-                        logger.warning(f"Readisys {key} fetch failed: {resp}")
-                        continue
-                    if resp.status_code == 200:
-                        if key == "status":
-                            status_data = resp.json()
-                            _status_cache["data"] = status_data
-                            _status_cache["ts"] = now
-                        elif key == "bp":
-                            bp_data = resp.json()
-                            _bp_cache["data"] = bp_data
-                            _bp_cache["ts"] = now
+                    for i, key in enumerate(keys):
+                        resp = results[i]
+                        if isinstance(resp, Exception):
+                            logger.warning(f"Readisys {key} fetch failed: {resp}")
+                            continue
+                        if resp.status_code == 200:
+                            if key == "status":
+                                status_data = resp.json()
+                                _status_cache["data"] = status_data
+                                _status_cache["ts"] = now
+                            elif key == "bp":
+                                bp_data = resp.json()
+                                _bp_cache["data"] = bp_data
+                                _bp_cache["ts"] = now
+                        else:
+                            logger.warning(f"Readisys {key} returned HTTP {resp.status_code}: {resp.text[:200]}")
+            except Exception as fetch_err:
+                logger.warning(f"Readisys parallel fetch error: {fetch_err}")
+
+        # Fall back to stale cache if fresh fetch failed
+        if not status_data and _status_cache["data"]:
+            status_data = _status_cache["data"]
+            logger.info("Using stale status cache for console-data")
+        if not bp_data and _bp_cache["data"]:
+            bp_data = _bp_cache["data"]
+            logger.info("Using stale bp cache for console-data")
 
         status_data = status_data or {}
         bp_data = bp_data or {}
+        logger.info(f"console-data: status_keys={list(status_data.keys())[:5]}, bp_keys={list(bp_data.keys())[:5]}, subs={len(bp_data.get('by_subscriber', []))}")
 
         totals = status_data.get("totals", {})
         dsc = totals.get("detailed_status_counts", {})
