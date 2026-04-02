@@ -429,7 +429,8 @@ function SettingsModal({ onClose }) {
   const [loading, setLoading] = useState(false);
   const [addMode, setAddMode] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", region: "" });
+  const [form, setForm] = useState({ name: "", company: "", email: "", mobile: "", address: "", area: "" });
+  const [sortBy, setSortBy] = useState("name");
 
   const fetchTechs = useCallback(async () => {
     setLoading(true);
@@ -443,6 +444,17 @@ function SettingsModal({ onClose }) {
 
   useEffect(() => { if (view === "field-techs") fetchTechs(); }, [view, fetchTechs]);
 
+  const sortedTechs = [...techs].sort((a, b) => {
+    if (sortBy === "name") {
+      const aLast = (a.name || "").split(" ").pop().toLowerCase();
+      const bLast = (b.name || "").split(" ").pop().toLowerCase();
+      return aLast.localeCompare(bLast);
+    }
+    if (sortBy === "area") return (a.area || "zzz").localeCompare(b.area || "zzz");
+    if (sortBy === "company") return (a.company || "zzz").localeCompare(b.company || "zzz");
+    return 0;
+  });
+
   const handleSave = async () => {
     if (!form.name.trim()) { toast.error("Name is required"); return; }
     const token = localStorage.getItem("token");
@@ -455,7 +467,7 @@ function SettingsModal({ onClose }) {
     });
     if (res.ok) {
       toast.success(editId ? "Tech updated" : "Tech added");
-      setForm({ name: "", email: "", phone: "", region: "" });
+      setForm({ name: "", company: "", email: "", mobile: "", address: "", area: "" });
       setAddMode(false);
       setEditId(null);
       fetchTechs();
@@ -471,7 +483,7 @@ function SettingsModal({ onClose }) {
 
   const startEdit = (tech) => {
     setEditId(tech.id);
-    setForm({ name: tech.name, email: tech.email || "", phone: tech.phone || "", region: tech.region || "" });
+    setForm({ name: tech.name || "", company: tech.company || "", email: tech.email || "", mobile: tech.mobile || tech.phone || "", address: tech.address || "", area: tech.area || tech.region || "" });
     setAddMode(true);
   };
 
@@ -480,7 +492,7 @@ function SettingsModal({ onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[700px] max-w-[95vw] max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()} data-testid="settings-modal">
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[800px] max-w-[95vw] max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()} data-testid="settings-modal">
         {/* Header */}
         <div className="flex justify-between items-center px-6 py-5 border-b border-slate-700/50">
           <div className="flex items-center gap-3">
@@ -500,7 +512,6 @@ function SettingsModal({ onClose }) {
 
         <div className="flex-1 overflow-y-auto">
           {view === "menu" ? (
-            /* Settings Menu */
             <div className="p-6">
               <button
                 onClick={() => setView("field-techs")}
@@ -516,70 +527,112 @@ function SettingsModal({ onClose }) {
               </button>
             </div>
           ) : (
-            /* Field Techs Management */
             <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-orbitron text-[10px] text-cyan-400 tracking-wider">{techs.length} FIELD TECHNICIANS</div>
-                {!addMode && (
-                  <button onClick={() => { setAddMode(true); setEditId(null); setForm({ name: "", email: "", phone: "", region: "" }); }} className="flex items-center gap-1 font-orbitron text-[9px] px-3 py-1.5 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10" data-testid="add-tech-btn">
-                    <Plus className="w-3 h-3" /> ADD TECH
-                  </button>
-                )}
+              {/* Field Techs Header */}
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-cyan-400" />
+                  <h3 className="text-xl font-bold text-white">Field Techs</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  {!addMode && (
+                    <button onClick={() => { setAddMode(true); setEditId(null); setForm({ name: "", company: "", email: "", mobile: "", address: "", area: "" }); }} className="flex items-center gap-1.5 font-orbitron text-[9px] px-4 py-2 bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/25 transition-all" data-testid="add-tech-btn">
+                      <Plus className="w-3 h-3" /> Add Tech
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="text-sm text-slate-500 mb-5">{techs.length} technician{techs.length !== 1 ? 's' : ''} registered</div>
+
+              {/* Sort bar */}
+              <div className="flex items-center gap-2 bg-slate-800/40 border border-slate-700/30 rounded-sm px-4 py-2 mb-5">
+                <span className="font-orbitron text-[8px] text-slate-400 tracking-wider">SORT BY:</span>
+                <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 rounded-sm px-2 py-0.5 text-xs font-orbitron outline-none cursor-pointer" data-testid="sort-techs">
+                  <option value="name" className="bg-[#0a0f1c]">Last Name</option>
+                  <option value="area" className="bg-[#0a0f1c]">Area</option>
+                  <option value="company" className="bg-[#0a0f1c]">Company</option>
+                </select>
               </div>
 
               {/* Add/Edit form */}
               {addMode && (
-                <div className="border border-cyan-500/30 bg-slate-900/40 rounded-sm p-4 mb-4" data-testid="tech-form">
-                  <div className="font-orbitron text-[10px] text-cyan-400 tracking-wider mb-3">{editId ? "EDIT" : "NEW"} FIELD TECHNICIAN</div>
-                  <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="border border-cyan-500/30 bg-slate-900/40 rounded-sm p-5 mb-5" data-testid="tech-form">
+                  <div className="font-orbitron text-[10px] text-cyan-400 tracking-wider mb-4">{editId ? "EDIT" : "NEW"} FIELD TECHNICIAN</div>
+                  <div className="grid grid-cols-2 gap-4 mb-3">
                     <div>
                       <div className={labelClass}>Name *</div>
                       <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className={inputClass} placeholder="Full name" data-testid="tech-name" />
+                    </div>
+                    <div>
+                      <div className={labelClass}>Company</div>
+                      <input value={form.company} onChange={e => setForm({...form, company: e.target.value})} className={inputClass} placeholder="e.g. MedTech Support" data-testid="tech-company" />
                     </div>
                     <div>
                       <div className={labelClass}>Email</div>
                       <input value={form.email} onChange={e => setForm({...form, email: e.target.value})} className={inputClass} placeholder="email@example.com" data-testid="tech-email" />
                     </div>
                     <div>
-                      <div className={labelClass}>Phone</div>
-                      <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className={inputClass} placeholder="(555) 555-5555" data-testid="tech-phone" />
+                      <div className={labelClass}>Mobile</div>
+                      <input value={form.mobile} onChange={e => setForm({...form, mobile: e.target.value})} className={inputClass} placeholder="(555) 555-5555" data-testid="tech-mobile" />
                     </div>
                     <div>
-                      <div className={labelClass}>Region</div>
-                      <input value={form.region} onChange={e => setForm({...form, region: e.target.value})} className={inputClass} placeholder="Southeast, Western, etc." data-testid="tech-region" />
+                      <div className={labelClass}>Address</div>
+                      <input value={form.address} onChange={e => setForm({...form, address: e.target.value})} className={inputClass} placeholder="321 Elm Street, Mobile, AL 36601" data-testid="tech-address" />
+                    </div>
+                    <div>
+                      <div className={labelClass}>Area</div>
+                      <input value={form.area} onChange={e => setForm({...form, area: e.target.value})} className={inputClass} placeholder="Gulf Coast, Southeast, etc." data-testid="tech-area" />
                     </div>
                   </div>
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={() => { setAddMode(false); setEditId(null); }} className="font-orbitron text-[8px] px-3 py-1.5 text-slate-400 hover:text-white">Cancel</button>
-                    <button onClick={handleSave} className="font-orbitron text-[8px] px-4 py-1.5 bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 rounded-sm hover:bg-cyan-500/30" data-testid="save-tech-btn">
+                  <div className="flex gap-3 justify-end pt-2">
+                    <button onClick={() => { setAddMode(false); setEditId(null); }} className="font-orbitron text-[9px] px-4 py-1.5 text-slate-400 hover:text-white transition-colors">Cancel</button>
+                    <button onClick={handleSave} className="font-orbitron text-[9px] px-5 py-1.5 bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 rounded-sm hover:bg-cyan-500/30 transition-all" data-testid="save-tech-btn">
                       {editId ? "UPDATE" : "SAVE"}
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Tech list */}
+              {/* Tech cards */}
               {loading ? (
                 <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-cyan-400 animate-spin" /></div>
-              ) : techs.length === 0 ? (
-                <div className="text-center py-8 text-slate-500 font-orbitron text-[10px] tracking-wider">NO FIELD TECHNICIANS CONFIGURED</div>
+              ) : sortedTechs.length === 0 ? (
+                <div className="text-center py-12 text-slate-500 font-orbitron text-[10px] tracking-wider">NO FIELD TECHNICIANS CONFIGURED</div>
               ) : (
-                <div className="space-y-2">
-                  {techs.map(tech => (
-                    <div key={tech.id} className="flex items-center gap-3 p-3 border border-slate-700/30 bg-slate-900/30 rounded-sm hover:border-slate-600/50 transition-colors" data-testid={`tech-row-${tech.id}`}>
-                      <div className="w-8 h-8 rounded-full bg-cyan-500/15 flex items-center justify-center text-cyan-400 font-orbitron text-[10px] font-bold">
-                        {tech.name?.charAt(0)?.toUpperCase() || "?"}
+                <div className="space-y-3">
+                  {sortedTechs.map(tech => (
+                    <div key={tech.id} className="border border-slate-700/40 bg-slate-900/30 rounded-sm overflow-hidden" data-testid={`tech-row-${tech.id}`}>
+                      {/* Card header */}
+                      <div className="flex items-center justify-between px-5 py-3 border-b border-slate-700/30">
+                        <div className="flex items-center gap-3">
+                          <Users className="w-4 h-4 text-cyan-400/60" />
+                          <span className="text-white font-bold">{tech.name}</span>
+                          {tech.company && <span className="text-[10px] text-slate-500 bg-slate-800/60 px-2 py-0.5 rounded-sm">{tech.company}</span>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => startEdit(tech)} className="flex items-center gap-1 font-orbitron text-[8px] px-3 py-1 bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/25 transition-all" data-testid={`edit-tech-${tech.id}`}>
+                            <Edit2 className="w-2.5 h-2.5" /> EDIT
+                          </button>
+                          <button onClick={() => handleDelete(tech.id)} className="flex items-center gap-1 font-orbitron text-[8px] px-3 py-1 bg-red-500/15 border border-red-500/30 text-red-400 rounded-sm hover:bg-red-500/25 transition-all" data-testid={`delete-tech-${tech.id}`}>
+                            <Trash2 className="w-2.5 h-2.5" /> DELETE
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <div className="text-sm text-white font-bold">{tech.name}</div>
-                        <div className="text-[10px] text-slate-500">{[tech.email, tech.phone, tech.region].filter(Boolean).join(" · ")}</div>
+                      {/* Card body */}
+                      <div className="px-5 py-3 space-y-1.5">
+                        <div className="flex gap-8 text-[11px]">
+                          <span className="text-slate-500">EMAIL: <span className="text-slate-300">{tech.email || '—'}</span></span>
+                          <span className="text-slate-500">MOBILE: <span className="text-slate-300">{tech.mobile || tech.phone || '—'}</span></span>
+                        </div>
+                        <div className="text-[11px] text-slate-500">ADDRESS: <span className="text-slate-300">{tech.address || '—'}</span></div>
+                        <div className="text-[11px] text-slate-500">
+                          AREA: {tech.area || tech.region ? (
+                            <span className="inline-block bg-cyan-500/15 text-cyan-400 px-2 py-0.5 rounded-sm text-[9px] font-orbitron">{tech.area || tech.region}</span>
+                          ) : (
+                            <span className="inline-block bg-slate-500/15 text-slate-400 px-2 py-0.5 rounded-sm text-[9px] font-orbitron">Not assigned</span>
+                          )}
+                        </div>
                       </div>
-                      <button onClick={() => startEdit(tech)} className="text-slate-500 hover:text-cyan-400 transition-colors p-1" data-testid={`edit-tech-${tech.id}`}>
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => handleDelete(tech.id)} className="text-slate-500 hover:text-red-400 transition-colors p-1" data-testid={`delete-tech-${tech.id}`}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   ))}
                 </div>
