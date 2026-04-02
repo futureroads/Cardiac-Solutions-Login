@@ -165,9 +165,10 @@ function ModuleCard({ module, index, onNavigate, authToken }) {
           }
           if (!res.ok) throw new Error(`Server returned ${res.status}`);
           const data = await res.json();
-          const win = window.open(data.redirect_url, "_blank", "noopener,noreferrer");
+          const intermediateUrl = `/redirect.html?url=${encodeURIComponent(data.redirect_url)}`;
+          const win = window.open(intermediateUrl, "_blank", "noopener,noreferrer");
           if (!win) {
-            window.location.href = data.redirect_url;
+            window.location.href = intermediateUrl;
           }
           break;
         } catch (err) {
