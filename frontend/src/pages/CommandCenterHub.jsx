@@ -165,10 +165,13 @@ function ModuleCard({ module, index, onNavigate, authToken }) {
           }
           if (!res.ok) throw new Error(`Server returned ${res.status}`);
           const data = await res.json();
-          const intermediateUrl = `/redirect.html?url=${encodeURIComponent(data.redirect_url)}`;
-          const win = window.open(intermediateUrl, "_blank", "noopener,noreferrer");
-          if (!win) {
-            window.location.href = intermediateUrl;
+          const win = window.open('', '_blank');
+          if (win) {
+            win.document.write('<!DOCTYPE html><html style="background:#020617"><head><title>Redirecting...</title></head><body style="background:#020617;color:#06b6d4;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><div style="width:40px;height:40px;border:3px solid rgba(6,182,212,0.2);border-top-color:#06b6d4;border-radius:50%;animation:s .8s linear infinite;margin:0 auto"></div><style>@keyframes s{to{transform:rotate(360deg)}}</style><p style="margin-top:16px;font-size:11px;letter-spacing:3px;opacity:0.7">ESTABLISHING SECURE CONNECTION...</p></div></body></html>');
+            win.document.close();
+            win.location.href = data.redirect_url;
+          } else {
+            window.location.href = data.redirect_url;
           }
           break;
         } catch (err) {
