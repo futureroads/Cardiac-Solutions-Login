@@ -12,6 +12,31 @@ export default function Dashboard({ user, onLogout }) {
   const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const jarvisGreet = () => {
+    if (isSpeaking) return;
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    const name = freshUser?.name || user?.name || 'Sir';
+    const text = `${greeting}, ${name}. How can I help you?`;
+
+    setIsSpeaking(true);
+    setIsListening(true);
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.95;
+    utterance.pitch = 0.85;
+    // Pick a deep male English voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => /daniel|james|google uk male|male/i.test(v.name) && /en/i.test(v.lang))
+      || voices.find(v => /en-GB/i.test(v.lang))
+      || voices.find(v => /en/i.test(v.lang));
+    if (preferred) utterance.voice = preferred;
+    utterance.onend = () => { setIsSpeaking(false); setIsListening(false); };
+    utterance.onerror = () => { setIsSpeaking(false); setIsListening(false); };
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  };
   const [aiScrollPaused, setAiScrollPaused] = useState(false);
   const [aiHovered, setAiHovered] = useState(false);
   const [freshUser, setFreshUser] = useState(user);
@@ -894,13 +919,13 @@ export default function Dashboard({ user, onLogout }) {
                 ))}
               </div>
               <button 
-                onClick={() => setIsListening(!isListening)}
+                onClick={jarvisGreet}
                 className={`w-[36px] h-[36px] rounded-full border flex items-center justify-center transition-all flex-shrink-0 ${isListening ? 'border-red-500 bg-red-500/10 animate-mic-pulse' : 'border-cyan-500/50 bg-[rgba(0,40,70,0.8)] hover:border-cyan-400 hover:shadow-[0_0_16px_rgba(0,212,255,0.35)]'}`}
               >
                 <Mic className={`w-[14px] h-[14px] ${isListening ? 'text-red-500' : 'text-cyan-400'}`} />
               </button>
               <div className={`font-orbitron text-[7px] font-bold tracking-[0.18em] ${isListening ? 'text-red-500 animate-blink' : 'text-cyan-500/60'}`}>
-                {isListening ? 'LISTENING' : 'READY'}
+                {isSpeaking ? 'SPEAKING' : isListening ? 'LISTENING' : 'READY'}
               </div>
             </div>
           </div>
@@ -1225,13 +1250,13 @@ export default function Dashboard({ user, onLogout }) {
                 ))}
               </div>
               <button 
-                onClick={() => setIsListening(!isListening)}
+                onClick={jarvisGreet}
                 className={`w-[36px] h-[36px] rounded-full border flex items-center justify-center transition-all flex-shrink-0 ${isListening ? 'border-red-500 bg-red-500/10 animate-mic-pulse' : 'border-cyan-500/50 bg-[rgba(0,40,70,0.8)] hover:border-cyan-400 hover:shadow-[0_0_16px_rgba(0,212,255,0.35)]'}`}
               >
                 <Mic className={`w-[14px] h-[14px] ${isListening ? 'text-red-500' : 'text-cyan-400'}`} />
               </button>
               <div className={`font-orbitron text-[7px] font-bold tracking-[0.18em] ${isListening ? 'text-red-500 animate-blink' : 'text-cyan-500/60'}`}>
-                {isListening ? 'LISTENING' : 'READY'}
+                {isSpeaking ? 'SPEAKING' : isListening ? 'LISTENING' : 'READY'}
               </div>
             </div>
           </div>
