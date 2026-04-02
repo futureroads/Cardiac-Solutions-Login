@@ -132,11 +132,19 @@ function DeviceDetailModal({ subscriber, onClose, onCreateTicket }) {
   );
 }
 
-// Create ticket modal
-function CreateTicketModal({ subscriber, defaultDescription, onClose, onCreated }) {
-  const [issueType, setIssueType] = useState("EXPIRED B/P");
-  const [priority, setPriority] = useState("NORMAL");
-  const [description, setDescription] = useState(defaultDescription || "");
+// Create ticket modal - matches service.cardiac-solutions.ai layout
+function CreateTicketModal({ subscriber, device, onClose, onCreated }) {
+  const [deviceId, setDeviceId] = useState(device?.sentinel_id || "");
+  const [deviceType, setDeviceType] = useState("Hybrid");
+  const [issueType, setIssueType] = useState(device?.detailed_status || "NOT READY");
+  const [location, setLocation] = useState(device?.location || "");
+  const [priority, setPriority] = useState("Medium");
+  const [assignedTo, setAssignedTo] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [description, setDescription] = useState(
+    device ? `Device ${device.sentinel_id} — ${device.detailed_status}. ${device.days_summary || ''} Requires immediate attention.` : ""
+  );
+  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
   const handleCreate = async () => {
@@ -146,7 +154,18 @@ function CreateTicketModal({ subscriber, defaultDescription, onClose, onCreated 
       const res = await fetch(`${API}/service/tickets`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ subscriber, issue_type: issueType, priority, description }),
+        body: JSON.stringify({
+          subscriber,
+          device_id: deviceId,
+          device_type: deviceType,
+          issue_type: issueType,
+          location,
+          priority: priority.toUpperCase(),
+          assigned_tech: assignedTo,
+          due_date: dueDate,
+          description,
+          notes: notes,
+        }),
       });
       if (res.ok) {
         const ticket = await res.json();
@@ -160,40 +179,111 @@ function CreateTicketModal({ subscriber, defaultDescription, onClose, onCreated 
     setSaving(false);
   };
 
+  const inputClass = "w-full bg-transparent text-white border-b border-cyan-500/30 px-2 py-2 text-sm outline-none focus:border-cyan-400 transition-colors placeholder-slate-600";
+  const labelClass = "font-orbitron text-[8px] text-slate-500 tracking-wider uppercase mb-1";
+  const sectionClass = "font-orbitron text-[10px] text-cyan-400 tracking-wider uppercase mb-3 mt-5";
+
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm p-6 w-[480px] max-w-[95vw]" onClick={e => e.stopPropagation()} data-testid="create-ticket-modal">
-        <div className="flex justify-between items-center mb-4">
-          <div className="font-orbitron text-sm text-cyan-400 tracking-wider">NEW SERVICE TICKET</div>
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[560px] max-w-[95vw] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()} data-testid="create-ticket-modal">
+        {/* Header */}
+        <div className="flex justify-between items-start px-6 pt-5 pb-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <Wrench className="w-4 h-4 text-cyan-400" />
+              <span className="font-orbitron text-sm text-cyan-400 tracking-wider font-bold">Create Service Ticket</span>
+            </div>
+            <div className="text-[10px] text-slate-500 mt-1">New Service Ticket</div>
+          </div>
           <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
         </div>
-        <div className="font-orbitron text-[10px] text-slate-400 mb-1">SUBSCRIBER</div>
-        <div className="text-white font-mono text-sm mb-4 bg-slate-800/50 px-3 py-2 rounded-sm">{subscriber}</div>
 
-        <div className="font-orbitron text-[10px] text-slate-400 mb-1">ISSUE TYPE</div>
-        <select value={issueType} onChange={e => setIssueType(e.target.value)} className="w-full bg-slate-800/50 text-white border border-slate-700 rounded-sm px-3 py-2 text-sm mb-3 outline-none focus:border-cyan-500/50" data-testid="issue-type-select">
-          <option value="EXPIRED B/P">EXPIRED B/P</option>
-          <option value="EXPIRING B/P">EXPIRING B/P</option>
-          <option value="NOT READY">NOT READY</option>
-          <option value="LOST CONTACT">LOST CONTACT</option>
-          <option value="CAMERA ISSUE">CAMERA ISSUE</option>
-          <option value="OTHER">OTHER</option>
-        </select>
+        <div className="px-6 pb-6">
+          {/* SUBSCRIBER INFORMATION */}
+          <div className={sectionClass}>Subscriber Information</div>
+          <div className="border-t border-cyan-500/20 pt-3">
+            <div className={labelClass}>Subscriber Name</div>
+            <div className={inputClass + " bg-slate-800/30 cursor-default text-slate-300"}>{subscriber}</div>
+          </div>
 
-        <div className="font-orbitron text-[10px] text-slate-400 mb-1">PRIORITY</div>
-        <select value={priority} onChange={e => setPriority(e.target.value)} className="w-full bg-slate-800/50 text-white border border-slate-700 rounded-sm px-3 py-2 text-sm mb-3 outline-none focus:border-cyan-500/50" data-testid="priority-select">
-          <option value="LOW">LOW</option>
-          <option value="NORMAL">NORMAL</option>
-          <option value="HIGH">HIGH</option>
-          <option value="URGENT">URGENT</option>
-        </select>
+          {/* DEVICE INFORMATION */}
+          <div className={sectionClass}>Device Information</div>
+          <div className="border-t border-cyan-500/20 pt-3">
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <div>
+                <div className={labelClass}>Device ID</div>
+                <input value={deviceId} onChange={e => setDeviceId(e.target.value)} className={inputClass} placeholder="e.g. APES-X01" data-testid="device-id-input" />
+              </div>
+              <div>
+                <div className={labelClass}>Device Type</div>
+                <input value={deviceType} onChange={e => setDeviceType(e.target.value)} className={inputClass} placeholder="Hybrid" data-testid="device-type-input" />
+              </div>
+              <div>
+                <div className={labelClass}>Issue Type</div>
+                <select value={issueType} onChange={e => setIssueType(e.target.value)} className={inputClass + " bg-transparent"} data-testid="issue-type-select">
+                  <option value="NOT READY" className="bg-[#0a0f1c]">NOT READY</option>
+                  <option value="EXPIRED B/P" className="bg-[#0a0f1c]">EXPIRED B/P</option>
+                  <option value="EXPIRING B/P" className="bg-[#0a0f1c]">EXPIRING B/P</option>
+                  <option value="LOST CONTACT" className="bg-[#0a0f1c]">LOST CONTACT</option>
+                  <option value="CAMERA ISSUE" className="bg-[#0a0f1c]">CAMERA ISSUE</option>
+                  <option value="OTHER" className="bg-[#0a0f1c]">OTHER</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <div className={labelClass}>Location</div>
+              <input value={location} onChange={e => setLocation(e.target.value)} className={inputClass} placeholder="Building · Floor · Area" data-testid="location-input" />
+            </div>
+          </div>
 
-        <div className="font-orbitron text-[10px] text-slate-400 mb-1">DESCRIPTION</div>
-        <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} className="w-full bg-slate-800/50 text-white border border-slate-700 rounded-sm px-3 py-2 text-sm mb-4 outline-none focus:border-cyan-500/50 resize-none" placeholder="Describe the issue..." data-testid="description-input" />
+          {/* TICKET DETAILS */}
+          <div className={sectionClass}>Ticket Details</div>
+          <div className="border-t border-cyan-500/20 pt-3">
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <div>
+                <div className={labelClass}>Priority</div>
+                <select value={priority} onChange={e => setPriority(e.target.value)} className={inputClass + " bg-transparent"} data-testid="priority-select">
+                  <option value="Low" className="bg-[#0a0f1c]">Low</option>
+                  <option value="Medium" className="bg-[#0a0f1c]">Medium</option>
+                  <option value="High" className="bg-[#0a0f1c]">High</option>
+                  <option value="Urgent" className="bg-[#0a0f1c]">Urgent</option>
+                </select>
+              </div>
+              <div>
+                <div className={labelClass}>Assigned To</div>
+                <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)} className={inputClass + " bg-transparent"} data-testid="assigned-to-select">
+                  <option value="" className="bg-[#0a0f1c]">-- Select --</option>
+                  <option value="Lew" className="bg-[#0a0f1c]">Lew</option>
+                  <option value="Tony" className="bg-[#0a0f1c]">Tony</option>
+                  <option value="Stark" className="bg-[#0a0f1c]">Stark</option>
+                </select>
+              </div>
+              <div>
+                <div className={labelClass}>Due Date</div>
+                <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className={inputClass} data-testid="due-date-input" />
+              </div>
+            </div>
 
-        <button onClick={handleCreate} disabled={saving} className="w-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 font-orbitron text-[10px] tracking-wider py-2 rounded-sm hover:bg-cyan-500/30 transition-all disabled:opacity-50" data-testid="create-ticket-btn">
-          {saving ? <Loader2 className="w-3 h-3 animate-spin mx-auto" /> : "CREATE TICKET"}
-        </button>
+            <div className="mb-3">
+              <div className={labelClass}>Description</div>
+              <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} className={inputClass + " resize-y border border-cyan-500/20 rounded-sm px-3 py-2"} placeholder="Describe the issue..." data-testid="description-input" />
+            </div>
+
+            <div>
+              <div className={labelClass}>Additional Notes</div>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className={inputClass + " resize-y border border-cyan-500/20 rounded-sm px-3 py-2"} placeholder="Add any additional notes or instructions..." data-testid="notes-input" />
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-700/30">
+            <button onClick={onClose} className="font-orbitron text-[9px] tracking-wider px-5 py-2 text-slate-400 hover:text-white transition-colors">Cancel</button>
+            <button onClick={handleCreate} disabled={saving} className="flex items-center gap-1.5 font-orbitron text-[9px] tracking-wider px-5 py-2 bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 rounded-sm hover:bg-cyan-500/30 transition-all disabled:opacity-50" data-testid="create-ticket-btn">
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wrench className="w-3 h-3" />}
+              Create Ticket
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -489,7 +579,7 @@ export default function ServiceTickets({ user, onLogout }) {
       {createModal && (
         <CreateTicketModal
           subscriber={createModal}
-          defaultDescription={createFromDevice ? `Device: ${createFromDevice.sentinel_id}\nStatus: ${createFromDevice.detailed_status}\nLocation: ${createFromDevice.location}\n${createFromDevice.days_summary || ''}` : ''}
+          device={createFromDevice}
           onClose={() => { setCreateModal(null); setCreateFromDevice(null); }}
           onCreated={() => fetchData()}
         />
