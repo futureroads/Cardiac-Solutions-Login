@@ -1643,8 +1643,8 @@ async def tts_speak(request: Request):
         audio_base64 = await tts.generate_speech_base64(
             text=text,
             model="tts-1-hd",
-            voice="onyx",
-            speed=0.95,
+            voice="coral",
+            speed=0.92,
             response_format="mp3"
         )
         return {"audio": audio_base64, "format": "mp3"}

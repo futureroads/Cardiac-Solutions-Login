@@ -18,8 +18,8 @@ export default function Dashboard({ user, onLogout }) {
     if (isSpeaking) return;
     const hour = new Date().getHours();
     const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-    const name = freshUser?.name || user?.name || 'Sir';
-    const text = `${greeting}, ${name}. All systems are nominal. How can I assist you today?`;
+    const name = freshUser?.name || user?.name || 'hon';
+    const text = `Well ${greeting}, ${name}. All systems are runnin' smooth as butter. What can I do for you, darlin'?`;
 
     setIsSpeaking(true);
     setIsListening(true);
