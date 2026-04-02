@@ -81,3 +81,6 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 
 ## Changelog
 - 2026-03-31: Fixed Dashboard System Status showing 0 on cold start. Root cause: frontend was using `data.total_cameras` but Readisys API returns `data.totals.total`. Added backend cache pre-warming on startup, loading/error states in UI with RETRY button, and proper data mapping from Readisys nested `totals` object.
+- 2026-04-02: Made version number dynamic (deployment timestamp from `/api/version` instead of hardcoded).
+- 2026-04-02: Added "STATUS: ONLINE" label with pulsing green dot to System Status card (both Detailed and Simple views).
+- 2026-04-02: Upgraded JARVIS voice from browser SpeechSynthesis to OpenAI TTS (onyx voice, tts-1-hd model) via `/api/tts/speak` endpoint. Falls back to browser voice if API fails.

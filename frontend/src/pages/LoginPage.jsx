@@ -294,6 +294,7 @@ export default function LoginPage({ onLogin }) {
   const [showSparks, setShowSparks] = useState(false);
   const [currentScreen, setCurrentScreen] = useState("heart"); // "heart", "beating", "login"
   const [serverStatus, setServerStatus] = useState("checking"); // "checking", "online", "offline"
+  const [buildVersion, setBuildVersion] = useState("");
   const containerRef = useRef(null);
   const usernameInputRef = useRef(null);
   
@@ -314,6 +315,10 @@ export default function LoginPage({ onLogin }) {
       }
     };
     checkServer();
+    // Fetch dynamic version
+    axios.get(`${API}/version`, { timeout: 5000 })
+      .then(r => { if (r.data?.version) setBuildVersion(r.data.version); })
+      .catch(() => {});
   }, []);
 
   // Focus username input when login screen appears
@@ -468,8 +473,8 @@ export default function LoginPage({ onLogin }) {
       onMouseLeave={() => setShowCustomCursor(false)}
     >
       {/* Build Version */}
-      <div className="absolute top-6 left-5 z-50 text-xs font-mono tracking-widest text-slate-500 select-none opacity-70">
-        v2603271450
+      <div className="absolute top-6 left-5 z-50 text-xs font-mono tracking-widest text-slate-500 select-none opacity-70" data-testid="build-version">
+        {buildVersion || "loading..."}
       </div>
 
       {/* Custom Cursor - only show on heart and beating screens */}

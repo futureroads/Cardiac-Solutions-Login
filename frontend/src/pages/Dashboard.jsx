@@ -14,28 +14,45 @@ export default function Dashboard({ user, onLogout }) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
-  const jarvisGreet = () => {
+  const jarvisGreet = async () => {
     if (isSpeaking) return;
     const hour = new Date().getHours();
     const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
     const name = freshUser?.name || user?.name || 'Sir';
-    const text = `${greeting}, ${name}. How can I help you?`;
+    const text = `${greeting}, ${name}. All systems are nominal. How can I assist you today?`;
 
     setIsSpeaking(true);
     setIsListening(true);
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.95;
-    utterance.pitch = 0.85;
-    // Pick a deep male English voice if available
-    const voices = window.speechSynthesis.getVoices();
-    const preferred = voices.find(v => /daniel|james|google uk male|male/i.test(v.name) && /en/i.test(v.lang))
-      || voices.find(v => /en-GB/i.test(v.lang))
-      || voices.find(v => /en/i.test(v.lang));
-    if (preferred) utterance.voice = preferred;
-    utterance.onend = () => { setIsSpeaking(false); setIsListening(false); };
-    utterance.onerror = () => { setIsSpeaking(false); setIsListening(false); };
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/api/tts/speak`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error("TTS failed");
+      const data = await res.json();
+      const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
+      audio.onended = () => { setIsSpeaking(false); setIsListening(false); };
+      audio.onerror = () => { setIsSpeaking(false); setIsListening(false); };
+      await audio.play();
+    } catch (err) {
+      console.warn("OpenAI TTS failed, falling back to browser voice:", err);
+      // Fallback to browser SpeechSynthesis
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.95;
+      utterance.pitch = 0.85;
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(v => /daniel|james|google uk male|male/i.test(v.name) && /en/i.test(v.lang))
+        || voices.find(v => /en-GB/i.test(v.lang))
+        || voices.find(v => /en/i.test(v.lang));
+      if (preferred) utterance.voice = preferred;
+      utterance.onend = () => { setIsSpeaking(false); setIsListening(false); };
+      utterance.onerror = () => { setIsSpeaking(false); setIsListening(false); };
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    }
   };
   const [aiScrollPaused, setAiScrollPaused] = useState(false);
   const [aiHovered, setAiHovered] = useState(false);
@@ -569,6 +586,10 @@ export default function Dashboard({ user, onLogout }) {
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">System Status</div>
+            <div className="flex items-center justify-center gap-2 mt-1 mb-1" data-testid="readiness-status">
+              <span className="inline-block w-[6px] h-[6px] rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.7)] animate-pulse" />
+              <span className="font-orbitron text-[8px] font-bold tracking-[0.2em] text-green-400">STATUS: ONLINE</span>
+            </div>
             <div className="flex flex-col items-center py-[10px]">
               {!liveStats && statusError ? (
                 <div className="flex flex-col items-center gap-3 py-4" data-testid="status-error">
@@ -938,6 +959,10 @@ export default function Dashboard({ user, onLogout }) {
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">System Status</div>
+            <div className="flex items-center justify-center gap-2 mt-1 mb-1" data-testid="simple-readiness-status">
+              <span className="inline-block w-[6px] h-[6px] rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.7)] animate-pulse" />
+              <span className="font-orbitron text-[8px] font-bold tracking-[0.2em] text-green-400">STATUS: ONLINE</span>
+            </div>
             <div className="flex flex-col items-center py-[10px]">
               {!liveStats && statusError ? (
                 <div className="flex flex-col items-center gap-3 py-4" data-testid="simple-status-error">

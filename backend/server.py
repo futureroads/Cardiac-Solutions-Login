@@ -147,9 +147,10 @@ async def version_check():
             versions[pkg] = getattr(m, "__version__", "installed")
         except Exception:
             versions[pkg] = "NOT FOUND"
+    _build_ts = datetime.now(timezone.utc).strftime("%y%m%d%H%M")
     return {
-        "version": "v10-instant",
-        "build": "2603271445",
+        "version": f"v{_build_ts}",
+        "build": _build_ts,
         "python": sys.version,
         "status": "running",
         "bcrypt_available": _HAS_BCRYPT,
@@ -1583,7 +1584,7 @@ async def debug_status():
         "db_name": db_name,
         "jwt_secret_set": bool(JWT_SECRET),
         "seed_done": _seed_done,
-        "version": "v10-instant",
+        "version": f"v{datetime.now(timezone.utc).strftime('%y%m%d%H%M')}",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     try:
@@ -1621,6 +1622,37 @@ async def debug_test_login():
     except Exception as e:
         result["error"] = str(e)
     return result
+
+@api_router.post("/tts/speak")
+async def tts_speak(request: Request):
+    """Generate JARVIS-style speech using OpenAI TTS (onyx voice)."""
+    try:
+        body = await request.json()
+        text = body.get("text", "")
+        if not text:
+            raise HTTPException(status_code=400, detail="Text is required")
+        if len(text) > 4096:
+            text = text[:4096]
+
+        from emergentintegrations.llm.openai import OpenAITextToSpeech
+        api_key = os.environ.get("EMERGENT_LLM_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="TTS key not configured")
+
+        tts = OpenAITextToSpeech(api_key=api_key)
+        audio_base64 = await tts.generate_speech_base64(
+            text=text,
+            model="tts-1-hd",
+            voice="onyx",
+            speed=0.95,
+            response_format="mp3"
+        )
+        return {"audio": audio_base64, "format": "mp3"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[TTS] Error: {e}", flush=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/")
 async def root():

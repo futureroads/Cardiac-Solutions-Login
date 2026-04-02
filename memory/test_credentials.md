@@ -1,13 +1,14 @@
 # Test Credentials
 
 ## Admin Account
-- Username: futureroads
-- Password: @@U1s9m6c7@@
+- Username: `futureroads`
+- Password: `@@U1s9m6c7@@`
+- Role: admin
 
-## Standard Users
-- Lew / Lew123
-- Stark / Stark123
-- Tony / Tony123
-- Tracey / Tracey123
-- Nate / Nate123
-- Jon / Jon123
+## Standard User (C Level)
+- Username: `Lew`
+- Password: `Lew123`
+- Role: C Level
+
+## Other Users
+- Username: `Stark` / Password: `Stark123` / Role: Director
