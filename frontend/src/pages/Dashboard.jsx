@@ -311,6 +311,16 @@ export default function Dashboard({ user, onLogout }) {
     const bd = liveStats?.totals?.telemetry_distribution?.battery || {};
     const cd = liveStats?.totals?.telemetry_distribution?.cellular || {};
 
+    // Percent Ready daily trend event
+    const trend = liveStats?._pct_trend;
+    if (trend === 'up') {
+      items.push({ type: 'SYS', msg: 'GOOD JOB! The percent ready has improved since yesterday!' });
+    } else if (trend === 'down') {
+      items.push({ type: 'WARN', msg: 'The percent ready has slipped today. You might want to review the statuses.' });
+    } else if (trend === 'stable') {
+      items.push({ type: 'SYS', msg: 'Percent ready is stable.' });
+    }
+
     // Camera Battery events
     if (diPerms.camera_battery === 'overview') {
       const total = (bd.p0_24 || 0) + (bd.p25_49 || 0) + (bd.p50_74 || 0) + (bd.p75_100 || 0);

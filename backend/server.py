@@ -1447,12 +1447,44 @@ async def send_overview_email(current_user: dict = Depends(get_current_user)):
 
 # ==================== Status Overview (proxied from Readisys) ====================
 
+async def _track_pct_ready(status_data: dict) -> str:
+    """Store today's percent_ready and compare with yesterday. Returns 'up', 'down', or 'stable'."""
+    if _db is None:
+        return "stable"
+    pct = status_data.get("totals", {}).get("percent_ready")
+    if pct is None:
+        return "stable"
+    pct = round(float(pct), 2)
+
+    from datetime import date
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Upsert today's value
+    await _db.pct_ready_history.update_one(
+        {"date": today_str},
+        {"$set": {"date": today_str, "percent_ready": pct, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+
+    # Get yesterday's value
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    prev = await _db.pct_ready_history.find_one({"date": yesterday}, {"_id": 0})
+    if not prev or "percent_ready" not in prev:
+        return "stable"
+
+    prev_pct = round(float(prev["percent_ready"]), 2)
+    if pct > prev_pct:
+        return "up"
+    elif pct < prev_pct:
+        return "down"
+    return "stable"
+
 _status_cache = {"data": None, "ts": 0}
 _bp_cache = {"data": None, "ts": 0}
 
 @api_router.get("/status-overview")
 async def status_overview():
-    """Proxy to Readisys status overview API. Caches for 120s."""
+    """Proxy to Readisys status overview API. Caches for 120s. Tracks daily percent_ready trend."""
     import httpx, time
     now = time.time()
     if _status_cache["data"] and (now - _status_cache["ts"]) < 120:
@@ -1462,9 +1494,17 @@ async def status_overview():
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
             resp.raise_for_status()
-            _status_cache["data"] = resp.json()
+            data = resp.json()
+            # Track daily percent_ready trend
+            try:
+                trend = await _track_pct_ready(data)
+                data["_pct_trend"] = trend
+            except Exception as te:
+                logger.warning(f"pct_ready tracking error: {te}")
+                data["_pct_trend"] = "stable"
+            _status_cache["data"] = data
             _status_cache["ts"] = now
-            return _status_cache["data"]
+            return data
     except Exception as e:
         logger.warning(f"status-overview fetch failed: {e}")
         if _status_cache["data"]:
