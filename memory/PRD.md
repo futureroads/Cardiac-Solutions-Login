@@ -14,42 +14,39 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - [x] Cross-domain SSO tokens for Daily Report & Notifications (60s expiry, jti single-use, HS256)
 - [x] Token expiry validation on page load (auto-logout if expired)
 - [x] Login always redirects to /hub
-- [x] Dashboard with dynamic status LEDs, clickable panels
+- [x] Dashboard with dynamic status LEDs, clickable panels, DI scrolling, OpenAI TTS preload
 - [x] Backend Management page (admin-only) with Camera Overview, Server Resources, DB Status
 - [x] Outage Status page (admin-only) monitoring 18 services across 5 categories
-- [x] Hybrid Training page (admin-only) — 5-step workflow: Feedback Queue -> Analyze -> Updates -> Apply -> Monitor
-- [x] Hybrid Training syncs from real Readisys API with 3-attempt retry logic
-- [x] Hybrid Training Step 2: Real Gemini LLM (gemini-2.5-flash) generates Qwen + OpenCV prompt suggestions
-- [x] Hybrid Training Step 2: Editable "PROMPT TO GEMINI" field pre-filled with feedback context for custom AI instructions
-- [x] Hybrid Training Step 2: Editable QWEN and OPENCV text fields for AI results and manual prompt editing/pasting
+- [x] Hybrid Training page (admin-only) — 5-step workflow with real Gemini LLM integration
 - [x] Customer Portal page (admin-only) — Customer Information form + AED Units table with CRUD
-- [x] Customer Portal backend API: POST/GET/PUT /api/customers
-- [x] Frontend error resilience: auto-retries, health pings, error toasts
+- [x] Service Console (/service-tickets) — Subscriber issues, device drill-down, ticket CRUD
+- [x] Field Tech Management (Settings modal) — CRUD for field technicians
+- [x] Ticket Dispatch with Mailgun email (from no-reply@cardiac-solutions.ai)
+- [x] Public Tech Response page (/tech/:ticketId) for technicians to update status
+- [x] OpenAI TTS ("JARVIS" voice) preloaded on Dashboard mount
+- [x] Daily Percent Ready tracker with DI feed integration
+- [x] Parallel Readisys API calls for fast Service Console loading
+- [x] Dispatch email fallback: resolves tech_email from field_techs when missing on older tickets
 - [x] Production CrashLoopBackOff fix: sparse indexes, null username cleanup, duplicate removal
-- [x] Seed always updates allowed_modules for existing users (no fast-path skip)
-- [x] `hybrid_training` added to ALL_MODULE_IDS for all users
+- [x] Frontend error resilience: auto-retries, health pings, error toasts
 
 ## Tech Stack
 - Frontend: React 19 + Framer Motion + Tailwind CSS + Shadcn UI
 - Backend: FastAPI + Motor (async MongoDB) + PBKDF2 (hashlib) + PyJWT + httpx
 - Database: MongoDB
+- Integrations: Mailgun (email), OpenAI TTS (via Emergent LLM Key), Readisys API (AED data)
 - Deployment: Emergent platform with Cloudflare CDN
 
 ## Key Files
 - `/app/frontend/src/App.js` — Routes
+- `/app/frontend/src/pages/ServiceTickets.jsx` — Service Console with modals
+- `/app/frontend/src/pages/TechResponse.jsx` — Public tech response portal
+- `/app/frontend/src/pages/Dashboard.jsx` — TTS preload, DI percent ready
 - `/app/frontend/src/pages/CommandCenterHub.jsx` — Hub with module cards, SSO redirects
 - `/app/frontend/src/pages/HybridTraining.jsx` — 5-step training pipeline
-- `/app/frontend/src/pages/Dashboard.jsx` — Dynamic status LEDs
 - `/app/frontend/src/pages/UserAccess.jsx` — Admin CRUD
-- `/app/frontend/src/pages/BackendManagement.jsx` — Admin backend panel
-- `/app/frontend/src/pages/OutageStatus.jsx` — Service monitoring
 - `/app/frontend/src/pages/LoginPage.jsx` — Multi-stage login + build version
-- `/app/backend/server.py` — All backend logic
-
-## Cross-Domain SSO
-- JWT Secret: `cardiac-solutions-secure-jwt-secret-key-2024-production`
-- Algorithm: HS256
-- Expiry: 60 seconds
+- `/app/backend/server.py` — All backend logic (~2100 lines)
 
 ## Credentials
 - **Admin**: futureroads / @@U1s9m6c7@@
@@ -58,29 +55,26 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 ## Prioritized Backlog
 
 ### P1 (High)
-- Wire Hybrid Training Step 4 "Apply" to send prompts to real Qwen/OpenCV backends
 - Build Daily Report module page
 - Build Notifications module page
-- Enable real email delivery (Resend API key)
 
 ### P2 (Medium)
 - Build Survival Path module page
-- Export to CSV, historical charts
+- Wire Hybrid Training Step 4 "Apply" to real Qwen/OpenCV backends
 
 ### P3 (Nice to Have)
+- Refactor server.py (~2100 lines) into modular route files
+- Refactor LoginPage.jsx, Dashboard.jsx, ServiceTickets.jsx
 - Mobile responsive optimizations
-- Refactor LoginPage.jsx into smaller components
-- Split server.py into modular route files (/routes/auth.py, /routes/admin.py, /routes/training.py)
 - Implement real-time AED device status
 
 ## Known Issues
-- Production cold start / "asleep" timeouts (MITIGATED with cache pre-warming + keep-alive pings)
-- Steps 4-5 (Apply/Monitor) still use MOCKED endpoints — Apply doesn't call real Qwen/OpenCV backends
-- Email sending is MOCKED (no RESEND_API_KEY configured)
+- Steps 4-5 (Apply/Monitor) in Hybrid Training still use MOCKED endpoints
 - Dashboard subscribers/devices/tickets are still MOCKED — only System Status and DI scroll are real
 
 ## Changelog
-- 2026-03-31: Fixed Dashboard System Status showing 0 on cold start. Root cause: frontend was using `data.total_cameras` but Readisys API returns `data.totals.total`. Added backend cache pre-warming on startup, loading/error states in UI with RETRY button, and proper data mapping from Readisys nested `totals` object.
-- 2026-04-02: Made version number dynamic (deployment timestamp from `/api/version` instead of hardcoded).
-- 2026-04-02: Added "STATUS: ONLINE" label with pulsing green dot to System Status card (both Detailed and Simple views).
-- 2026-04-02: Upgraded JARVIS voice from browser SpeechSynthesis to OpenAI TTS (onyx voice, tts-1-hd model) via `/api/tts/speak` endpoint. Falls back to browser voice if API fails.
+- 2026-04-02: Fixed Service Console slow load (30+s -> ~3s) by parallelizing Readisys API calls with asyncio.gather
+- 2026-04-02: Fixed dispatch email failure on older tickets by adding field_techs collection fallback lookup
+- 2026-04-02: Parallelized cache pre-warm on startup (both caches fill simultaneously)
+- 2026-04-02: OpenAI TTS integrated, Dashboard DI percent ready tracker, Service Console built
+- 2026-03-31: Fixed Dashboard System Status showing 0 on cold start
