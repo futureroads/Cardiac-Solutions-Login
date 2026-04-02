@@ -1642,7 +1642,7 @@ async def tts_speak(request: Request):
         tts = OpenAITextToSpeech(api_key=api_key)
         audio_base64 = await tts.generate_speech_base64(
             text=text,
-            model="tts-1-hd",
+            model="tts-1",
             voice="nova",
             speed=0.92,
             response_format="mp3"
