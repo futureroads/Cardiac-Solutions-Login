@@ -712,7 +712,7 @@ export default function Dashboard({ user, onLogout }) {
           <div onClick={() => ssoRedirect("notifications")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors" data-testid="customer-notifications-panel">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
-            <div className="plabel">Customer Notifications</div>
+            <div className="plabel">Customer Notifications <span className="ml-2 text-[7px] px-[5px] py-[1px] bg-yellow-500/20 text-yellow-400 rounded-sm font-bold tracking-wider">IN DEV</span></div>
             <div className="flex gap-[14px] mb-[8px] pb-[8px] border-b border-cyan-500/10">
               <div className="flex flex-col items-center gap-[2px]">
                 <div className="font-orbitron text-[13px] font-black text-yellow-400">{stats.pendingNotifs}</div>
@@ -837,7 +837,7 @@ export default function Dashboard({ user, onLogout }) {
           <div onClick={() => window.open("https://service.cardiac-solutions.ai", "_blank", "noopener,noreferrer")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1 cursor-pointer hover:border-cyan-400/60 transition-colors" data-testid="service-tickets-panel">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
-            <div className="plabel">Service Tickets</div>
+            <div className="plabel">Service Tickets <span className="ml-2 text-[7px] px-[5px] py-[1px] bg-yellow-500/20 text-yellow-400 rounded-sm font-bold tracking-wider">IN DEV</span></div>
             <div className="flex flex-col gap-[5px] overflow-y-auto scrollbar-thin" style={{ maxHeight: 'calc(100% - 30px)' }}>
               {tickets.map((ticket, i) => {
                 const badge = getStatusBadge(ticket.status);
@@ -1020,7 +1020,7 @@ export default function Dashboard({ user, onLogout }) {
           <div onClick={() => ssoRedirect("notifications")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
-            <div className="plabel">Customer Notifications</div>
+            <div className="plabel">Customer Notifications <span className="ml-2 text-[7px] px-[5px] py-[1px] bg-yellow-500/20 text-yellow-400 rounded-sm font-bold tracking-wider">IN DEV</span></div>
             <div className="grid grid-cols-2 gap-[6px] pt-[6px]">
               {[
                 { label: 'Total Subscribers', value: stats.subscribers.toLocaleString(), color: 'text-white' },
@@ -1193,7 +1193,7 @@ export default function Dashboard({ user, onLogout }) {
           <div onClick={() => window.open("https://service.cardiac-solutions.ai", "_blank", "noopener,noreferrer")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
-            <div className="plabel">Service Tickets</div>
+            <div className="plabel">Service Tickets <span className="ml-2 text-[7px] px-[5px] py-[1px] bg-yellow-500/20 text-yellow-400 rounded-sm font-bold tracking-wider">IN DEV</span></div>
             <div className="flex flex-col gap-[5px] pt-[4px]">
               {[
                 { label: 'Needs Attention', value: stats.lost + stats.service, color: 'text-red-400', bg: 'bg-red-500/15', border: 'border-l-red-500' },
