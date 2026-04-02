@@ -162,6 +162,7 @@ function CreateTicketModal({ subscriber, device, fieldTechs = [], onClose, onCre
           location,
           priority: priority.toUpperCase(),
           assigned_tech: assignedTo,
+          tech_email: fieldTechs.find(t => t.name === assignedTo)?.email || "",
           due_date: dueDate,
           description,
           notes: notes,
@@ -293,9 +294,7 @@ function CreateTicketModal({ subscriber, device, fieldTechs = [], onClose, onCre
 function TicketListModal({ subscriber, onClose }) {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [dispatchId, setDispatchId] = useState(null);
-  const [techName, setTechName] = useState("");
-  const [techEmail, setTechEmail] = useState("");
+  const [dispatching, setDispatching] = useState(null);
 
   const fetchTickets = useCallback(async () => {
     try {
@@ -321,18 +320,21 @@ function TicketListModal({ subscriber, onClose }) {
     fetchTickets();
   };
 
-  const handleDispatch = async (ticketId) => {
-    if (!techName || !techEmail) { toast.error("Enter tech name and email"); return; }
+  const handleDispatch = async (ticket) => {
+    setDispatching(ticket.id);
     const token = localStorage.getItem("token");
-    await fetch(`${API}/service/tickets/${ticketId}/dispatch`, {
+    const res = await fetch(`${API}/service/tickets/${ticket.id}/dispatch`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ tech_name: techName, tech_email: techEmail }),
+      body: JSON.stringify({ tech_name: ticket.assigned_tech, tech_email: ticket.tech_email }),
     });
-    toast.success(`Dispatched to ${techName}`);
-    setDispatchId(null);
-    setTechName("");
-    setTechEmail("");
+    if (res.ok) {
+      const data = await res.json();
+      toast.success(data.email_sent ? `Dispatched & emailed to ${ticket.assigned_tech}` : `Dispatched to ${ticket.assigned_tech} (email not sent)`);
+    } else {
+      toast.error("Dispatch failed");
+    }
+    setDispatching(null);
     fetchTickets();
   };
 
@@ -378,41 +380,31 @@ function TicketListModal({ subscriber, onClose }) {
                 <div className="flex gap-2 flex-wrap">
                   {t.status === "OPEN" && (
                     <>
-                      <button onClick={() => setDispatchId(dispatchId === t.id ? null : t.id)} className="font-orbitron text-[7px] px-2 py-1 border border-purple-500/40 text-purple-400 rounded-sm hover:bg-purple-500/10" data-testid={`dispatch-btn-${t.id}`}>
-                        <Send className="w-2.5 h-2.5 inline mr-1" />DISPATCH
+                      <button onClick={() => handleDispatch(t)} disabled={dispatching === t.id} className="font-orbitron text-[7px] px-2 py-1 border border-purple-500/40 text-purple-400 rounded-sm hover:bg-purple-500/10 disabled:opacity-50" data-testid={`dispatch-btn-${t.id}`}>
+                        {dispatching === t.id ? <Loader2 className="w-2.5 h-2.5 inline mr-1 animate-spin" /> : <Send className="w-2.5 h-2.5 inline mr-1" />}DISPATCH
                       </button>
                       <button onClick={() => updateStatus(t.id, "CLOSED")} className="font-orbitron text-[7px] px-2 py-1 border border-slate-500/40 text-slate-400 rounded-sm hover:bg-slate-500/10">CLOSE</button>
                     </>
                   )}
                   {t.status === "DISPATCHED" && (
                     <>
-                      <button onClick={() => updateStatus(t.id, "EN ROUTE")} className="font-orbitron text-[7px] px-2 py-1 border border-blue-500/40 text-blue-400 rounded-sm hover:bg-blue-500/10">EN ROUTE</button>
+                      <button onClick={() => updateStatus(t.id, "ACKNOWLEDGED")} className="font-orbitron text-[7px] px-2 py-1 border border-cyan-500/40 text-cyan-400 rounded-sm hover:bg-cyan-500/10">ACKNOWLEDGED</button>
                       <button onClick={() => updateStatus(t.id, "CLOSED")} className="font-orbitron text-[7px] px-2 py-1 border border-slate-500/40 text-slate-400 rounded-sm hover:bg-slate-500/10">CLOSE</button>
                     </>
+                  )}
+                  {t.status === "ACKNOWLEDGED" && (
+                    <button onClick={() => updateStatus(t.id, "EN ROUTE")} className="font-orbitron text-[7px] px-2 py-1 border border-blue-500/40 text-blue-400 rounded-sm hover:bg-blue-500/10">EN ROUTE</button>
                   )}
                   {t.status === "EN ROUTE" && (
                     <button onClick={() => updateStatus(t.id, "ON SITE")} className="font-orbitron text-[7px] px-2 py-1 border border-yellow-500/40 text-yellow-400 rounded-sm hover:bg-yellow-500/10">ON SITE</button>
                   )}
                   {t.status === "ON SITE" && (
-                    <button onClick={() => updateStatus(t.id, "DONE")} className="font-orbitron text-[7px] px-2 py-1 border border-green-500/40 text-green-400 rounded-sm hover:bg-green-500/10">DONE</button>
+                    <button onClick={() => updateStatus(t.id, "COMPLETE")} className="font-orbitron text-[7px] px-2 py-1 border border-green-500/40 text-green-400 rounded-sm hover:bg-green-500/10">COMPLETE</button>
                   )}
-                  {t.status === "DONE" && (
+                  {t.status === "COMPLETE" && (
                     <button onClick={() => updateStatus(t.id, "CLOSED")} className="font-orbitron text-[7px] px-2 py-1 border border-slate-500/40 text-slate-400 rounded-sm hover:bg-slate-500/10">CLOSE</button>
                   )}
                 </div>
-
-                {/* Dispatch form */}
-                {dispatchId === t.id && (
-                  <div className="mt-2 flex gap-2 items-end">
-                    <div className="flex-1">
-                      <input value={techName} onChange={e => setTechName(e.target.value)} placeholder="Tech name" className="w-full bg-slate-800/50 text-white border border-slate-700 rounded-sm px-2 py-1 text-[10px] outline-none" data-testid="tech-name-input" />
-                    </div>
-                    <div className="flex-1">
-                      <input value={techEmail} onChange={e => setTechEmail(e.target.value)} placeholder="Tech email" className="w-full bg-slate-800/50 text-white border border-slate-700 rounded-sm px-2 py-1 text-[10px] outline-none" data-testid="tech-email-input" />
-                    </div>
-                    <button onClick={() => handleDispatch(t.id)} className="font-orbitron text-[7px] px-3 py-1 bg-purple-500/20 border border-purple-500/40 text-purple-400 rounded-sm hover:bg-purple-500/30" data-testid="confirm-dispatch-btn">SEND</button>
-                  </div>
-                )}
               </div>
             ))}
           </div>
