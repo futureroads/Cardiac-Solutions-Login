@@ -1714,9 +1714,8 @@ async def create_ticket(data: dict, current_user: dict = Depends(get_current_use
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "notes": [],
     }
-    await _db.service_tickets.insert_one({**ticket, "_id": None})
-    await _db.service_tickets.update_one({"id": ticket["id"]}, {"$unset": {"_id": ""}})
-    return ticket
+    await _db.service_tickets.insert_one(ticket)
+    return {k: v for k, v in ticket.items() if k != "_id"}
 
 
 @api_router.put("/service/tickets/{ticket_id}")
@@ -1782,9 +1781,8 @@ async def create_field_tech(data: dict, current_user: dict = Depends(get_current
         "active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    await _db.field_techs.insert_one({**tech})
-    await _db.field_techs.update_one({"id": tech["id"]}, {"$unset": {"_id": ""}})
-    return tech
+    await _db.field_techs.insert_one(tech)
+    return {k: v for k, v in tech.items() if k != "_id"}
 
 
 @api_router.put("/service/field-techs/{tech_id}")
