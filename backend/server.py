@@ -1735,9 +1735,12 @@ async def update_ticket(ticket_id: str, data: dict, current_user: dict = Depends
 
 @api_router.post("/service/tickets/{ticket_id}/dispatch")
 async def dispatch_ticket(ticket_id: str, data: dict, current_user: dict = Depends(get_current_user)):
-    """Dispatch a ticket to a field tech."""
+    """Dispatch a ticket to a field tech and send email notification."""
     tech_name = data.get("tech_name", "")
     tech_email = data.get("tech_email", "")
+
+    # Generate a secure token for the tech to access the ticket
+    dispatch_token = uuid.uuid4().hex
 
     await _db.service_tickets.update_one(
         {"id": ticket_id},
@@ -1745,12 +1748,149 @@ async def dispatch_ticket(ticket_id: str, data: dict, current_user: dict = Depen
             "status": "DISPATCHED",
             "assigned_tech": tech_name,
             "tech_email": tech_email,
+            "dispatch_token": dispatch_token,
             "dispatched_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }}
     )
     ticket = await _db.service_tickets.find_one({"id": ticket_id}, {"_id": 0})
-    return {"success": True, "ticket": ticket, "message": f"Dispatched to {tech_name} ({tech_email})"}
+
+    # Send dispatch email via Mailgun
+    email_sent = False
+    if tech_email and ticket:
+        try:
+            email_sent = await _send_dispatch_email(ticket, tech_name, tech_email, dispatch_token)
+        except Exception as e:
+            logger.warning(f"Dispatch email failed: {e}")
+
+    return {"success": True, "ticket": ticket, "email_sent": email_sent, "message": f"Dispatched to {tech_name} ({tech_email})"}
+
+
+async def _send_dispatch_email(ticket: dict, tech_name: str, tech_email: str, dispatch_token: str):
+    """Send styled dispatch email via Mailgun."""
+    import requests as req
+
+    mg_key = os.environ.get("MAILGUN_API_KEY")
+    mg_domain = os.environ.get("MAILGUN_DOMAIN")
+    sender = os.environ.get("DISPATCH_SENDER", f"dispatch@{mg_domain}")
+    if not mg_key or not mg_domain:
+        logger.warning("Mailgun not configured — skipping email")
+        return False
+
+    # Build the tech response URL
+    app_url = os.environ.get("APP_URL", "https://cardiac-command.preview.emergentagent.com")
+    view_url = f"{app_url}/tech/{ticket['id']}?token={dispatch_token}"
+
+    subject = f"Service Dispatch: {ticket['id']} — {ticket.get('subscriber', 'N/A')}"
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:0;background:#0a0f1c;font-family:Arial,sans-serif;">
+<div style="max-width:600px;margin:0 auto;background:#0d1526;border:1px solid rgba(6,182,212,0.3);border-radius:4px;overflow:hidden;">
+  <div style="background:linear-gradient(135deg,#0a1628,#122040);padding:24px 32px;border-bottom:1px solid rgba(6,182,212,0.2);">
+    <div style="color:#ef4444;font-size:18px;display:inline;">&#9829;</div>
+    <span style="color:#ffffff;font-size:16px;font-weight:bold;letter-spacing:2px;margin-left:8px;">RESCUEAID</span>
+    <span style="color:#64748b;font-size:10px;letter-spacing:2px;margin-left:8px;">SERVICE DISPATCH</span>
+  </div>
+  <div style="padding:32px;">
+    <div style="color:#06b6d4;font-size:12px;letter-spacing:3px;font-weight:bold;margin-bottom:4px;">SERVICE TICKET DISPATCHED</div>
+    <div style="color:#64748b;font-size:11px;margin-bottom:24px;">You have been assigned a new service ticket</div>
+
+    <div style="background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.2);border-radius:4px;padding:20px;margin-bottom:24px;">
+      <table style="width:100%;border-collapse:collapse;">
+        <tr><td style="color:#64748b;font-size:11px;padding:6px 0;width:120px;">TICKET ID</td><td style="color:#ffffff;font-size:13px;font-weight:bold;">{ticket['id']}</td></tr>
+        <tr><td style="color:#64748b;font-size:11px;padding:6px 0;">SUBSCRIBER</td><td style="color:#ffffff;font-size:13px;">{ticket.get('subscriber', 'N/A')}</td></tr>
+        <tr><td style="color:#64748b;font-size:11px;padding:6px 0;">DEVICE</td><td style="color:#ffffff;font-size:13px;">{ticket.get('device_id', 'N/A')}</td></tr>
+        <tr><td style="color:#64748b;font-size:11px;padding:6px 0;">ISSUE TYPE</td><td style="color:#f59e0b;font-size:13px;font-weight:bold;">{ticket.get('issue_type', 'N/A')}</td></tr>
+        <tr><td style="color:#64748b;font-size:11px;padding:6px 0;">LOCATION</td><td style="color:#ffffff;font-size:13px;">{ticket.get('location', 'N/A')}</td></tr>
+        <tr><td style="color:#64748b;font-size:11px;padding:6px 0;">PRIORITY</td><td style="color:#ffffff;font-size:13px;">{ticket.get('priority', 'N/A')}</td></tr>
+        <tr><td style="color:#64748b;font-size:11px;padding:6px 0;">ASSIGNED TO</td><td style="color:#06b6d4;font-size:13px;font-weight:bold;">{tech_name}</td></tr>
+      </table>
+    </div>
+
+    {f'<div style="color:#94a3b8;font-size:12px;margin-bottom:24px;padding:12px;background:rgba(100,116,139,0.1);border-radius:4px;">{ticket.get("description", "")}</div>' if ticket.get('description') else ''}
+
+    <div style="text-align:center;margin:32px 0;">
+      <a href="{view_url}" style="display:inline-block;background:linear-gradient(135deg,#0891b2,#06b6d4);color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:4px;font-size:13px;font-weight:bold;letter-spacing:2px;">VIEW &amp; RESPOND</a>
+    </div>
+
+    <div style="color:#475569;font-size:10px;text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid rgba(100,116,139,0.2);">
+      Cardiac Solutions LLC &mdash; AED Service Management<br/>
+      This is an automated dispatch notification
+    </div>
+  </div>
+</div>
+</body>
+</html>"""
+
+    resp = req.post(
+        f"https://api.mailgun.net/v3/{mg_domain}/messages",
+        auth=("api", mg_key),
+        data={
+            "from": f"Cardiac Dispatch <{sender}>",
+            "to": [tech_email],
+            "subject": subject,
+            "html": html,
+        },
+        timeout=10,
+    )
+    logger.info(f"Mailgun dispatch email: {resp.status_code} {resp.text[:200]}")
+    return resp.status_code == 200
+
+
+# ---- Public Tech Response Endpoints (no auth required) ----
+
+@api_router.get("/tech/ticket/{ticket_id}")
+async def tech_get_ticket(ticket_id: str, token: str = ""):
+    """Public endpoint for field tech to view their dispatched ticket."""
+    if _db is None:
+        await _run_lazy_init()
+    ticket = await _db.service_tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.get("dispatch_token") != token:
+        raise HTTPException(status_code=403, detail="Invalid access token")
+    return ticket
+
+
+@api_router.put("/tech/ticket/{ticket_id}/status")
+async def tech_update_status(ticket_id: str, data: dict):
+    """Public endpoint for field tech to update ticket status."""
+    token = data.get("token", "")
+    new_status = data.get("status", "")
+    note = data.get("note", "")
+
+    if _db is None:
+        await _run_lazy_init()
+    ticket = await _db.service_tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.get("dispatch_token") != token:
+        raise HTTPException(status_code=403, detail="Invalid access token")
+
+    valid_transitions = {
+        "DISPATCHED": ["ACKNOWLEDGED"],
+        "ACKNOWLEDGED": ["EN ROUTE"],
+        "EN ROUTE": ["ON SITE"],
+        "ON SITE": ["COMPLETE"],
+    }
+    allowed = valid_transitions.get(ticket.get("status"), [])
+    if new_status not in allowed:
+        raise HTTPException(status_code=400, detail=f"Cannot transition from {ticket.get('status')} to {new_status}")
+
+    update = {
+        "$set": {
+            "status": new_status,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    }
+    if note:
+        update["$push"] = {"notes": {"text": note, "by": ticket.get("assigned_tech", "Tech"), "at": datetime.now(timezone.utc).isoformat()}}
+
+    await _db.service_tickets.update_one({"id": ticket_id}, update)
+    updated = await _db.service_tickets.find_one({"id": ticket_id}, {"_id": 0})
+    return updated
 
 
 @api_router.get("/service/field-techs")
