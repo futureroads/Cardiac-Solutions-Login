@@ -7,9 +7,14 @@ import API_BASE from "@/apiBase";
 const API = `${API_BASE}/api`;
 
 // Stat card component
-function StatCard({ value, label, sublabel, color, icon: Icon }) {
+function StatCard({ value, label, sublabel, color, icon: Icon, onClick }) {
   return (
-    <div className="border border-slate-700/50 bg-[rgba(10,15,28,0.85)] rounded-sm p-4 min-w-[140px]" data-testid={`stat-${label.replace(/\s+/g, '-').toLowerCase()}`}>
+    <div
+      className={`border border-slate-700/50 bg-[rgba(10,15,28,0.85)] rounded-sm p-4 min-w-[140px] ${onClick ? 'cursor-pointer hover:border-opacity-80 hover:bg-[rgba(15,22,40,0.9)] transition-all' : ''}`}
+      style={onClick ? { borderColor: `${color}40` } : {}}
+      onClick={onClick}
+      data-testid={`stat-${label.replace(/\s+/g, '-').toLowerCase()}`}
+    >
       <div className="flex items-start justify-between">
         <div className="font-orbitron text-3xl font-black" style={{ color }}>{value}</div>
         {Icon && <Icon className="w-5 h-5 opacity-60" style={{ color }} />}
@@ -414,6 +419,148 @@ function TicketListModal({ subscriber, onClose }) {
   );
 }
 
+// All tickets modal (filtered by status)
+function AllTicketsModal({ filter, onClose }) {
+  const [tickets, setTickets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [dispatching, setDispatching] = useState(null);
+
+  const fetchTickets = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API}/service/tickets`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const all = await res.json();
+        if (filter === "ACTIVE") {
+          setTickets(all.filter(t => t.status !== "CLOSED"));
+        } else if (filter) {
+          setTickets(all.filter(t => t.status === filter));
+        } else {
+          setTickets(all);
+        }
+      }
+    } catch {}
+    setLoading(false);
+  }, [filter]);
+
+  useEffect(() => { fetchTickets(); }, [fetchTickets]);
+
+  const updateStatus = async (ticketId, status) => {
+    const token = localStorage.getItem("token");
+    await fetch(`${API}/service/tickets/${ticketId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status }),
+    });
+    toast.success(`Ticket ${ticketId} → ${status}`);
+    fetchTickets();
+  };
+
+  const handleDispatch = async (ticket) => {
+    setDispatching(ticket.id);
+    const token = localStorage.getItem("token");
+    const res = await fetch(`${API}/service/tickets/${ticket.id}/dispatch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ tech_name: ticket.assigned_tech, tech_email: ticket.tech_email }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      toast.success(data.email_sent ? `Dispatched & emailed to ${ticket.assigned_tech}` : `Dispatched to ${ticket.assigned_tech} (email not sent)`);
+    } else {
+      toast.error("Dispatch failed");
+    }
+    setDispatching(null);
+    fetchTickets();
+  };
+
+  const statusColors = {
+    OPEN: "text-cyan-400 bg-cyan-500/15",
+    DISPATCHED: "text-purple-400 bg-purple-500/15",
+    ACKNOWLEDGED: "text-teal-400 bg-teal-500/15",
+    "EN ROUTE": "text-blue-400 bg-blue-500/15",
+    "ON SITE": "text-yellow-400 bg-yellow-500/15",
+    COMPLETE: "text-green-400 bg-green-500/15",
+    DONE: "text-green-400 bg-green-500/15",
+    CLOSED: "text-slate-400 bg-slate-500/15",
+  };
+
+  const title = filter === "ACTIVE" ? "ALL ACTIVE TICKETS" : filter === "DISPATCHED" ? "DISPATCHED TICKETS" : "ALL TICKETS";
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm p-6 w-[750px] max-w-[95vw] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()} data-testid="all-tickets-modal">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <div className="font-orbitron text-sm text-cyan-400 tracking-wider">{title}</div>
+            <div className="text-[10px] text-slate-500 mt-1">{tickets.length} ticket{tickets.length !== 1 ? 's' : ''}</div>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
+        ) : tickets.length === 0 ? (
+          <div className="text-slate-500 text-center py-8 font-orbitron text-[10px] tracking-wider">NO TICKETS FOUND</div>
+        ) : (
+          <div className="space-y-3">
+            {tickets.map(t => (
+              <div key={t.id} className="border border-slate-700/50 bg-slate-900/50 rounded-sm p-3" data-testid={`all-ticket-${t.id}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-orbitron text-[10px] text-white font-bold">{t.id}</span>
+                    <span className={`font-orbitron text-[8px] px-2 py-0.5 rounded-sm ${statusColors[t.status] || 'text-slate-400'}`}>{t.status}</span>
+                    <span className="font-orbitron text-[8px] text-slate-500">{t.issue_type}</span>
+                  </div>
+                  <span className="text-[8px] text-slate-600">{new Date(t.created_at).toLocaleDateString()}</span>
+                </div>
+                <div className="flex items-center gap-3 text-[9px] text-slate-400 mb-2">
+                  <span>{t.subscriber}</span>
+                  {t.device_id && <span className="text-slate-600">|</span>}
+                  {t.device_id && <span>{t.device_id}</span>}
+                </div>
+                {t.description && <div className="text-[10px] text-slate-400 mb-2">{t.description}</div>}
+                {t.assigned_tech && <div className="text-[8px] text-slate-500 mb-2">Tech: {t.assigned_tech} {t.tech_email ? `(${t.tech_email})` : ''}</div>}
+
+                <div className="flex gap-2 flex-wrap">
+                  {t.status === "OPEN" && (
+                    <>
+                      <button onClick={() => handleDispatch(t)} disabled={dispatching === t.id} className="font-orbitron text-[7px] px-2 py-1 border border-purple-500/40 text-purple-400 rounded-sm hover:bg-purple-500/10 disabled:opacity-50" data-testid={`all-dispatch-btn-${t.id}`}>
+                        {dispatching === t.id ? <Loader2 className="w-2.5 h-2.5 inline mr-1 animate-spin" /> : <Send className="w-2.5 h-2.5 inline mr-1" />}DISPATCH
+                      </button>
+                      <button onClick={() => updateStatus(t.id, "CLOSED")} className="font-orbitron text-[7px] px-2 py-1 border border-slate-500/40 text-slate-400 rounded-sm hover:bg-slate-500/10">CLOSE</button>
+                    </>
+                  )}
+                  {t.status === "DISPATCHED" && (
+                    <>
+                      <button onClick={() => updateStatus(t.id, "ACKNOWLEDGED")} className="font-orbitron text-[7px] px-2 py-1 border border-cyan-500/40 text-cyan-400 rounded-sm hover:bg-cyan-500/10">ACKNOWLEDGED</button>
+                      <button onClick={() => updateStatus(t.id, "CLOSED")} className="font-orbitron text-[7px] px-2 py-1 border border-slate-500/40 text-slate-400 rounded-sm hover:bg-slate-500/10">CLOSE</button>
+                    </>
+                  )}
+                  {t.status === "ACKNOWLEDGED" && (
+                    <button onClick={() => updateStatus(t.id, "EN ROUTE")} className="font-orbitron text-[7px] px-2 py-1 border border-blue-500/40 text-blue-400 rounded-sm hover:bg-blue-500/10">EN ROUTE</button>
+                  )}
+                  {t.status === "EN ROUTE" && (
+                    <button onClick={() => updateStatus(t.id, "ON SITE")} className="font-orbitron text-[7px] px-2 py-1 border border-yellow-500/40 text-yellow-400 rounded-sm hover:bg-yellow-500/10">ON SITE</button>
+                  )}
+                  {t.status === "ON SITE" && (
+                    <button onClick={() => updateStatus(t.id, "COMPLETE")} className="font-orbitron text-[7px] px-2 py-1 border border-green-500/40 text-green-400 rounded-sm hover:bg-green-500/10">COMPLETE</button>
+                  )}
+                  {t.status === "COMPLETE" && (
+                    <button onClick={() => updateStatus(t.id, "CLOSED")} className="font-orbitron text-[7px] px-2 py-1 border border-slate-500/40 text-slate-400 rounded-sm hover:bg-slate-500/10">CLOSE</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Settings modal
 function SettingsModal({ onClose }) {
   const [view, setView] = useState("menu"); // "menu" or "field-techs"
@@ -703,6 +850,7 @@ export default function ServiceTickets({ user, onLogout }) {
   const [createFromDevice, setCreateFromDevice] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [fieldTechs, setFieldTechs] = useState([]);
+  const [allTicketsFilter, setAllTicketsFilter] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -785,8 +933,8 @@ export default function ServiceTickets({ user, onLogout }) {
             <div className="flex gap-3 flex-wrap mb-3">
               <StatCard value={consoleData?.total_subscribers || 0} label="SUBSCRIBERS WITH SERVICE ISSUES" sublabel={`${consoleData?.total_subscribers || 0} with issues`} color="#06b6d4" icon={Radio} />
               <StatCard value={stats.total_aeds_need_service || 0} label="TOTAL AEDs THAT NEED SERVICE" color="#f472b6" icon={AlertTriangle} />
-              <StatCard value={stats.active_tickets || 0} label="ACTIVE TICKETS" sublabel="All active tickets" color="#06b6d4" icon={Wrench} />
-              <StatCard value={stats.dispatched || 0} label="DISPATCHED" sublabel="Active dispatched tickets" color="#a78bfa" icon={Send} />
+              <StatCard value={stats.active_tickets || 0} label="ACTIVE TICKETS" sublabel="Click to view" color="#06b6d4" icon={Wrench} onClick={() => setAllTicketsFilter("ACTIVE")} />
+              <StatCard value={stats.dispatched || 0} label="DISPATCHED" sublabel="Click to view" color="#a78bfa" icon={Send} onClick={() => setAllTicketsFilter("DISPATCHED")} />
             </div>
 
             {/* Stats Row 2 */}
@@ -851,6 +999,9 @@ export default function ServiceTickets({ user, onLogout }) {
       </div>
 
       {/* Modals */}
+      {allTicketsFilter && (
+        <AllTicketsModal filter={allTicketsFilter} onClose={() => { setAllTicketsFilter(null); fetchData(); }} />
+      )}
       {createModal && (
         <CreateTicketModal
           subscriber={createModal}
