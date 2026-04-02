@@ -924,7 +924,7 @@ export default function Dashboard({ user, onLogout }) {
         {/* RIGHT COLUMN */}
         <div className="flex flex-col gap-[7px]">
           {/* Service Tickets */}
-          <div onClick={() => window.open("https://service.cardiac-solutions.ai", "_blank", "noopener,noreferrer")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1 cursor-pointer hover:border-cyan-400/60 transition-colors" data-testid="service-tickets-panel">
+          <div onClick={() => navigate("/service-tickets")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1 cursor-pointer hover:border-cyan-400/60 transition-colors" data-testid="service-tickets-panel">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">Service Tickets <span className="ml-2 text-[7px] px-[5px] py-[1px] bg-yellow-500/20 text-yellow-400 rounded-sm font-bold tracking-wider">IN DEV</span></div>
@@ -1284,7 +1284,7 @@ export default function Dashboard({ user, onLogout }) {
         {/* SIMPLE - RIGHT COLUMN */}
         <div className="flex flex-col gap-[7px]">
           {/* Service Tickets */}
-          <div onClick={() => window.open("https://service.cardiac-solutions.ai", "_blank", "noopener,noreferrer")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors">
+          <div onClick={() => navigate("/service-tickets")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">Service Tickets <span className="ml-2 text-[7px] px-[5px] py-[1px] bg-yellow-500/20 text-yellow-400 rounded-sm font-bold tracking-wider">IN DEV</span></div>
