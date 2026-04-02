@@ -314,11 +314,11 @@ export default function Dashboard({ user, onLogout }) {
     // Percent Ready daily trend event
     const trend = liveStats?._pct_trend;
     if (trend === 'up') {
-      items.push({ type: 'SYS', msg: 'GOOD JOB! The percent ready has improved since yesterday!' });
+      items.push({ type: 'INFO', msg: 'GOOD JOB! The percent ready has improved since yesterday!' });
     } else if (trend === 'down') {
-      items.push({ type: 'WARN', msg: 'The percent ready has slipped today. You might want to review the statuses.' });
+      items.push({ type: 'INFO', msg: 'The percent ready has slipped today. You might want to review the statuses.' });
     } else if (trend === 'stable') {
-      items.push({ type: 'SYS', msg: 'Percent ready is stable.' });
+      items.push({ type: 'INFO', msg: 'Percent ready is stable.' });
     }
 
     // Camera Battery events
@@ -742,7 +742,7 @@ export default function Dashboard({ user, onLogout }) {
                       </div>
                     ) : (
                     <div key={rec._key} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
-                      <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : rec.type === 'ERR' ? 'bg-red-500/20 text-red-400' : rec.type === 'SYS' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-500/15 text-cyan-400'}`}>
+                      <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : rec.type === 'ERR' ? 'bg-red-500/20 text-red-400' : rec.type === 'INFO' ? 'bg-green-500/20 text-green-400' : rec.type === 'SYS' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-500/15 text-cyan-400'}`}>
                         {rec.type}
                       </span>
                       <span className="text-[11px] text-slate-200/90 leading-relaxed">{rec.msg}</span>
@@ -1158,7 +1158,7 @@ export default function Dashboard({ user, onLogout }) {
                       </div>
                     ) : (
                     <div key={rec._key} className="py-[6px] border-b border-cyan-500/10 flex gap-[10px] items-start">
-                      <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : rec.type === 'ERR' ? 'bg-red-500/20 text-red-400' : rec.type === 'SYS' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-500/15 text-cyan-400'}`}>
+                      <span className={`font-orbitron text-[8px] font-bold px-[7px] py-[3px] rounded-sm tracking-wider flex-shrink-0 ${rec.type === 'ACT' ? 'bg-orange-500/20 text-orange-400' : rec.type === 'WARN' ? 'bg-yellow-500/15 text-yellow-400' : rec.type === 'ERR' ? 'bg-red-500/20 text-red-400' : rec.type === 'INFO' ? 'bg-green-500/20 text-green-400' : rec.type === 'SYS' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-500/15 text-cyan-400'}`}>
                         {rec.type}
                       </span>
                       <span className="text-[11px] text-slate-200/90 leading-relaxed">{rec.msg}</span>
