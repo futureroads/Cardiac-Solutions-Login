@@ -1533,6 +1533,199 @@ async def expiring_expired_bp():
             return _bp_cache["data"]
         return {"totals": {"expired_bp": 0, "expiring_batt_pads": 0}, "devices": [], "by_subscriber": [], "_error": "Readisys API unavailable"}
 
+# ==================== Service Tickets ====================
+
+@api_router.get("/service/console-data")
+async def service_console_data(current_user: dict = Depends(get_current_user)):
+    """Aggregate Readisys data for Service Console view. Uses cached data when available."""
+    import httpx, time
+    headers = _readisys_auth_headers()
+    result = {"subscribers": [], "totals": {}, "completion_time": None}
+
+    try:
+        # Use existing caches if fresh, otherwise fetch
+        now = time.time()
+        status_data = _status_cache["data"] if (_status_cache["data"] and (now - _status_cache["ts"]) < 300) else None
+        bp_data = _bp_cache["data"] if (_bp_cache["data"] and (now - _bp_cache["ts"]) < 300) else None
+
+        async with httpx.AsyncClient(timeout=20) as client:
+            if not status_data:
+                resp = await client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
+                if resp.status_code == 200:
+                    status_data = resp.json()
+                    _status_cache["data"] = status_data
+                    _status_cache["ts"] = now
+            if not bp_data:
+                resp = await client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp", headers=headers)
+                if resp.status_code == 200:
+                    bp_data = resp.json()
+                    _bp_cache["data"] = bp_data
+                    _bp_cache["ts"] = now
+
+        status_data = status_data or {}
+        bp_data = bp_data or {}
+
+        totals = status_data.get("totals", {})
+        dsc = totals.get("detailed_status_counts", {})
+        by_sub = bp_data.get("by_subscriber", [])
+        devices = bp_data.get("devices", [])
+
+        # Build per-subscriber device counts from devices list
+        dev_by_sub = {}
+        for dev in devices:
+            s = dev.get("subscriber", "Unknown")
+            if s not in dev_by_sub:
+                dev_by_sub[s] = {"expired_bp": 0, "expiring_bp": 0}
+            if dev.get("detailed_status") == "EXPIRED B/P":
+                dev_by_sub[s]["expired_bp"] += 1
+            else:
+                dev_by_sub[s]["expiring_bp"] += 1
+
+        # Build subscriber list from by_subscriber
+        subs = []
+        for sub in by_sub:
+            name = sub.get("subscriber", "Unknown")
+            expired = sub.get("expired_bp", 0)
+            expiring = sub.get("expiring_batt_pads", 0)
+            cc = sub.get("camera_cellular", {})
+            total_issues = expired + expiring + (cc.get("BAD", 0)) + (cc.get("LOW", 0))
+            total_aeds = sum(cc.values()) if cc else 0
+            if total_issues > 0 or expired > 0 or expiring > 0:
+                subs.append({
+                    "subscriber": name,
+                    "total_aeds": total_aeds,
+                    "issues": expired + expiring,
+                    "expired_bp": expired,
+                    "expiring_bp": expiring,
+                    "lost_contact": cc.get("BAD", 0),
+                    "not_ready": cc.get("LOW", 0),
+                })
+
+        # Get ticket counts per subscriber from DB
+        if _db is not None:
+            pipeline = [
+                {"$match": {"status": {"$nin": ["CLOSED"]}}},
+                {"$group": {"_id": "$subscriber", "active": {"$sum": 1}}}
+            ]
+            active_counts = {}
+            async for doc in _db.service_tickets.aggregate(pipeline):
+                active_counts[doc["_id"]] = doc["active"]
+
+            hist_pipeline = [
+                {"$match": {"status": "CLOSED"}},
+                {"$group": {"_id": "$subscriber", "count": {"$sum": 1}}}
+            ]
+            hist_counts = {}
+            async for doc in _db.service_tickets.aggregate(hist_pipeline):
+                hist_counts[doc["_id"]] = doc["count"]
+
+            for s in subs:
+                s["active_tickets"] = active_counts.get(s["subscriber"], 0)
+                s["history_count"] = hist_counts.get(s["subscriber"], 0)
+
+        # Sort by issues descending
+        subs.sort(key=lambda x: x["issues"], reverse=True)
+
+        # Aggregate totals
+        total_active = await _db.service_tickets.count_documents({"status": {"$nin": ["CLOSED"]}}) if _db is not None else 0
+        total_dispatched = await _db.service_tickets.count_documents({"status": "DISPATCHED"}) if _db is not None else 0
+
+        result = {
+            "completion_time": status_data.get("completion_time") or bp_data.get("completion_time"),
+            "total_subscribers": len(subs),
+            "subscribers": subs,
+            "stats": {
+                "total_aeds_need_service": dsc.get("not_ready", 0) + dsc.get("lost_contact", 0) + dsc.get("expired_bp", 0) + dsc.get("expiring_batt_pads", 0) + dsc.get("reposition", 0),
+                "lost_contact": dsc.get("lost_contact", 0),
+                "not_ready": dsc.get("not_ready", 0) + dsc.get("reposition", 0),
+                "expired_bp": dsc.get("expired_bp", 0),
+                "expiring_bp": dsc.get("expiring_batt_pads", 0),
+                "active_tickets": total_active,
+                "dispatched": total_dispatched,
+            },
+        }
+    except Exception as e:
+        logger.warning(f"service console data error: {e}")
+        result["_error"] = str(e)
+
+    return result
+
+
+@api_router.get("/service/tickets")
+async def list_tickets(current_user: dict = Depends(get_current_user)):
+    """List all service tickets."""
+    tickets = []
+    async for t in _db.service_tickets.find({}, {"_id": 0}).sort("created_at", -1):
+        tickets.append(t)
+    return tickets
+
+
+@api_router.get("/service/tickets/{subscriber}")
+async def list_tickets_by_subscriber(subscriber: str, current_user: dict = Depends(get_current_user)):
+    """List tickets for a specific subscriber."""
+    tickets = []
+    async for t in _db.service_tickets.find({"subscriber": subscriber}, {"_id": 0}).sort("created_at", -1):
+        tickets.append(t)
+    return tickets
+
+
+@api_router.post("/service/tickets")
+async def create_ticket(data: dict, current_user: dict = Depends(get_current_user)):
+    """Create a new service ticket."""
+    ticket = {
+        "id": f"SVC-{datetime.now(timezone.utc).strftime('%y%m%d')}{uuid.uuid4().hex[:3].upper()}",
+        "subscriber": data.get("subscriber", ""),
+        "issue_type": data.get("issue_type", ""),
+        "priority": data.get("priority", "NORMAL"),
+        "description": data.get("description", ""),
+        "assigned_tech": data.get("assigned_tech", ""),
+        "tech_email": data.get("tech_email", ""),
+        "status": "OPEN",
+        "created_by": current_user.get("username", ""),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "notes": [],
+    }
+    await _db.service_tickets.insert_one({**ticket, "_id": None})
+    await _db.service_tickets.update_one({"id": ticket["id"]}, {"$unset": {"_id": ""}})
+    return ticket
+
+
+@api_router.put("/service/tickets/{ticket_id}")
+async def update_ticket(ticket_id: str, data: dict, current_user: dict = Depends(get_current_user)):
+    """Update a service ticket (status, notes, assignment)."""
+    update = {"$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
+    for field in ["status", "assigned_tech", "tech_email", "priority", "description"]:
+        if field in data:
+            update["$set"][field] = data[field]
+    if "note" in data:
+        update["$push"] = {"notes": {"text": data["note"], "by": current_user.get("username", ""), "at": datetime.now(timezone.utc).isoformat()}}
+
+    await _db.service_tickets.update_one({"id": ticket_id}, update)
+    ticket = await _db.service_tickets.find_one({"id": ticket_id}, {"_id": 0})
+    return ticket or {"error": "Ticket not found"}
+
+
+@api_router.post("/service/tickets/{ticket_id}/dispatch")
+async def dispatch_ticket(ticket_id: str, data: dict, current_user: dict = Depends(get_current_user)):
+    """Dispatch a ticket to a field tech."""
+    tech_name = data.get("tech_name", "")
+    tech_email = data.get("tech_email", "")
+
+    await _db.service_tickets.update_one(
+        {"id": ticket_id},
+        {"$set": {
+            "status": "DISPATCHED",
+            "assigned_tech": tech_name,
+            "tech_email": tech_email,
+            "dispatched_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+    ticket = await _db.service_tickets.find_one({"id": ticket_id}, {"_id": 0})
+    return {"success": True, "ticket": ticket, "message": f"Dispatched to {tech_name} ({tech_email})"}
+
+
 # ==================== Customer Portal ====================
 
 @api_router.post("/customers")

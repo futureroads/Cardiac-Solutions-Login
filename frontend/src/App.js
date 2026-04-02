@@ -9,6 +9,7 @@ import BackendManagement from "./pages/BackendManagement";
 import OutageStatus from "./pages/OutageStatus";
 import HybridTraining from "./pages/HybridTraining";
 import CustomerPortal from "./pages/CustomerPortal";
+import ServiceTickets from "./pages/ServiceTickets";
 import { Toaster } from "./components/ui/sonner";
 
 function App() {
@@ -146,6 +147,14 @@ function App() {
               isAuthenticated && user?.role === "admin" ? 
                 <CustomerPortal user={user} onLogout={handleLogout} /> : 
                 <Navigate to="/hub" replace />
+            } 
+          />
+          <Route 
+            path="/service-tickets" 
+            element={
+              isAuthenticated ? 
+                <ServiceTickets user={user} onLogout={handleLogout} /> : 
+                <Navigate to="/" replace />
             } 
           />
           <Route 

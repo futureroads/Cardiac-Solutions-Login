@@ -44,10 +44,10 @@ const ALL_MODULES = [
   {
     moduleKey: "service_tickets",
     title: "SERVICE TICKETS",
-    status: "IN DEV",
+    status: "ACTIVE",
     icon: FileCheck,
-    route: null,
-    externalUrl: "https://service.cardiac-solutions.ai",
+    route: "/service-tickets",
+    externalUrl: null,
     description:
       "Field technician dispatch, ticket lifecycle management, and AED service workflow from open to confirmed.",
     badgeCount: null,
