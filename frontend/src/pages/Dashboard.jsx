@@ -14,16 +14,50 @@ export default function Dashboard({ user, onLogout }) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
+  const cachedAudioRef = useRef(null);
+
+  // Preload TTS greeting in background on dashboard mount
+  useEffect(() => {
+    const preload = async () => {
+      try {
+        const hour = new Date().getHours();
+        const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+        const name = freshUser?.name || user?.name || 'hon';
+        const text = `Well ${greeting}, ${name}. All systems are runnin' smooth as butter. What can I do for you, darlin'?`;
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API_URL}/api/tts/speak`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ text }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          cachedAudioRef.current = `data:audio/mp3;base64,${data.audio}`;
+        }
+      } catch {}
+    };
+    preload();
+  }, [freshUser?.name, user?.name]);
+
   const jarvisGreet = async () => {
     if (isSpeaking) return;
+    setIsSpeaking(true);
+    setIsListening(true);
+
+    // Play cached audio instantly if available
+    if (cachedAudioRef.current) {
+      const audio = new Audio(cachedAudioRef.current);
+      audio.onended = () => { setIsSpeaking(false); setIsListening(false); };
+      audio.onerror = () => { setIsSpeaking(false); setIsListening(false); };
+      await audio.play();
+      return;
+    }
+
+    // Fallback: fetch live if cache missed
     const hour = new Date().getHours();
     const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
     const name = freshUser?.name || user?.name || 'hon';
     const text = `Well ${greeting}, ${name}. All systems are runnin' smooth as butter. What can I do for you, darlin'?`;
-
-    setIsSpeaking(true);
-    setIsListening(true);
-
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`${API_URL}/api/tts/speak`, {
@@ -39,7 +73,6 @@ export default function Dashboard({ user, onLogout }) {
       await audio.play();
     } catch (err) {
       console.warn("OpenAI TTS failed, falling back to browser voice:", err);
-      // Fallback to browser SpeechSynthesis
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 0.95;
       utterance.pitch = 0.85;
