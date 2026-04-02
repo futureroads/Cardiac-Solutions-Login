@@ -1671,12 +1671,50 @@ async def service_console_data(current_user: dict = Depends(get_current_user)):
                 "active_tickets": total_active,
                 "dispatched": total_dispatched,
             },
+            "_debug": {
+                "status_cache_age": round(now - _status_cache["ts"]) if _status_cache["ts"] else "empty",
+                "bp_cache_age": round(now - _bp_cache["ts"]) if _bp_cache["ts"] else "empty",
+                "status_has_data": bool(status_data and status_data.get("totals")),
+                "bp_has_data": bool(bp_data and bp_data.get("by_subscriber")),
+                "bp_subscriber_count": len(bp_data.get("by_subscriber", [])) if bp_data else 0,
+                "dsc_keys": list(dsc.keys()) if dsc else [],
+            },
         }
     except Exception as e:
         logger.warning(f"service console data error: {e}")
+        import traceback
         result["_error"] = str(e)
+        result["_traceback"] = traceback.format_exc()
 
     return result
+
+
+@api_router.get("/service/diagnostics")
+async def service_diagnostics():
+    """Public diagnostic endpoint to check Readisys API connectivity and cache state."""
+    import httpx, time
+    now = time.time()
+    diag = {
+        "status_cache_age_sec": round(now - _status_cache["ts"]) if _status_cache["ts"] else None,
+        "bp_cache_age_sec": round(now - _bp_cache["ts"]) if _bp_cache["ts"] else None,
+        "status_cache_has_data": bool(_status_cache["data"]),
+        "bp_cache_has_data": bool(_bp_cache["data"]),
+        "app_url": os.environ.get("APP_URL", "NOT SET"),
+    }
+    # Try a quick fetch to test connectivity
+    try:
+        headers = _readisys_auth_headers()
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
+            diag["readisys_status_code"] = resp.status_code
+            diag["readisys_reachable"] = resp.status_code == 200
+            if resp.status_code == 200:
+                data = resp.json()
+                diag["readisys_subscriber_count"] = data.get("total_subscribers", "?")
+    except Exception as e:
+        diag["readisys_reachable"] = False
+        diag["readisys_error"] = str(e)
+    return diag
 
 
 @api_router.get("/service/devices/{subscriber}")
