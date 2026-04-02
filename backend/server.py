@@ -496,24 +496,25 @@ async def _prewarm_caches():
         try:
             headers = _readisys_auth_headers()
             async with httpx.AsyncClient(timeout=20 + attempt * 5) as client:
-                # Status overview
-                try:
-                    resp = await client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
-                    if resp.status_code == 200:
-                        _status_cache["data"] = resp.json()
-                        _status_cache["ts"] = time.time()
-                        logger.info(f"Cache pre-warm: status-overview OK (attempt {attempt+1})")
-                except Exception as e:
-                    logger.warning(f"Cache pre-warm: status-overview failed attempt {attempt+1}: {e}")
-                # Expiring/expired B/P
-                try:
-                    resp2 = await client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp", headers=headers)
-                    if resp2.status_code == 200:
-                        _bp_cache["data"] = resp2.json()
-                        _bp_cache["ts"] = time.time()
-                        logger.info(f"Cache pre-warm: expiring-bp OK (attempt {attempt+1})")
-                except Exception as e:
-                    logger.warning(f"Cache pre-warm: expiring-bp failed attempt {attempt+1}: {e}")
+                # Fetch BOTH endpoints in parallel
+                status_task = client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
+                bp_task = client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp", headers=headers)
+                results = await asyncio.gather(status_task, bp_task, return_exceptions=True)
+
+                if not isinstance(results[0], Exception) and results[0].status_code == 200:
+                    _status_cache["data"] = results[0].json()
+                    _status_cache["ts"] = time.time()
+                    logger.info(f"Cache pre-warm: status-overview OK (attempt {attempt+1})")
+                elif isinstance(results[0], Exception):
+                    logger.warning(f"Cache pre-warm: status-overview failed attempt {attempt+1}: {results[0]}")
+
+                if not isinstance(results[1], Exception) and results[1].status_code == 200:
+                    _bp_cache["data"] = results[1].json()
+                    _bp_cache["ts"] = time.time()
+                    logger.info(f"Cache pre-warm: expiring-bp OK (attempt {attempt+1})")
+                elif isinstance(results[1], Exception):
+                    logger.warning(f"Cache pre-warm: expiring-bp failed attempt {attempt+1}: {results[1]}")
+
             # If both populated, stop retrying
             if _status_cache["data"] and _bp_cache["data"]:
                 break
@@ -1538,7 +1539,7 @@ async def expiring_expired_bp():
 @api_router.get("/service/console-data")
 async def service_console_data(current_user: dict = Depends(get_current_user)):
     """Aggregate Readisys data for Service Console view. Uses cached data when available."""
-    import httpx, time
+    import httpx, time, asyncio
     headers = _readisys_auth_headers()
     result = {"subscribers": [], "totals": {}, "completion_time": None}
 
@@ -1548,19 +1549,32 @@ async def service_console_data(current_user: dict = Depends(get_current_user)):
         status_data = _status_cache["data"] if (_status_cache["data"] and (now - _status_cache["ts"]) < 300) else None
         bp_data = _bp_cache["data"] if (_bp_cache["data"] and (now - _bp_cache["ts"]) < 300) else None
 
-        async with httpx.AsyncClient(timeout=20) as client:
-            if not status_data:
-                resp = await client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
-                if resp.status_code == 200:
-                    status_data = resp.json()
-                    _status_cache["data"] = status_data
-                    _status_cache["ts"] = now
-            if not bp_data:
-                resp = await client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp", headers=headers)
-                if resp.status_code == 200:
-                    bp_data = resp.json()
-                    _bp_cache["data"] = bp_data
-                    _bp_cache["ts"] = now
+        # Fetch missing data in PARALLEL instead of sequentially
+        if not status_data or not bp_data:
+            async with httpx.AsyncClient(timeout=20) as client:
+                tasks = {}
+                if not status_data:
+                    tasks["status"] = client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
+                if not bp_data:
+                    tasks["bp"] = client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp", headers=headers)
+
+                results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+                keys = list(tasks.keys())
+
+                for i, key in enumerate(keys):
+                    resp = results[i]
+                    if isinstance(resp, Exception):
+                        logger.warning(f"Readisys {key} fetch failed: {resp}")
+                        continue
+                    if resp.status_code == 200:
+                        if key == "status":
+                            status_data = resp.json()
+                            _status_cache["data"] = status_data
+                            _status_cache["ts"] = now
+                        elif key == "bp":
+                            bp_data = resp.json()
+                            _bp_cache["data"] = bp_data
+                            _bp_cache["ts"] = now
 
         status_data = status_data or {}
         bp_data = bp_data or {}
@@ -1738,6 +1752,26 @@ async def dispatch_ticket(ticket_id: str, data: dict, current_user: dict = Depen
     """Dispatch a ticket to a field tech and send email notification."""
     tech_name = data.get("tech_name", "")
     tech_email = data.get("tech_email", "")
+
+    # If tech_email is missing (older tickets), look it up from field_techs collection
+    if not tech_email and tech_name and _db is not None:
+        tech_doc = await _db.field_techs.find_one({"name": tech_name}, {"_id": 0, "email": 1})
+        if tech_doc:
+            tech_email = tech_doc.get("email", "")
+            logger.info(f"Resolved tech email for '{tech_name}' from field_techs: {tech_email}")
+
+    # If still no tech_name, try to get it from the ticket itself
+    if not tech_name:
+        existing = await _db.service_tickets.find_one({"id": ticket_id}, {"_id": 0})
+        if existing:
+            tech_name = existing.get("assigned_tech", tech_name)
+            if not tech_email:
+                tech_email = existing.get("tech_email", "")
+            # Still no email? Look up from field_techs
+            if not tech_email and tech_name:
+                tech_doc = await _db.field_techs.find_one({"name": tech_name}, {"_id": 0, "email": 1})
+                if tech_doc:
+                    tech_email = tech_doc.get("email", "")
 
     # Generate a secure token for the tech to access the ticket
     dispatch_token = uuid.uuid4().hex
