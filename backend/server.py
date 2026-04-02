@@ -1754,6 +1754,53 @@ async def dispatch_ticket(ticket_id: str, data: dict, current_user: dict = Depen
     return {"success": True, "ticket": ticket, "message": f"Dispatched to {tech_name} ({tech_email})"}
 
 
+@api_router.get("/service/field-techs")
+async def list_field_techs(current_user: dict = Depends(get_current_user)):
+    """List all field technicians."""
+    techs = []
+    if _db is not None:
+        async for t in _db.field_techs.find({}, {"_id": 0}).sort("name", 1):
+            techs.append(t)
+    return techs
+
+
+@api_router.post("/service/field-techs")
+async def create_field_tech(data: dict, current_user: dict = Depends(get_current_user)):
+    """Add a new field technician."""
+    tech = {
+        "id": f"tech-{uuid.uuid4().hex[:6]}",
+        "name": data.get("name", ""),
+        "email": data.get("email", ""),
+        "phone": data.get("phone", ""),
+        "region": data.get("region", ""),
+        "active": True,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await _db.field_techs.insert_one({**tech})
+    await _db.field_techs.update_one({"id": tech["id"]}, {"$unset": {"_id": ""}})
+    return tech
+
+
+@api_router.put("/service/field-techs/{tech_id}")
+async def update_field_tech(tech_id: str, data: dict, current_user: dict = Depends(get_current_user)):
+    """Update a field technician."""
+    update_fields = {}
+    for field in ["name", "email", "phone", "region", "active"]:
+        if field in data:
+            update_fields[field] = data[field]
+    if update_fields:
+        await _db.field_techs.update_one({"id": tech_id}, {"$set": update_fields})
+    tech = await _db.field_techs.find_one({"id": tech_id}, {"_id": 0})
+    return tech or {"error": "Not found"}
+
+
+@api_router.delete("/service/field-techs/{tech_id}")
+async def delete_field_tech(tech_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a field technician."""
+    result = await _db.field_techs.delete_one({"id": tech_id})
+    return {"deleted": result.deleted_count > 0}
+
+
 # ==================== Customer Portal ====================
 
 @api_router.post("/customers")

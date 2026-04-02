@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, Zap, AlertTriangle, Wrench, Send, Plus, Clock, X, Loader2, FileText, Radio } from "lucide-react";
+import { ArrowLeft, RefreshCw, Zap, AlertTriangle, Wrench, Send, Plus, Clock, X, Loader2, FileText, Radio, Settings, Users, ChevronRight, Trash2, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 import API_BASE from "@/apiBase";
 
@@ -133,7 +133,7 @@ function DeviceDetailModal({ subscriber, onClose, onCreateTicket }) {
 }
 
 // Create ticket modal - matches service.cardiac-solutions.ai layout
-function CreateTicketModal({ subscriber, device, onClose, onCreated }) {
+function CreateTicketModal({ subscriber, device, fieldTechs = [], onClose, onCreated }) {
   const [deviceId, setDeviceId] = useState(device?.sentinel_id || "");
   const [deviceType, setDeviceType] = useState("Hybrid");
   const [issueType, setIssueType] = useState(device?.detailed_status || "NOT READY");
@@ -253,9 +253,9 @@ function CreateTicketModal({ subscriber, device, onClose, onCreated }) {
                 <div className={labelClass}>Assigned To</div>
                 <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)} className={inputClass + " bg-transparent"} data-testid="assigned-to-select">
                   <option value="" className="bg-[#0a0f1c]">-- Select --</option>
-                  <option value="Lew" className="bg-[#0a0f1c]">Lew</option>
-                  <option value="Tony" className="bg-[#0a0f1c]">Tony</option>
-                  <option value="Stark" className="bg-[#0a0f1c]">Stark</option>
+                  {fieldTechs.filter(t => t.active !== false).map(t => (
+                    <option key={t.id} value={t.name} className="bg-[#0a0f1c]">{t.name}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -422,6 +422,176 @@ function TicketListModal({ subscriber, onClose }) {
   );
 }
 
+// Settings modal
+function SettingsModal({ onClose }) {
+  const [view, setView] = useState("menu"); // "menu" or "field-techs"
+  const [techs, setTechs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [addMode, setAddMode] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [form, setForm] = useState({ name: "", email: "", phone: "", region: "" });
+
+  const fetchTechs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API}/service/field-techs`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setTechs(await res.json());
+    } catch {}
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { if (view === "field-techs") fetchTechs(); }, [view, fetchTechs]);
+
+  const handleSave = async () => {
+    if (!form.name.trim()) { toast.error("Name is required"); return; }
+    const token = localStorage.getItem("token");
+    const url = editId ? `${API}/service/field-techs/${editId}` : `${API}/service/field-techs`;
+    const method = editId ? "PUT" : "POST";
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(form),
+    });
+    if (res.ok) {
+      toast.success(editId ? "Tech updated" : "Tech added");
+      setForm({ name: "", email: "", phone: "", region: "" });
+      setAddMode(false);
+      setEditId(null);
+      fetchTechs();
+    }
+  };
+
+  const handleDelete = async (id) => {
+    const token = localStorage.getItem("token");
+    await fetch(`${API}/service/field-techs/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    toast.success("Tech removed");
+    fetchTechs();
+  };
+
+  const startEdit = (tech) => {
+    setEditId(tech.id);
+    setForm({ name: tech.name, email: tech.email || "", phone: tech.phone || "", region: tech.region || "" });
+    setAddMode(true);
+  };
+
+  const inputClass = "w-full bg-transparent text-white border-b border-cyan-500/30 px-2 py-2 text-sm outline-none focus:border-cyan-400 transition-colors placeholder-slate-600";
+  const labelClass = "font-orbitron text-[8px] text-slate-500 tracking-wider uppercase mb-1";
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[700px] max-w-[95vw] max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()} data-testid="settings-modal">
+        {/* Header */}
+        <div className="flex justify-between items-center px-6 py-5 border-b border-slate-700/50">
+          <div className="flex items-center gap-3">
+            {view !== "menu" && (
+              <button onClick={() => { setView("menu"); setAddMode(false); setEditId(null); }} className="text-slate-400 hover:text-white mr-1">
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
+            <Settings className="w-5 h-5 text-cyan-400" />
+            <div>
+              <h2 className="text-xl font-bold text-white">Settings</h2>
+              <p className="text-sm text-slate-500">Manage system configuration</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {view === "menu" ? (
+            /* Settings Menu */
+            <div className="p-6">
+              <button
+                onClick={() => setView("field-techs")}
+                className="w-full flex items-center gap-4 p-5 border border-slate-700/40 bg-slate-900/30 rounded-sm hover:bg-slate-800/40 hover:border-cyan-500/30 transition-all group"
+                data-testid="field-techs-option"
+              >
+                <Users className="w-6 h-6 text-cyan-400/70 group-hover:text-cyan-400" />
+                <div className="flex-1 text-left">
+                  <div className="text-white font-bold text-sm">Field Techs</div>
+                  <div className="text-slate-500 text-xs">Manage field technicians and their assignments</div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-slate-600 group-hover:text-slate-400" />
+              </button>
+            </div>
+          ) : (
+            /* Field Techs Management */
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="font-orbitron text-[10px] text-cyan-400 tracking-wider">{techs.length} FIELD TECHNICIANS</div>
+                {!addMode && (
+                  <button onClick={() => { setAddMode(true); setEditId(null); setForm({ name: "", email: "", phone: "", region: "" }); }} className="flex items-center gap-1 font-orbitron text-[9px] px-3 py-1.5 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10" data-testid="add-tech-btn">
+                    <Plus className="w-3 h-3" /> ADD TECH
+                  </button>
+                )}
+              </div>
+
+              {/* Add/Edit form */}
+              {addMode && (
+                <div className="border border-cyan-500/30 bg-slate-900/40 rounded-sm p-4 mb-4" data-testid="tech-form">
+                  <div className="font-orbitron text-[10px] text-cyan-400 tracking-wider mb-3">{editId ? "EDIT" : "NEW"} FIELD TECHNICIAN</div>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <div className={labelClass}>Name *</div>
+                      <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className={inputClass} placeholder="Full name" data-testid="tech-name" />
+                    </div>
+                    <div>
+                      <div className={labelClass}>Email</div>
+                      <input value={form.email} onChange={e => setForm({...form, email: e.target.value})} className={inputClass} placeholder="email@example.com" data-testid="tech-email" />
+                    </div>
+                    <div>
+                      <div className={labelClass}>Phone</div>
+                      <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className={inputClass} placeholder="(555) 555-5555" data-testid="tech-phone" />
+                    </div>
+                    <div>
+                      <div className={labelClass}>Region</div>
+                      <input value={form.region} onChange={e => setForm({...form, region: e.target.value})} className={inputClass} placeholder="Southeast, Western, etc." data-testid="tech-region" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => { setAddMode(false); setEditId(null); }} className="font-orbitron text-[8px] px-3 py-1.5 text-slate-400 hover:text-white">Cancel</button>
+                    <button onClick={handleSave} className="font-orbitron text-[8px] px-4 py-1.5 bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 rounded-sm hover:bg-cyan-500/30" data-testid="save-tech-btn">
+                      {editId ? "UPDATE" : "SAVE"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Tech list */}
+              {loading ? (
+                <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-cyan-400 animate-spin" /></div>
+              ) : techs.length === 0 ? (
+                <div className="text-center py-8 text-slate-500 font-orbitron text-[10px] tracking-wider">NO FIELD TECHNICIANS CONFIGURED</div>
+              ) : (
+                <div className="space-y-2">
+                  {techs.map(tech => (
+                    <div key={tech.id} className="flex items-center gap-3 p-3 border border-slate-700/30 bg-slate-900/30 rounded-sm hover:border-slate-600/50 transition-colors" data-testid={`tech-row-${tech.id}`}>
+                      <div className="w-8 h-8 rounded-full bg-cyan-500/15 flex items-center justify-center text-cyan-400 font-orbitron text-[10px] font-bold">
+                        {tech.name?.charAt(0)?.toUpperCase() || "?"}
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm text-white font-bold">{tech.name}</div>
+                        <div className="text-[10px] text-slate-500">{[tech.email, tech.phone, tech.region].filter(Boolean).join(" · ")}</div>
+                      </div>
+                      <button onClick={() => startEdit(tech)} className="text-slate-500 hover:text-cyan-400 transition-colors p-1" data-testid={`edit-tech-${tech.id}`}>
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => handleDelete(tech.id)} className="text-slate-500 hover:text-red-400 transition-colors p-1" data-testid={`delete-tech-${tech.id}`}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ServiceTickets({ user, onLogout }) {
   const navigate = useNavigate();
   const [consoleData, setConsoleData] = useState(null);
@@ -431,16 +601,18 @@ export default function ServiceTickets({ user, onLogout }) {
   const [ticketModal, setTicketModal] = useState(null);
   const [deviceModal, setDeviceModal] = useState(null);
   const [createFromDevice, setCreateFromDevice] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [fieldTechs, setFieldTechs] = useState([]);
 
   const fetchData = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API}/service/console-data`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setConsoleData(await res.json());
-      }
+      const [consoleRes, techsRes] = await Promise.all([
+        fetch(`${API}/service/console-data`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API}/service/field-techs`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (consoleRes.ok) setConsoleData(await consoleRes.json());
+      if (techsRes.ok) setFieldTechs(await techsRes.json());
     } catch {}
     setLoading(false);
     setRefreshing(false);
@@ -472,6 +644,9 @@ export default function ServiceTickets({ user, onLogout }) {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          <button onClick={() => setSettingsOpen(true)} className="text-slate-400 hover:text-cyan-400 transition-colors" data-testid="settings-btn">
+            <Settings className="w-4 h-4" />
+          </button>
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.7)] animate-pulse" />
             <span className="font-orbitron text-[9px] text-green-400 tracking-wider">SYSTEM ONLINE</span>
@@ -580,6 +755,7 @@ export default function ServiceTickets({ user, onLogout }) {
         <CreateTicketModal
           subscriber={createModal}
           device={createFromDevice}
+          fieldTechs={fieldTechs}
           onClose={() => { setCreateModal(null); setCreateFromDevice(null); }}
           onCreated={() => fetchData()}
         />
@@ -597,6 +773,9 @@ export default function ServiceTickets({ user, onLogout }) {
             setCreateModal(sub);
           }}
         />
+      )}
+      {settingsOpen && (
+        <SettingsModal onClose={() => { setSettingsOpen(false); fetchData(); }} />
       )}
     </div>
   );
