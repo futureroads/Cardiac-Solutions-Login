@@ -1534,6 +1534,23 @@ async def expiring_expired_bp():
             return _bp_cache["data"]
         return {"totals": {"expired_bp": 0, "expiring_batt_pads": 0}, "devices": [], "by_subscriber": [], "_error": "Readisys API unavailable"}
 
+
+@api_router.get("/dashboard/top-cards")
+async def dashboard_top_cards(current_user: dict = Depends(get_current_user)):
+    """Proxy to Readisys dashboard/top-cards for Readiness System real-time data."""
+    import httpx
+    try:
+        headers = _readisys_auth_headers()
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get("https://readisys.survivalpath.ai/api/dashboard/top-cards", headers=headers)
+            if resp.status_code == 200:
+                return resp.json()
+            logger.warning(f"dashboard/top-cards returned {resp.status_code}")
+            return {"_error": f"Readisys returned {resp.status_code}"}
+    except Exception as e:
+        logger.warning(f"dashboard/top-cards fetch failed: {e}")
+        return {"_error": str(e)}
+
 # ==================== Service Tickets ====================
 
 @api_router.get("/service/console-data")

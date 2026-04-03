@@ -28,6 +28,7 @@ export default function BackendManagement({ user, onLogout }) {
   const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [serverInfo, setServerInfo] = useState(null);
+  const [readiness, setReadiness] = useState(null);
 
   const token = localStorage.getItem("token") || "";
 
@@ -49,6 +50,18 @@ export default function BackendManagement({ user, onLogout }) {
     };
     fetchServerInfo();
   }, []);
+
+  useEffect(() => {
+    const fetchReadiness = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/dashboard/top-cards`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) setReadiness(await res.json());
+      } catch {}
+    };
+    fetchReadiness();
+  }, [token]);
 
   const formatTime = (date) => date.toTimeString().slice(0, 8);
   const formatDate = (date) => {
@@ -263,23 +276,14 @@ export default function BackendManagement({ user, onLogout }) {
                 <div className="plabel"><ShieldCheck className="w-[12px] h-[12px]" /> Readiness System</div>
                 <div className="flex flex-col gap-[6px] flex-1 justify-center">
                   {(() => {
-                    const today = new Date();
-                    const lastAccessed = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 1, 0, 0);
-                    const nextAccess = new Date(lastAccessed.getTime() + 24 * 60 * 60 * 1000);
-                    const fmtDate = (d) => {
-                      const mm = String(d.getMonth() + 1).padStart(2, "0");
-                      const dd = String(d.getDate()).padStart(2, "0");
-                      const yy = d.getFullYear();
-                      return `${mm}/${dd}/${yy} 01:00 AM`;
-                    };
                     const items = [
-                      { label: "URL", value: "readiness.cardiac-solutions.ai", icon: Link, color: "text-cyan-400", isLink: true },
-                      { label: "User Name", value: "readiness_admin", icon: User, color: "text-slate-200" },
-                      { label: "Password", value: "••••••••••", icon: Key, color: "text-slate-200" },
-                      { label: "Daily Access Time", value: "1:00 AM", icon: CalendarClock, color: "text-cyan-400" },
-                      { label: "Last Accessed", value: fmtDate(lastAccessed), icon: Clock, color: "text-green-400" },
-                      { label: "Next Access", value: fmtDate(nextAccess), icon: CalendarClock, color: "text-yellow-400" },
-                      { label: "Last Access Duration", value: "3 hrs", icon: Timer, color: "text-green-400" },
+                      { label: "URL", value: readiness?.url || "readisys.survivalpath.ai", icon: Link, color: "text-cyan-400", isLink: true },
+                      { label: "User Name", value: readiness?.username || "—", icon: User, color: "text-slate-200" },
+                      { label: "Password", value: readiness?.password_display || "••••••••••", icon: Key, color: "text-slate-200" },
+                      { label: "Daily Access Time", value: readiness?.daily_access_time || "—", icon: CalendarClock, color: "text-cyan-400" },
+                      { label: "Last Accessed", value: readiness?.last_accessed || "—", icon: Clock, color: "text-green-400" },
+                      { label: "Next Access", value: readiness?.next_access || "—", icon: CalendarClock, color: "text-yellow-400" },
+                      { label: "Last Access Duration", value: readiness?.last_access_duration || "—", icon: Timer, color: "text-green-400" },
                     ];
                     return items.map((item, i) => {
                       const Icon = item.icon;
@@ -291,8 +295,11 @@ export default function BackendManagement({ user, onLogout }) {
                           <div className="flex items-center justify-between flex-1 min-w-0">
                             <div className="text-[7px] tracking-wider text-cyan-500/50 uppercase">{item.label}</div>
                             {item.isLink ? (
-                              <button onClick={() => window.open(`https://${item.value}`, "_blank", "noopener,noreferrer")} className={`font-orbitron text-[9px] font-bold ${item.color} tracking-wider hover:underline truncate ml-[8px]`}>
-                                {item.value}
+                              <button onClick={() => {
+                                const url = item.value.startsWith("http") ? item.value : `https://${item.value}`;
+                                window.open(url, "_blank", "noopener,noreferrer");
+                              }} className={`font-orbitron text-[9px] font-bold ${item.color} tracking-wider hover:underline truncate ml-[8px]`}>
+                                {item.value.replace(/^https?:\/\//, '')}
                               </button>
                             ) : (
                               <div className={`font-orbitron text-[9px] font-bold ${item.color} tracking-wider truncate ml-[8px]`}>{item.value}</div>
