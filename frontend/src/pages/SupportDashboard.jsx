@@ -49,38 +49,62 @@ function NotificationModal({ subscriber, devices, contact, onClose, onSent }) {
 
   const filteredGrouped = emailType === "all" ? grouped : { [emailType]: grouped[emailType] || [] };
 
-  const subject = emailType === "all"
-    ? `AED Attention Required - ${subscriber}`
-    : `${emailType} - AED Attention Required`;
+  // Map statuses to template sections
+  const sectionMap = {
+    "EXPIRED B/P": { title: "AED Pads Expired/Expiring", action: "Next Steps", actionText: "Please contact our team by phone or email as soon as possible to arrange for replacement options for these devices." },
+    "EXPIRING BATT/PADS": { title: "AED Pads Expired/Expiring", action: "Next Steps", actionText: "Please contact our team by phone or email as soon as possible to arrange for replacement options for these devices." },
+    "REPOSITION": { title: "AED(s) Alignment Issues", action: "Required Action", actionText: "Please take a moment as soon as possible to inspect the AED(s) noted above. If it appears to have been moved from its original location, please reposition it so it is in the location shown in the photo below (fully to the left side of the storage cabinet and as far toward the back of the storage cabinet as possible)." },
+    "NOT PRESENT": { title: "AED(s) Missing", action: "Required Action", actionText: "Please take a moment as soon as possible to inspect the AED(s) noted above. If it appears to have been moved from its original location, please place it back in its original location and reposition inside the storage case consistent with the photo below (fully to the left side of the storage cabinet and as far toward the back of the storage cabinet as possible).\n\nOnce this repositioning has been done, please notify us and we will check to ensure the AED is now working properly. If you discover the AED is missing, please notify us so we can discuss providing you with a new unit." },
+    "NOT READY": { title: "AED(s) Not Ready", action: "Required Action", actionText: "Please take a moment as soon as possible to inspect the AED(s) noted above and ensure they are properly set up and ready for use." },
+    "UNKNOWN": { title: "AED(s) Status Unknown", action: "Required Action", actionText: "Please take a moment as soon as possible to inspect the AED(s) noted above. We are unable to determine the current status of these units." },
+  };
+
+  const subject = "AED Attention";
 
   const buildEmailHtml = () => {
-    let html = `<div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;">`;
-    html += `<div style="background:#0a1628;color:#06b6d4;padding:20px;border-bottom:2px solid #06b6d4;">`;
-    html += `<h2 style="margin:0;font-size:18px;">Cardiac Solutions - AED Status Notification</h2>`;
-    html += `<p style="margin:4px 0 0;font-size:12px;color:#94a3b8;">Subscriber: ${subscriber}</p></div>`;
-    html += `<div style="padding:20px;background:#fff;">`;
-    html += `<p>Dear Customer,</p>`;
-    html += `<p>The following AED devices at <strong>${subscriber}</strong> require your attention:</p>`;
+    const s = `style`;
+    let html = `<div ${s}="font-family:Arial,Helvetica,sans-serif;max-width:700px;margin:0 auto;color:#333;">`;
 
+    // Greeting
+    html += `<p ${s}="font-size:14px;">Hello ${subscriber},</p>`;
+    html += `<p ${s}="font-size:14px;">During our recent review of your AED(s), we identified issues as outlined below.</p>`;
+    html += `<p ${s}="font-size:14px;">Resolving these issues is critical to effectively monitor the health of your device. This also ensures that your units are ready to be used in an emergency.</p>`;
+
+    // Group sections by template category (merge EXPIRED B/P and EXPIRING into one section)
+    const merged = {};
     for (const [status, devs] of Object.entries(filteredGrouped)) {
-      html += `<h3 style="color:#dc2626;border-bottom:1px solid #e5e7eb;padding-bottom:6px;margin-top:20px;">${status}</h3>`;
-      html += `<table style="width:100%;border-collapse:collapse;font-size:13px;">`;
-      html += `<tr style="background:#f8fafc;"><th style="text-align:left;padding:8px;border:1px solid #e5e7eb;">Device ID</th>`;
-      html += `<th style="text-align:left;padding:8px;border:1px solid #e5e7eb;">Location</th>`;
-      html += `<th style="text-align:left;padding:8px;border:1px solid #e5e7eb;">Details</th></tr>`;
-      for (const d of devs) {
+      const sec = sectionMap[status] || { title: status, action: "Required Action", actionText: "Please inspect the AED(s) noted above." };
+      if (!merged[sec.title]) merged[sec.title] = { ...sec, devices: [] };
+      merged[sec.title].devices.push(...devs);
+    }
+
+    for (const [title, sec] of Object.entries(merged)) {
+      html += `<hr ${s}="border:none;border-top:1px solid #ddd;margin:20px 0;">`;
+      html += `<p ${s}="font-size:15px;font-weight:bold;margin-bottom:8px;">${title}:</p>`;
+
+      // Device table
+      html += `<table ${s}="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px;">`;
+      html += `<tr ${s}="background:#f5f5f5;"><th ${s}="text-align:left;padding:8px;border:1px solid #ddd;">Serial Number</th>`;
+      html += `<th ${s}="text-align:left;padding:8px;border:1px solid #ddd;">Location</th>`;
+      html += `<th ${s}="text-align:left;padding:8px;border:1px solid #ddd;">Status</th></tr>`;
+      for (const d of sec.devices) {
         html += `<tr>`;
-        html += `<td style="padding:8px;border:1px solid #e5e7eb;font-weight:bold;">${d.sentinel_id}</td>`;
-        html += `<td style="padding:8px;border:1px solid #e5e7eb;">${d.location || "—"}</td>`;
-        html += `<td style="padding:8px;border:1px solid #e5e7eb;">${d.days_summary || "—"}</td>`;
+        html += `<td ${s}="padding:8px;border:1px solid #ddd;font-weight:bold;">${d.sentinel_id}</td>`;
+        html += `<td ${s}="padding:8px;border:1px solid #ddd;">${d.location || "—"}</td>`;
+        html += `<td ${s}="padding:8px;border:1px solid #ddd;">${d.days_summary || d.detailed_status || "—"}</td>`;
         html += `</tr>`;
       }
       html += `</table>`;
+
+      html += `<p ${s}="font-size:14px;font-weight:bold;">${sec.action}:</p>`;
+      html += `<p ${s}="font-size:14px;">${sec.actionText.replace(/\n/g, '<br>')}</p>`;
     }
 
-    html += `<p style="margin-top:20px;">Please address these issues at your earliest convenience. If you have any questions, contact our support team.</p>`;
-    html += `<p>Best regards,<br><strong>Cardiac Solutions Support Team</strong></p>`;
-    html += `</div></div>`;
+    // Contact info
+    html += `<hr ${s}="border:none;border-top:1px solid #ddd;margin:20px 0;">`;
+    html += `<p ${s}="font-size:14px;">Our Service Department Phone Number: <strong>1-888-223-2939</strong></p>`;
+    html += `<p ${s}="font-size:14px;">Our Service Department Email Address: <strong>Info@cardiac-solutions.net</strong></p>`;
+    html += `</div>`;
     return html;
   };
 
@@ -179,42 +203,68 @@ function NotificationModal({ subscriber, devices, contact, onClose, onSent }) {
             EMAIL PREVIEW - REMOVE WRONG AEDs WITH THE ICON
           </div>
           <div className="bg-white rounded-sm p-4 text-slate-900 text-sm">
-            {Object.entries(filteredGrouped).map(([status, devs]) => (
-              <div key={status} className="mb-4">
-                <h3 className="font-bold text-red-600 border-b border-slate-200 pb-1 mb-2 text-sm">{status}</h3>
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50">
-                      <th className="text-left p-2 border border-slate-200">Device ID</th>
-                      <th className="text-left p-2 border border-slate-200">Location</th>
-                      <th className="text-left p-2 border border-slate-200">Details</th>
-                      <th className="w-8 border border-slate-200"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {devs.map(d => (
-                      <tr key={d.sentinel_id} className="hover:bg-slate-50">
-                        <td className="p-2 border border-slate-200 font-bold">{d.sentinel_id}</td>
-                        <td className="p-2 border border-slate-200 text-[11px]">{d.location || "—"}</td>
-                        <td className="p-2 border border-slate-200 text-[11px]">{d.days_summary || "—"}</td>
-                        <td className="p-2 border border-slate-200 text-center">
-                          <button
-                            onClick={() => setRemovedDevices(prev => new Set([...prev, d.sentinel_id]))}
-                            className="text-red-400 hover:text-red-600"
-                            data-testid={`remove-device-${d.sentinel_id}`}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
+            <p className="mb-2">Hello <strong>{subscriber}</strong>,</p>
+            <p className="mb-2 text-[13px]">During our recent review of your AED(s), we identified issues as outlined below.</p>
+            <p className="mb-4 text-[13px]">Resolving these issues is critical to effectively monitor the health of your device. This also ensures that your units are ready to be used in an emergency.</p>
+
+            {(() => {
+              // Merge sections same as email builder
+              const merged = {};
+              for (const [status, devs] of Object.entries(filteredGrouped)) {
+                const sec = {
+                  "EXPIRED B/P": { title: "AED Pads Expired/Expiring", action: "Next Steps", actionText: "Please contact our team by phone or email as soon as possible to arrange for replacement options for these devices." },
+                  "EXPIRING BATT/PADS": { title: "AED Pads Expired/Expiring", action: "Next Steps", actionText: "Please contact our team by phone or email as soon as possible to arrange for replacement options for these devices." },
+                  "REPOSITION": { title: "AED(s) Alignment Issues", action: "Required Action", actionText: "Please take a moment as soon as possible to inspect the AED(s) noted above." },
+                  "NOT PRESENT": { title: "AED(s) Missing", action: "Required Action", actionText: "Please place it back in its original location. If missing, please notify us." },
+                  "NOT READY": { title: "AED(s) Not Ready", action: "Required Action", actionText: "Please inspect the AED(s) noted above and ensure they are ready for use." },
+                  "UNKNOWN": { title: "AED(s) Status Unknown", action: "Required Action", actionText: "We are unable to determine the current status of these units." },
+                }[status] || { title: status, action: "Required Action", actionText: "Please inspect." };
+                if (!merged[sec.title]) merged[sec.title] = { ...sec, devices: [] };
+                merged[sec.title].devices.push(...devs);
+              }
+              return Object.entries(merged).map(([title, sec]) => (
+                <div key={title} className="mb-4">
+                  <h3 className="font-bold text-slate-800 border-b border-slate-200 pb-1 mb-2 text-sm">{title}:</h3>
+                  <table className="w-full text-xs border-collapse mb-2">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className="text-left p-2 border border-slate-200">Serial Number</th>
+                        <th className="text-left p-2 border border-slate-200">Location</th>
+                        <th className="text-left p-2 border border-slate-200">Status</th>
+                        <th className="w-8 border border-slate-200"></th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
+                    </thead>
+                    <tbody>
+                      {sec.devices.map(d => (
+                        <tr key={d.sentinel_id} className="hover:bg-slate-50">
+                          <td className="p-2 border border-slate-200 font-bold">{d.sentinel_id}</td>
+                          <td className="p-2 border border-slate-200 text-[11px]">{d.location || "—"}</td>
+                          <td className="p-2 border border-slate-200 text-[11px]">{d.days_summary || d.detailed_status || "—"}</td>
+                          <td className="p-2 border border-slate-200 text-center">
+                            <button
+                              onClick={() => setRemovedDevices(prev => new Set([...prev, d.sentinel_id]))}
+                              className="text-red-400 hover:text-red-600"
+                              data-testid={`remove-device-${d.sentinel_id}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="text-xs"><strong>{sec.action}:</strong> {sec.actionText}</p>
+                </div>
+              ));
+            })()}
+
             {Object.keys(filteredGrouped).length === 0 && (
               <div className="text-center text-slate-400 py-4">No devices to include</div>
             )}
+
+            <hr className="my-3 border-slate-200" />
+            <p className="text-[12px]">Our Service Department Phone Number: <strong>1-888-223-2939</strong></p>
+            <p className="text-[12px]">Our Service Department Email Address: <strong>Info@cardiac-solutions.net</strong></p>
           </div>
         </div>
 
