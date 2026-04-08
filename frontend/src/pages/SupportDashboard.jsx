@@ -90,7 +90,8 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
     let html = `<div ${s}="font-family:Arial,Helvetica,sans-serif;max-width:700px;margin:0 auto;color:#333;">`;
 
     // Greeting
-    html += `<p ${s}="font-size:14px;">Hello ${subscriber},</p>`;
+    const greeting = contact?.contact_name || subscriber;
+    html += `<p ${s}="font-size:14px;">Hello ${greeting},</p>`;
     html += `<p ${s}="font-size:14px;">During our recent review of your AED(s), we identified issues as outlined below.</p>`;
     html += `<p ${s}="font-size:14px;">Resolving these issues is critical to effectively monitor the health of your device. This also ensures that your units are ready to be used in an emergency.</p>`;
 
@@ -239,7 +240,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
             <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /><span className="ml-2 text-slate-400 text-xs">Loading devices...</span></div>
           ) : (
           <div className="bg-white rounded-sm p-4 text-slate-900 text-sm">
-            <p className="mb-2">Hello <strong>{subscriber}</strong>,</p>
+            <p className="mb-2">Hello <strong>{contact?.contact_name || subscriber}</strong>,</p>
             <p className="mb-2 text-[13px]">During our recent review of your AED(s), we identified issues as outlined below.</p>
             <p className="mb-4 text-[13px]">Resolving these issues is critical to effectively monitor the health of your device. This also ensures that your units are ready to be used in an emergency.</p>
 
@@ -600,9 +601,10 @@ export default function SupportDashboard({ user, onLogout }) {
 
             {/* Subscriber Table */}
             <div className="border border-slate-700/30 rounded-sm overflow-hidden">
+              <div className="max-h-[calc(100vh-320px)] overflow-y-auto">
               <table className="w-full">
-                <thead>
-                  <tr className="bg-[rgba(6,182,212,0.05)] border-b border-cyan-500/15">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-[#0a0f1c] border-b border-cyan-500/15">
                     <th className="text-left p-3 font-orbitron text-[8px] tracking-wider text-cyan-500/70 cursor-pointer" onClick={() => toggleSort("subscriber")}>
                       SUBSCRIBER <SortIcon field="subscriber" />
                     </th>
@@ -692,6 +694,7 @@ export default function SupportDashboard({ user, onLogout }) {
                   )}
                 </tbody>
               </table>
+              </div>
             </div>
 
             <div className="text-[8px] text-slate-600 mt-3 font-orbitron tracking-wider">
