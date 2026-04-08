@@ -415,6 +415,87 @@ async def seed_users():
             logger.error(f"Failed to seed user {seed['username']}: {e}")
     logger.info(f"Seeding complete: {seeded} new users")
 
+
+async def _seed_subscriber_contacts():
+    """Seed subscriber contacts from the Sentinel Customer Database Excel data."""
+    existing = await _db.subscriber_contacts.count_documents({})
+    if existing >= 51:
+        logger.info(f"Subscriber contacts already seeded ({existing} docs), skipping")
+        return
+    contacts_data = [
+        {"subscriber": "Alabama A&M", "to_email": "melvin.lewis@aamu.edu", "sales_rep": "John Powe", "cc_email": "jpowe@cardiac-solutions.net", "contact_name": "Melvin Lewis"},
+        {"subscriber": "Alabama School Nurses", "to_email": "lmarshall@alsde.edu", "sales_rep": "Jon Seale", "cc_email": "jseale@cardiac-solutions.net", "contact_name": "LaBrenda Marshall"},
+        {"subscriber": "All Phase Electric", "to_email": "tzemaitis@all-phasegr.com", "sales_rep": "Ty VanderWall", "cc_email": "tvanderwall@cardiac-solutions.net", "contact_name": "Travis Zmaitis"},
+        {"subscriber": "Altec", "to_email": "bmartin@cardiac-solutions.net", "sales_rep": "Bryan Martin", "cc_email": "bmartin@cardiac-solutions.net", "contact_name": "Bryan Martin"},
+        {"subscriber": "Avoyelles Parish Sheriffs Office", "to_email": "rsanders@avoyellesso.org", "sales_rep": "Rachael Grose", "cc_email": "rgrose@cardiac-solutions.net", "contact_name": "Capt. Reggie Sanders"},
+        {"subscriber": "Baton Rouge Airport", "to_email": "jjohnson@flybtr.com", "sales_rep": "Rachael Grose", "cc_email": "rgrose@cardiac-solutions.net", "contact_name": "Jeremy Johnson"},
+        {"subscriber": "Birmingham Airport Authority", "to_email": "kleonard@flybirmingham.com", "sales_rep": "Jon Seale", "cc_email": "jseale@cardiac-solutions.net", "contact_name": "Kenji Leonard"},
+        {"subscriber": "Birmingham City Schools", "to_email": "larrington@bhm.k12.al.us", "sales_rep": "Ben Yother", "cc_email": "byother@cardiac-solutions.net", "contact_name": "LaVonna Arrington"},
+        {"subscriber": "Birmingham Libraries", "to_email": "Karyn.Davis-West@cobpl.org", "sales_rep": "John Powe/Ben Yother", "cc_email": "jpowe@cardiac-solutions.net, byother@cardiac-solutions.net", "contact_name": "Ka'ryn Davis"},
+        {"subscriber": "Birmingham Police Dept", "to_email": "Herman.Cleveland@birminghamal.gov", "sales_rep": "Ben Yother", "cc_email": "byother@cardiac-solutions.net", "contact_name": "Herman Cleveland"},
+        {"subscriber": "Carencro PD", "to_email": "ohaydel@carencropd.com", "sales_rep": "Rachael Grose", "cc_email": "rgrose@cardiac-solutions.net", "contact_name": "Oren Haydel"},
+        {"subscriber": "City of Homewood", "to_email": "Matthew.Waine@homewoodal.org", "sales_rep": "Mark/Jon Seale", "cc_email": "mallred@cardiac-solutions.net, jseale@cardiac-solutions.net", "contact_name": "Matthew Waine"},
+        {"subscriber": "City of Montgomery", "to_email": "gfarmer@montgomeryal.gov", "sales_rep": "Jon Seale", "cc_email": "jseale@cardiac-solutions.net", "contact_name": "Chirf Gary Farmer"},
+        {"subscriber": "City of Opelika", "to_email": "dboyd@opelika-al.gov", "sales_rep": "Mark/Jon Seale", "cc_email": "mallred@cardiac-solutions.net, jseale@cardiac-solutions.net", "contact_name": "Chief Shane Boyd"},
+        {"subscriber": "City of Plaquemine", "to_email": "Jbarlow@Plaquemine.org", "sales_rep": "Rachael Grose", "cc_email": "rgrose@cardiac-solutions.net", "contact_name": "John Barlow"},
+        {"subscriber": "City of Springville", "to_email": "gdarnell@cityofspringville.com", "sales_rep": "Mark/Jon Seale", "cc_email": "mallred@cardiac-solutions.net, jseale@cardiac-solutions.net", "contact_name": "Graham Darnell"},
+        {"subscriber": "Clean Harbor-Hepaco", "to_email": "smith.justin85@cleanharbors.com", "sales_rep": "Ben Yother", "cc_email": "byother@cardiac-solutions.net", "contact_name": "Justin Smith"},
+        {"subscriber": "Concordia Parish", "to_email": "oep@vidalialafd.com", "sales_rep": "Rachael Grose", "cc_email": "rgrose@cardiac-solutions.net", "contact_name": "Tim Vanier"},
+        {"subscriber": "County of Franklin", "to_email": "Sheriff@FranklinSheriff.org", "sales_rep": "Jon Seale/Thomas Wilson", "cc_email": "jseale@cardiac-solutions.net, twilson@cardiac-solutions.net", "contact_name": "Shannon Oliver"},
+        {"subscriber": "Cullman County", "to_email": "rcash@cullmansheriff.org", "sales_rep": "Jon Seale", "cc_email": "jseale@cardiac-solutions.net", "contact_name": "Rebekah Cash"},
+        {"subscriber": "East Baton Rouge Parish", "to_email": "mcrawford@ebrso.org", "sales_rep": "Rachael Grose", "cc_email": "rgrose@cardiac-solutions.net", "contact_name": "Lt Michael Crawford"},
+        {"subscriber": "Gadsden City Schools", "to_email": "kmatlock@gadsdencityschools.org", "sales_rep": "Ben Yother", "cc_email": "byother@cardiac-solutions.net", "contact_name": "Kristi Matlock"},
+        {"subscriber": "Georgia Power", "to_email": "RSAYE@SOUTHERNCO.COM", "sales_rep": "Tracey Prince/Jon Seale", "cc_email": "tprince@cardiac-solutions.net, jseale@cardiac-solutions.net", "contact_name": "Robert Saye"},
+        {"subscriber": "GPC", "to_email": "", "sales_rep": "Jon Seale", "cc_email": "jseale@cardiac-solutions.net", "contact_name": ""},
+        {"subscriber": "GRCC Sheriff Dept.", "to_email": "rwhitman@grcc.edu", "sales_rep": "Ty VanderWall", "cc_email": "tvanderwall@cardiac-solutions.net", "contact_name": "Rebecca Whitman"},
+        {"subscriber": "Housing Authority - Bham", "to_email": "Amatthews@habd.net", "sales_rep": "Jon Seale/John Powe", "cc_email": "jseale@cardiac-solutions.net, jpowe@cardiac-solutions.net", "contact_name": "Armon Matthews"},
+        {"subscriber": "Hammond Police Department", "to_email": "rogers_sm@hammond.org", "sales_rep": "Rachael Grose", "cc_email": "rgrose@cardiac-solutions.net", "contact_name": "Stephanie Rogers"},
+        {"subscriber": "Houston Housing Authority", "to_email": "", "sales_rep": "Jon Seale", "cc_email": "jseale@cardiac-solutions.net", "contact_name": ""},
+        {"subscriber": "Houma Police Department", "to_email": "jboudreaux@tpcg.org", "sales_rep": "Rachael Grose", "cc_email": "rgrose@cardiac-solutions.net", "contact_name": "Lt Dennis Boudreaux"},
+        {"subscriber": "I3 Academy", "to_email": "Rmurphy@I3academy.org", "sales_rep": "Thomas Wilson", "cc_email": "twilson@cardiac-solutions.net", "contact_name": "Roshunda Murphy"},
+        {"subscriber": "Iberville Parish Sheriff", "to_email": "wdanielfield@ibervilleso.com", "sales_rep": "Rachael Grose", "cc_email": "rgrose@cardiac-solutions.net", "contact_name": "Captain William Danielfield"},
+        {"subscriber": "Lawson State Community College", "to_email": "mhudson@lawsonstate.edu", "sales_rep": "John Powe", "cc_email": "jpowe@cardiac-solutions.net", "contact_name": "Officer Hudson"},
+        {"subscriber": "Leapley Construction", "to_email": "lmontgom@southernco.com", "sales_rep": "Jon Seale/Tracey Prince", "cc_email": "jseale@cardiac-solutions.net, tprince@cardiac-solutions.net", "contact_name": "Lori Montgomery"},
+        {"subscriber": "Marshall County Sheriff", "to_email": "scantrell@marshallco.org", "sales_rep": "Thomas Wilson", "cc_email": "twilson@cardiac-solutions.net", "contact_name": "Sonya Cantrel"},
+        {"subscriber": "Mississippi Power", "to_email": "Jahollan@southernco.com", "sales_rep": "Jon Seale/Mark", "cc_email": "jseale@cardiac-solutions.net, mallred@cardiac-solutions.net", "contact_name": "Jared Holland"},
+        {"subscriber": "Montgomery PD", "to_email": "rcarson@montgomeryal.gov", "sales_rep": "Jon Seale", "cc_email": "jseale@cardiac-solutions.net", "contact_name": "Stephanie Hardaway"},
+        {"subscriber": "Motion Industries", "to_email": "Chad.jones@Motion.com", "sales_rep": "Jon Seale", "cc_email": "jseale@cardiac-solutions.net", "contact_name": "Chad Jones"},
+        {"subscriber": "MP Chevron Cogen", "to_email": "bmfisher@southernco.com", "sales_rep": "Jon Seale", "cc_email": "jseale@cardiac-solutions.net", "contact_name": "Brandon Fisher"},
+        {"subscriber": "Opelika PD", "to_email": "Rbugg@opelika-al.gov", "sales_rep": "Thomas Wilson", "cc_email": "twilson@cardiac-solutions.net", "contact_name": "Robert Bugg"},
+        {"subscriber": "Shelby County Tennessee Sheriff", "to_email": "Bryan.Jones@Shelby-Sheriff.org", "sales_rep": "Jon Seale/Mark", "cc_email": "jseale@cardiac-solutions.net, mallred@cardiac-solutions.net", "contact_name": "Bryan Jones"},
+        {"subscriber": "St. John the Baptist Parish", "to_email": "gmiller@stjohn.k12.la.us", "sales_rep": "Rachael Grose", "cc_email": "rgrose@cardiac-solutions.net", "contact_name": "Anthony Miller"},
+        {"subscriber": "Talladega County Sheriff", "to_email": "jtubbs@talladegacountyal.org", "sales_rep": "Thomas Wilson", "cc_email": "twilson@cardiac-solutions.net", "contact_name": "Josh Tubbs"},
+        {"subscriber": "Terrabonne Parrish", "to_email": "jfonseca@tpso.net", "sales_rep": "Rachael Grose", "cc_email": "rgrose@cardiac-solutions.net", "contact_name": "JACOB FONSECA"},
+        {"subscriber": "Vermilion Parish", "to_email": "chiefhardy@kaplanpolice.com", "sales_rep": "Rachael Grose", "cc_email": "rgrose@cardiac-solutions.net", "contact_name": "Chief Hardy"},
+        {"subscriber": "Blount County", "to_email": "wneill@blountcountyal.gov", "sales_rep": "Thomas Wilson", "cc_email": "twilson@cardiac-solutions.net", "contact_name": "Wes Neill"},
+        {"subscriber": "Shelby County Alabama", "to_email": "trose@shelbyso.com", "sales_rep": "Jon Seale", "cc_email": "jseale@cardiac-solutions.net", "contact_name": "Tovah Rose"},
+        # Readisys-specific name variants (map to same contact data as Excel equivalents)
+        {"subscriber": "HABD", "to_email": "Amatthews@habd.net", "sales_rep": "Jon Seale/John Powe", "cc_email": "jseale@cardiac-solutions.net, jpowe@cardiac-solutions.net", "contact_name": "Armon Matthews"},
+        {"subscriber": "HHA", "to_email": "", "sales_rep": "Jon Seale", "cc_email": "jseale@cardiac-solutions.net", "contact_name": ""},
+        {"subscriber": "Blount Co Sheriff", "to_email": "wneill@blountcountyal.gov", "sales_rep": "Thomas Wilson", "cc_email": "twilson@cardiac-solutions.net", "contact_name": "Wes Neill"},
+        {"subscriber": "Shelby County Alabama Sheriff", "to_email": "trose@shelbyso.com", "sales_rep": "Jon Seale", "cc_email": "jseale@cardiac-solutions.net", "contact_name": "Tovah Rose"},
+        {"subscriber": "All-Phase Electric Supply", "to_email": "tzemaitis@all-phasegr.com", "sales_rep": "Ty VanderWall", "cc_email": "tvanderwall@cardiac-solutions.net", "contact_name": "Travis Zmaitis"},
+    ]
+    seeded = 0
+    for c in contacts_data:
+        result = await _db.subscriber_contacts.update_one(
+            {"subscriber": c["subscriber"]},
+            {"$set": {
+                "to_email": c["to_email"],
+                "cc_email": c["cc_email"],
+                "sales_rep": c["sales_rep"],
+                "contact_name": c.get("contact_name", ""),
+                "bcc_emails": "",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_by": "system_seed"
+            }},
+            upsert=True
+        )
+        if result.upserted_id or result.modified_count > 0:
+            seeded += 1
+    logger.info(f"Subscriber contacts seed: {seeded} upserted out of {len(contacts_data)}")
+
+
 _seed_done = False
 _init_running = False
 
@@ -468,6 +549,7 @@ async def _run_lazy_init():
         await _db.users.create_index("username", unique=True, sparse=True)
         await _db.users.create_index("id", unique=True, sparse=True)
         await asyncio.wait_for(seed_users(), timeout=10)
+        await _seed_subscriber_contacts()
         _seed_done = True
         logger.info("Lazy init complete: cleanup + indexes + seed done")
     except Exception as e:
