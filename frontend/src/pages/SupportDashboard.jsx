@@ -459,6 +459,10 @@ export default function SupportDashboard({ user, onLogout }) {
     .filter(s => !search || s.subscriber.toLowerCase().includes(search.toLowerCase()));
 
   const sorted = [...filtered].sort((a, b) => {
+    if (sortField === "subscriber") {
+      const cmp = a.subscriber.localeCompare(b.subscriber);
+      return sortDir === "desc" ? -cmp : cmp;
+    }
     const av = a[sortField] || 0;
     const bv = b[sortField] || 0;
     return sortDir === "desc" ? bv - av : av - bv;
@@ -494,9 +498,6 @@ export default function SupportDashboard({ user, onLogout }) {
             data-testid="contacts-btn"
           >
             <Settings className="w-3 h-3" /> CONTACTS
-          </button>
-          <button onClick={onLogout} className="font-orbitron text-[8px] px-3 py-1.5 border border-red-500/30 text-red-400 rounded-sm hover:bg-red-500/10">
-            LOGOUT
           </button>
         </div>
       </div>
