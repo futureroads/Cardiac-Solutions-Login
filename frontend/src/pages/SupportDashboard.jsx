@@ -22,13 +22,37 @@ function StatCard({ value, label, color, icon: Icon }) {
   );
 }
 
-function NotificationModal({ subscriber, devices, contact, onClose, onSent }) {
+function NotificationModal({ subscriber, contact, onClose, onSent }) {
   const [toEmail, setToEmail] = useState(contact?.to_email || "");
   const [ccEmail, setCcEmail] = useState(contact?.cc_email || "");
   const [bccEmails, setBccEmails] = useState(contact?.bcc_emails || "");
   const [removedDevices, setRemovedDevices] = useState(new Set());
   const [sending, setSending] = useState(false);
   const [emailType, setEmailType] = useState("all");
+  const [devices, setDevices] = useState([]);
+  const [loadingDevices, setLoadingDevices] = useState(true);
+
+  // Fetch subscriber devices with full detail
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API}/support/subscriber/${encodeURIComponent(subscriber)}/devices`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          // Filter to only issue devices
+          const issueDevices = (data.devices || []).filter(d => {
+            const s = (d.detailed_status || "").toUpperCase();
+            return ["EXPIRED B/P", "EXPIRING BATT/PADS", "REPOSITION", "NOT READY", "NOT PRESENT", "LOST CONTACT", "UNKNOWN"].includes(s);
+          });
+          setDevices(issueDevices);
+        }
+      } catch {}
+      setLoadingDevices(false);
+    })();
+  }, [subscriber]);
 
   const activeDevices = devices.filter(d => !removedDevices.has(d.sentinel_id));
 
@@ -86,13 +110,22 @@ function NotificationModal({ subscriber, devices, contact, onClose, onSent }) {
       html += `<table ${s}="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px;">`;
       html += `<tr ${s}="background:#f5f5f5;"><th ${s}="text-align:left;padding:8px;border:1px solid #ddd;">Serial Number</th>`;
       html += `<th ${s}="text-align:left;padding:8px;border:1px solid #ddd;">Location</th>`;
-      html += `<th ${s}="text-align:left;padding:8px;border:1px solid #ddd;">Status</th></tr>`;
+      html += `<th ${s}="text-align:left;padding:8px;border:1px solid #ddd;">Status</th>`;
+      html += `<th ${s}="text-align:left;padding:8px;border:1px solid #ddd;">Image</th></tr>`;
       for (const d of sec.devices) {
+        const loc = [d.site, d.building, d.placement].filter(Boolean).join(" / ") || d.location || "—";
+        const imgUrl = d.image_url || "";
         html += `<tr>`;
         html += `<td ${s}="padding:8px;border:1px solid #ddd;font-weight:bold;">${d.sentinel_id}</td>`;
-        html += `<td ${s}="padding:8px;border:1px solid #ddd;">${d.location || "—"}</td>`;
+        html += `<td ${s}="padding:8px;border:1px solid #ddd;">${loc}</td>`;
         html += `<td ${s}="padding:8px;border:1px solid #ddd;">${d.days_summary || d.detailed_status || "—"}</td>`;
-        html += `</tr>`;
+        html += `<td ${s}="padding:8px;border:1px solid #ddd;">`;
+        if (imgUrl) {
+          html += `<img src="${imgUrl}" alt="${d.sentinel_id}" ${s}="max-width:120px;max-height:80px;" />`;
+        } else {
+          html += "—";
+        }
+        html += `</td></tr>`;
       }
       html += `</table>`;
 
@@ -202,6 +235,9 @@ function NotificationModal({ subscriber, devices, contact, onClose, onSent }) {
           <div className="font-orbitron text-[8px] tracking-wider text-amber-400 mb-2">
             EMAIL PREVIEW - REMOVE WRONG AEDs WITH THE ICON
           </div>
+          {loadingDevices ? (
+            <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /><span className="ml-2 text-slate-400 text-xs">Loading devices...</span></div>
+          ) : (
           <div className="bg-white rounded-sm p-4 text-slate-900 text-sm">
             <p className="mb-2">Hello <strong>{subscriber}</strong>,</p>
             <p className="mb-2 text-[13px]">During our recent review of your AED(s), we identified issues as outlined below.</p>
@@ -231,26 +267,37 @@ function NotificationModal({ subscriber, devices, contact, onClose, onSent }) {
                         <th className="text-left p-2 border border-slate-200">Serial Number</th>
                         <th className="text-left p-2 border border-slate-200">Location</th>
                         <th className="text-left p-2 border border-slate-200">Status</th>
+                        <th className="text-left p-2 border border-slate-200 w-28">Image</th>
                         <th className="w-8 border border-slate-200"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {sec.devices.map(d => (
-                        <tr key={d.sentinel_id} className="hover:bg-slate-50">
-                          <td className="p-2 border border-slate-200 font-bold">{d.sentinel_id}</td>
-                          <td className="p-2 border border-slate-200 text-[11px]">{d.location || "—"}</td>
-                          <td className="p-2 border border-slate-200 text-[11px]">{d.days_summary || d.detailed_status || "—"}</td>
-                          <td className="p-2 border border-slate-200 text-center">
-                            <button
-                              onClick={() => setRemovedDevices(prev => new Set([...prev, d.sentinel_id]))}
-                              className="text-red-400 hover:text-red-600"
-                              data-testid={`remove-device-${d.sentinel_id}`}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {sec.devices.map(d => {
+                        const loc = [d.site, d.building, d.placement].filter(Boolean).join(" / ") || d.location || "—";
+                        return (
+                          <tr key={d.sentinel_id} className="hover:bg-slate-50">
+                            <td className="p-2 border border-slate-200 font-bold">{d.sentinel_id}</td>
+                            <td className="p-2 border border-slate-200 text-[11px]">{loc}</td>
+                            <td className="p-2 border border-slate-200 text-[11px]">{d.days_summary || d.detailed_status || "—"}</td>
+                            <td className="p-2 border border-slate-200">
+                              {d.image_url ? (
+                                <img src={d.image_url} alt={d.sentinel_id} className="max-w-[100px] max-h-[60px] rounded-sm" loading="lazy" />
+                              ) : (
+                                <span className="text-slate-300 text-[10px]">No image</span>
+                              )}
+                            </td>
+                            <td className="p-2 border border-slate-200 text-center">
+                              <button
+                                onClick={() => setRemovedDevices(prev => new Set([...prev, d.sentinel_id]))}
+                                className="text-red-400 hover:text-red-600"
+                                data-testid={`remove-device-${d.sentinel_id}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                   <p className="text-xs"><strong>{sec.action}:</strong> {sec.actionText}</p>
@@ -266,6 +313,7 @@ function NotificationModal({ subscriber, devices, contact, onClose, onSent }) {
             <p className="text-[12px]">Our Service Department Phone Number: <strong>1-888-223-2939</strong></p>
             <p className="text-[12px]">Our Service Department Email Address: <strong>Info@cardiac-solutions.net</strong></p>
           </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -489,13 +537,19 @@ export default function SupportDashboard({ user, onLogout }) {
                     <th className="text-left p-3 font-orbitron text-[8px] tracking-wider text-cyan-500/70 cursor-pointer" onClick={() => toggleSort("subscriber")}>
                       SUBSCRIBER <SortIcon field="subscriber" />
                     </th>
-                    <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-red-400/70 cursor-pointer w-24" onClick={() => toggleSort("expired_bp")}>
-                      EXPIRED B/P <SortIcon field="expired_bp" />
+                    <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-red-400/70 cursor-pointer w-20" onClick={() => toggleSort("expired_bp")}>
+                      EXP B/P <SortIcon field="expired_bp" />
                     </th>
-                    <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-amber-400/70 cursor-pointer w-24" onClick={() => toggleSort("expiring_bp")}>
-                      EXPIRING B/P <SortIcon field="expiring_bp" />
+                    <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-amber-400/70 cursor-pointer w-20" onClick={() => toggleSort("expiring_bp")}>
+                      EXPIRING <SortIcon field="expiring_bp" />
                     </th>
-                    <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-pink-400/70 cursor-pointer w-24" onClick={() => toggleSort("total_issues")}>
+                    <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-orange-400/70 cursor-pointer w-20" onClick={() => toggleSort("not_ready")}>
+                      NOT RDY <SortIcon field="not_ready" />
+                    </th>
+                    <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-purple-400/70 cursor-pointer w-20" onClick={() => toggleSort("reposition")}>
+                      REPOS <SortIcon field="reposition" />
+                    </th>
+                    <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-pink-400/70 cursor-pointer w-20" onClick={() => toggleSort("total_issues")}>
                       TOTAL <SortIcon field="total_issues" />
                     </th>
                     <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-slate-500 w-24">
@@ -537,6 +591,20 @@ export default function SupportDashboard({ user, onLogout }) {
                         )}
                       </td>
                       <td className="p-3 text-center">
+                        {(s.not_ready || 0) > 0 ? (
+                          <span className="font-orbitron text-sm font-bold text-orange-400">{s.not_ready}</span>
+                        ) : (
+                          <span className="text-slate-600">0</span>
+                        )}
+                      </td>
+                      <td className="p-3 text-center">
+                        {(s.reposition || 0) > 0 ? (
+                          <span className="font-orbitron text-sm font-bold text-purple-400">{s.reposition}</span>
+                        ) : (
+                          <span className="text-slate-600">0</span>
+                        )}
+                      </td>
+                      <td className="p-3 text-center">
                         <span className="font-orbitron text-sm font-bold text-pink-400">{s.total_issues}</span>
                       </td>
                       <td className="p-3 text-center">
@@ -551,7 +619,7 @@ export default function SupportDashboard({ user, onLogout }) {
                     </tr>
                   ))}
                   {sorted.length === 0 && (
-                    <tr><td colSpan={5} className="text-center py-8 text-slate-500 font-orbitron text-[10px]">NO SUBSCRIBERS WITH ISSUES</td></tr>
+                    <tr><td colSpan={7} className="text-center py-8 text-slate-500 font-orbitron text-[10px]">NO SUBSCRIBERS WITH ISSUES</td></tr>
                   )}
                 </tbody>
               </table>
@@ -568,7 +636,6 @@ export default function SupportDashboard({ user, onLogout }) {
       {selectedSub && (
         <NotificationModal
           subscriber={selectedSub.subscriber}
-          devices={selectedSub.devices}
           contact={selectedSub.contact}
           onClose={() => setSelectedSub(null)}
           onSent={fetchData}

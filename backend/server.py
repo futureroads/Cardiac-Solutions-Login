@@ -841,79 +841,102 @@ async def upsert_subscriber_contact(subscriber_name: str, data: dict, current_us
 
 @api_router.get("/support/dashboard-data")
 async def support_dashboard_data(current_user: dict = Depends(get_current_user)):
-    """Aggregate subscriber device data for the Support Dashboard."""
-    import httpx, time, asyncio
+    """Aggregate subscriber device data for the Support Dashboard using voice APIs."""
+    import httpx, time, asyncio, urllib.parse
     headers = _readisys_auth_headers()
     now = time.time()
 
-    # Reuse cached data
-    bp_data = _bp_cache["data"] if (_bp_cache["data"] and (now - _bp_cache["ts"]) < 300) else None
+    # Reuse cached data for fleet totals
     status_data = _status_cache["data"] if (_status_cache["data"] and (now - _status_cache["ts"]) < 300) else None
-
-    if not bp_data or not status_data:
+    if not status_data:
         try:
             async with httpx.AsyncClient(timeout=25) as client:
-                tasks = {}
-                if not bp_data:
-                    tasks["bp"] = client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp", headers=headers)
-                if not status_data:
-                    tasks["status"] = client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
-                results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-                keys = list(tasks.keys())
-                for i, key in enumerate(keys):
-                    resp = results[i]
-                    if isinstance(resp, Exception): continue
-                    if resp.status_code == 200:
-                        if key == "bp":
-                            bp_data = resp.json()
-                            _bp_cache["data"] = bp_data
-                            _bp_cache["ts"] = now
-                        elif key == "status":
-                            status_data = resp.json()
-                            _status_cache["data"] = status_data
-                            _status_cache["ts"] = now
+                resp = await client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
+                if resp.status_code == 200:
+                    status_data = resp.json()
+                    _status_cache["data"] = status_data
+                    _status_cache["ts"] = now
         except Exception as e:
-            logger.warning(f"support dashboard fetch error: {e}")
-
-    # Fallback to stale
-    if not bp_data and _bp_cache["data"]: bp_data = _bp_cache["data"]
-    if not status_data and _status_cache["data"]: status_data = _status_cache["data"]
-    bp_data = bp_data or {}
+            logger.warning(f"support dashboard status fetch: {e}")
+    if not status_data and _status_cache["data"]:
+        status_data = _status_cache["data"]
     status_data = status_data or {}
 
-    by_sub = bp_data.get("by_subscriber", [])
-    devices = bp_data.get("devices", [])
+    # Get subscriber list from voice API
+    subscribers = []
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get("https://readisys.survivalpath.ai/api/voice/subscribers", headers=headers)
+            if resp.status_code == 200:
+                sub_list = resp.json().get("subscribers", [])
+            else:
+                sub_list = []
+    except:
+        sub_list = []
 
-    # Build per-subscriber device lists grouped by status
-    device_map = {}
-    for d in devices:
-        sub = d.get("subscriber", "")
-        if sub not in device_map:
-            device_map[sub] = []
-        device_map[sub].append(d)
+    # For each subscriber with data, get status counts
+    async def fetch_sub_status(sub_name):
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                enc = urllib.parse.quote(sub_name)
+                resp = await client.get(
+                    f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc}/status?brief=true",
+                    headers=headers
+                )
+                if resp.status_code == 200:
+                    return resp.json()
+        except:
+            pass
+        return None
 
-    # Get all subscriber contacts
+    # Fetch statuses for all subscribers with data (in batches to avoid overwhelming)
+    active_subs = [s for s in sub_list if s.get("has_data")]
+
+    # Batch fetch (max 10 concurrent)
+    results = []
+    batch_size = 10
+    for i in range(0, len(active_subs), batch_size):
+        batch = active_subs[i:i+batch_size]
+        batch_results = await asyncio.gather(
+            *[fetch_sub_status(s["name"]) for s in batch],
+            return_exceptions=True
+        )
+        results.extend(zip(batch, batch_results))
+
+    # Get subscriber contacts
     contacts_map = {}
     async for c in _db.subscriber_contacts.find({}, {"_id": 0}):
         contacts_map[c["subscriber"]] = c
 
-    subscribers = []
-    for s in by_sub:
-        name = s.get("subscriber", "")
-        expired = s.get("expired_bp", 0)
-        expiring = s.get("expiring_batt_pads", 0)
-        total_issues = expired + expiring
-        contact = contacts_map.get(name, {})
-        subscribers.append({
-            "subscriber": name,
-            "expired_bp": expired,
-            "expiring_bp": expiring,
-            "total_issues": total_issues,
-            "devices": device_map.get(name, []),
-            "contact": contact,
-        })
+    for sub_info, status in results:
+        if isinstance(status, Exception) or not status:
+            continue
+        name = sub_info["name"]
+        counts = status.get("counts", {})
+        expired = counts.get("expired_bp", 0)
+        expiring = counts.get("expiring_batt_pads", 0)
+        not_ready = counts.get("not_ready", 0)
+        reposition = counts.get("reposition", 0)
+        not_present = counts.get("not_present", 0)
+        unknown = counts.get("unknown", 0)
+        lost_contact = counts.get("lost_contact", 0)
+        total = expired + expiring + not_ready + reposition + not_present + unknown + lost_contact
+        if total > 0:
+            subscribers.append({
+                "subscriber": name,
+                "expired_bp": expired,
+                "expiring_bp": expiring,
+                "not_ready": not_ready,
+                "reposition": reposition,
+                "not_present": not_present,
+                "unknown": unknown,
+                "lost_contact": lost_contact,
+                "total_issues": total,
+                "monitored_aeds": counts.get("monitored_aeds", 0),
+                "percent_ready": status.get("percent_ready", 0),
+                "contact": contacts_map.get(name, {}),
+            })
 
-    # Sort by total issues desc
     subscribers.sort(key=lambda x: x["total_issues"], reverse=True)
 
     totals = status_data.get("totals", {})
@@ -921,7 +944,7 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
 
     return {
         "subscribers": subscribers,
-        "total_subscribers": len([s for s in subscribers if s["total_issues"] > 0]),
+        "total_subscribers": len(subscribers),
         "fleet_totals": {
             "expired_bp": dsc.get("expired_bp", 0),
             "expiring_bp": dsc.get("expiring_batt_pads", 0),
@@ -990,6 +1013,79 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
     except Exception as e:
         logger.error(f"Support notification error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/support/subscriber/{subscriber}/devices")
+async def support_subscriber_devices(subscriber: str, current_user: dict = Depends(get_current_user)):
+    """Get all devices for a subscriber using the voice API with full status detail."""
+    import httpx, urllib.parse
+    headers = _readisys_auth_headers()
+    enc_sub = urllib.parse.quote(subscriber)
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(
+                f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc_sub}/devices?limit=500",
+                headers=headers
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                devices = data.get("devices", [])
+                # Add download_url for each device with s3_url
+                for d in devices:
+                    s3 = d.get("s3_url", "")
+                    if s3:
+                        d["image_url"] = f"https://readisys.survivalpath.ai/api/aed-images/download?url={urllib.parse.quote(s3)}"
+                return data
+            return {"devices": [], "device_count": 0, "_error": f"API returned {resp.status_code}"}
+    except Exception as e:
+        logger.warning(f"subscriber devices fetch error: {e}")
+        return {"devices": [], "device_count": 0, "_error": str(e)}
+
+@api_router.get("/support/aed-image/{sentinel_id}")
+async def aed_image_proxy(sentinel_id: str, current_user: dict = Depends(get_current_user)):
+    """Proxy to fetch the last camera image metadata for an AED."""
+    import httpx
+    headers = _readisys_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"https://readisys.survivalpath.ai/api/voice/aed/{sentinel_id}/last-image",
+                headers=headers
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                img = data.get("image", {})
+                s3 = img.get("s3_url", "")
+                if s3:
+                    import urllib.parse
+                    data["image"]["proxy_url"] = f"https://readisys.survivalpath.ai/api/aed-images/download?url={urllib.parse.quote(s3)}"
+                return data
+            return {"_error": f"API returned {resp.status_code}"}
+    except Exception as e:
+        return {"_error": str(e)}
+
+@api_router.get("/support/image-download")
+async def image_download_proxy(url: str, current_user: dict = Depends(get_current_user)):
+    """Proxy to download an AED image from Readisys S3 with auth."""
+    import httpx, urllib.parse
+    headers = _readisys_auth_headers()
+    try:
+        download_url = f"https://readisys.survivalpath.ai/api/aed-images/download?url={urllib.parse.quote(url)}"
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(download_url, headers=headers)
+            if resp.status_code == 200:
+                from fastapi.responses import Response
+                return Response(
+                    content=resp.content,
+                    media_type=resp.headers.get("content-type", "image/png"),
+                    headers={"Cache-Control": "public, max-age=3600"}
+                )
+            return Response(content=b"", status_code=resp.status_code)
+    except Exception as e:
+        logger.warning(f"Image proxy error: {e}")
+        from fastapi.responses import Response
+        return Response(content=b"", status_code=500)
+
 
 
 
