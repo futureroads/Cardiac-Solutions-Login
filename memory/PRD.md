@@ -7,50 +7,49 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - [x] Login page with animated SVG heart, EKG line, sound effects, build version display
 - [x] Command Center Hub with "Powering Up" splash screen and dynamic module cards
 - [x] MongoDB user storage with PBKDF2 hashed passwords (7 seeded users)
-- [x] Password auto-migration (bcrypt -> PBKDF2) on login
 - [x] Role-based access control (admin/user roles)
 - [x] Module-based hub filtering per user
-- [x] User Access admin page (full CRUD + Logout button)
-- [x] Cross-domain SSO tokens for Daily Report & Notifications (60s expiry, jti single-use, HS256)
-- [x] Token expiry validation on page load (auto-logout if expired)
-- [x] Login always redirects to /hub
-- [x] Dashboard with dynamic status LEDs, clickable panels, DI scrolling, OpenAI TTS preload
-- [x] Backend Management page (admin-only) with Camera Overview, Server Resources, DB Status
-- [x] Outage Status page (admin-only) monitoring 18 services across 5 categories
-- [x] Hybrid Training page (admin-only) — 5-step workflow with real Gemini LLM integration
-- [x] Customer Portal page (admin-only) — Customer Information form + AED Units table with CRUD
+- [x] **Dashboard Assignment System** — per-user dashboard type ("standard" or "support")
+- [x] User Access admin page (full CRUD + Dashboard Type dropdown + Logout button)
+- [x] Cross-domain SSO tokens for Daily Report & Notifications
+- [x] Standard Dashboard with dynamic status LEDs, clickable panels, DI scrolling, OpenAI TTS preload
+- [x] **Support Dashboard** — subscriber notification center with:
+  - Fleet stat cards (Subscribers, Expired B/P, Expiring B/P, Not Ready, Reposition, Unknown)
+  - Sortable subscriber table with device issue counts
+  - Notification modal with email type selector, editable TO/CC/BCC, device preview grouped by status
+  - Delete button per device to remove from email before sending
+  - Mailgun integration for sending notifications
+  - Subscriber contacts management (CRUD via Contacts modal)
+  - Notification history logging to MongoDB
+- [x] Backend Management page with live Readisys System card (GET /api/dashboard/top-cards)
+- [x] Outage Status page (admin-only) monitoring 18 services
+- [x] Hybrid Training page (admin-only) — 5-step workflow with Gemini LLM
+- [x] Customer Portal page — Customer Info + AED Units CRUD
 - [x] Service Console (/service-tickets) — Subscriber issues, device drill-down, ticket CRUD
-- [x] Field Tech Management (Settings modal) — CRUD for field technicians
-- [x] Ticket Dispatch with Mailgun email (from no-reply@cardiac-solutions.ai)
-- [x] Public Tech Response page (/tech/:ticketId) for technicians to update status
-- [x] OpenAI TTS ("JARVIS" voice) preloaded on Dashboard mount
-- [x] Daily Percent Ready tracker with DI feed integration
-- [x] Parallel Readisys API calls for fast Service Console loading
-- [x] Dispatch email fallback: resolves tech_email from field_techs when missing on older tickets
-- [x] Production CrashLoopBackOff fix: sparse indexes, null username cleanup, duplicate removal
-- [x] Frontend error resilience: auto-retries, health pings, error toasts
+- [x] Field Tech Management (Settings modal)
+- [x] Ticket Dispatch with Mailgun email
+- [x] Public Tech Response page (/tech/:ticketId)
+- [x] Clickable Active Tickets / Dispatched stat cards with filtered modal
+- [x] Service Console parallel API loading (30s -> ~3s)
 
 ## Tech Stack
 - Frontend: React 19 + Framer Motion + Tailwind CSS + Shadcn UI
-- Backend: FastAPI + Motor (async MongoDB) + PBKDF2 (hashlib) + PyJWT + httpx
+- Backend: FastAPI + Motor (async MongoDB) + PBKDF2 + PyJWT + httpx
 - Database: MongoDB
-- Integrations: Mailgun (email), OpenAI TTS (via Emergent LLM Key), Readisys API (AED data)
-- Deployment: Emergent platform with Cloudflare CDN
+- Integrations: Mailgun (email), OpenAI TTS (Emergent LLM Key), Readisys API (AED data)
 
-## Key Files
-- `/app/frontend/src/App.js` — Routes
-- `/app/frontend/src/pages/ServiceTickets.jsx` — Service Console with modals
-- `/app/frontend/src/pages/TechResponse.jsx` — Public tech response portal
-- `/app/frontend/src/pages/Dashboard.jsx` — TTS preload, DI percent ready
-- `/app/frontend/src/pages/CommandCenterHub.jsx` — Hub with module cards, SSO redirects
-- `/app/frontend/src/pages/HybridTraining.jsx` — 5-step training pipeline
-- `/app/frontend/src/pages/UserAccess.jsx` — Admin CRUD
-- `/app/frontend/src/pages/LoginPage.jsx` — Multi-stage login + build version
-- `/app/backend/server.py` — All backend logic (~2100 lines)
+## Key DB Collections
+- `users`: {id, username, password_hash, role, department, allowed_modules, dashboard_type, di_permissions...}
+- `subscriber_contacts`: {subscriber, to_email, cc_email, bcc_emails, sales_rep, updated_at}
+- `notification_history`: {subscriber, to_email, cc_email, subject, sent_by, sent_at, success}
+- `service_tickets`: {id, subscriber, device_id, issue_type, priority, assigned_tech, tech_email, status...}
+- `field_techs`: {name, email, mobile, company, area...}
+- `pct_ready_history`: {date, percent_ready, updated_at}
 
 ## Credentials
 - **Admin**: futureroads / @@U1s9m6c7@@
-- **Users**: Lew/Lew123, Stark/Stark123, Tony/Tony123, Tracey/Tracey123, Nate/Nate123, Jon/Jon123
+- **Support User**: Lew / Lew123 (dashboard_type: support)
+- **Users**: Stark/Stark123, Tony/Tony123, Tracey/Tracey123, Nate/Nate123, Jon/Jon123
 
 ## Prioritized Backlog
 
@@ -60,21 +59,24 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 
 ### P2 (Medium)
 - Build Survival Path module page
-- Wire Hybrid Training Step 4 "Apply" to real Qwen/OpenCV backends
+- Add camera image support to Support Dashboard notification modal
+- Add more status types (Not Ready, Reposition, Unknown) to subscriber table when API available
 
 ### P3 (Nice to Have)
-- Refactor server.py (~2100 lines) into modular route files
+- Refactor server.py (~2400 lines) into modular route files
 - Refactor LoginPage.jsx, Dashboard.jsx, ServiceTickets.jsx
 - Mobile responsive optimizations
-- Implement real-time AED device status
 
 ## Known Issues
-- Steps 4-5 (Apply/Monitor) in Hybrid Training still use MOCKED endpoints
-- Dashboard subscribers/devices/tickets are still MOCKED — only System Status and DI scroll are real
+- Camera images not yet shown in notification modal (Readisys API image endpoint not discovered)
+- Steps 4-5 in Hybrid Training use MOCKED endpoints
+- Support Dashboard only shows Expired B/P and Expiring B/P device details (other statuses in fleet totals only)
 
 ## Changelog
-- 2026-04-02: Fixed Service Console slow load (30+s -> ~3s) by parallelizing Readisys API calls with asyncio.gather
-- 2026-04-02: Fixed dispatch email failure on older tickets by adding field_techs collection fallback lookup
-- 2026-04-02: Parallelized cache pre-warm on startup (both caches fill simultaneously)
-- 2026-04-02: OpenAI TTS integrated, Dashboard DI percent ready tracker, Service Console built
-- 2026-03-31: Fixed Dashboard System Status showing 0 on cold start
+- 2026-04-08: Support Dashboard built with subscriber table, notification modal, email sending via Mailgun
+- 2026-04-08: Dashboard assignment system (per-user dashboard_type) with User Access admin dropdown
+- 2026-04-08: Subscriber contacts CRUD + notification history logging
+- 2026-04-08: Backend /api/dashboard/top-cards proxy for live Readiness System data
+- 2026-04-02: Fixed Service Console slow load by parallelizing Readisys API calls
+- 2026-04-02: Fixed dispatch email fallback for older tickets missing tech_email
+- 2026-04-02: Set APP_URL for correct production email links

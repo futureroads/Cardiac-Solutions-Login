@@ -69,6 +69,7 @@ const emptyForm = {
   department: "",
   allowed_modules: [],
   di_permissions: { ...DEFAULT_DI_PERMISSIONS },
+  dashboard_type: "standard",
 };
 
 export default function UserAccess({ onLogout }) {
@@ -151,6 +152,7 @@ export default function UserAccess({ onLogout }) {
       department: user.department || "",
       allowed_modules: user.allowed_modules || [],
       di_permissions: user.di_permissions || { ...DEFAULT_DI_PERMISSIONS },
+      dashboard_type: user.dashboard_type || "standard",
     });
     setShowPassword(false);
     setShowForm(true);
@@ -476,6 +478,22 @@ export default function UserAccess({ onLogout }) {
                       {d.toUpperCase()}
                     </option>
                   ))}
+                </select>
+              </div>
+              {/* Dashboard Type */}
+              <div>
+                <label className="font-tech text-[10px] tracking-[0.15em] mb-1 block" style={{ color: "#94a3b8" }}>
+                  DASHBOARD TYPE
+                </label>
+                <select
+                  data-testid="input-dashboard-type"
+                  value={form.dashboard_type}
+                  onChange={(e) => setForm({ ...form, dashboard_type: e.target.value })}
+                  className="w-full px-3 py-2 rounded-sm font-tech text-sm appearance-none"
+                  style={inputStyle}
+                >
+                  <option value="standard" style={{ background: "#0f172a" }}>STANDARD</option>
+                  <option value="support" style={{ background: "#0f172a" }}>SUPPORT</option>
                 </select>
               </div>
             </div>

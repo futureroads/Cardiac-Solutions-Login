@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
+import SupportDashboard from "./pages/SupportDashboard";
 import CommandCenterHub from "./pages/CommandCenterHub";
 import UserAccess from "./pages/UserAccess";
 import BackendManagement from "./pages/BackendManagement";
@@ -106,7 +107,10 @@ function App() {
             path="/dashboard" 
             element={
               isAuthenticated ? 
-                <Dashboard user={user} onLogout={handleLogout} /> : 
+                (user?.dashboard_type === "support" ? 
+                  <SupportDashboard user={user} onLogout={handleLogout} /> :
+                  <Dashboard user={user} onLogout={handleLogout} />
+                ) : 
                 <Navigate to="/" replace />
             } 
           />

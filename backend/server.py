@@ -176,6 +176,7 @@ class UserResponse(BaseModel):
     department: Optional[str] = ""
     allowed_modules: Optional[List[str]] = []
     di_permissions: Optional[dict] = None
+    dashboard_type: Optional[str] = "standard"
     created_at: str
 
 class TokenResponse(BaseModel):
@@ -191,6 +192,7 @@ class AdminUserCreate(BaseModel):
     role: Optional[str] = "Employee"
     department: Optional[str] = ""
     allowed_modules: Optional[List[str]] = []
+    dashboard_type: Optional[str] = "standard"
 
 class AdminUserUpdate(BaseModel):
     username: Optional[str] = None
@@ -201,6 +203,7 @@ class AdminUserUpdate(BaseModel):
     department: Optional[str] = None
     allowed_modules: Optional[List[str]] = None
     di_permissions: Optional[dict] = None
+    dashboard_type: Optional[str] = None
 
 class AEDDevice(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -624,6 +627,7 @@ async def login(credentials: UserLogin, background_tasks: BackgroundTasks = None
             department=user.get("department", ""),
             allowed_modules=user.get("allowed_modules", []),
             di_permissions=user.get("di_permissions"),
+            dashboard_type=user.get("dashboard_type", "standard"),
             created_at=user.get("created_at", ""),
         )
     )
@@ -640,6 +644,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         department=current_user.get("department", ""),
         allowed_modules=current_user.get("allowed_modules", []),
         di_permissions=current_user.get("di_permissions"),
+        dashboard_type=current_user.get("dashboard_type", "standard"),
         created_at=current_user.get("created_at", ""),
     )
 
@@ -712,6 +717,7 @@ async def create_user(data: AdminUserCreate, admin: dict = Depends(require_admin
             "role": data.role or "Employee",
             "department": data.department or "",
             "allowed_modules": data.allowed_modules or [],
+            "dashboard_type": data.dashboard_type or "standard",
             "password_hash": await asyncio.to_thread(hash_password, data.password),
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -753,6 +759,8 @@ async def update_user(user_id: str, data: AdminUserUpdate, admin: dict = Depends
             update["allowed_modules"] = data.allowed_modules
         if data.di_permissions is not None:
             update["di_permissions"] = data.di_permissions
+        if data.dashboard_type is not None:
+            update["dashboard_type"] = data.dashboard_type
 
         if update:
             await _db.users.update_one({"id": user_id}, {"$set": update})
@@ -793,6 +801,197 @@ async def list_modules(admin: dict = Depends(require_admin)):
         {"id": "backend", "title": "Backend"},
         {"id": "outage_status", "title": "Outage Status"},
     ]
+
+# ==================== Subscriber Contacts ====================
+
+@api_router.get("/subscriber-contacts")
+async def list_subscriber_contacts(current_user: dict = Depends(get_current_user)):
+    """List all subscriber contact configurations."""
+    contacts = []
+    async for c in _db.subscriber_contacts.find({}, {"_id": 0}):
+        contacts.append(c)
+    return contacts
+
+@api_router.get("/subscriber-contacts/{subscriber_name}")
+async def get_subscriber_contact(subscriber_name: str, current_user: dict = Depends(get_current_user)):
+    """Get contact config for a specific subscriber."""
+    contact = await _db.subscriber_contacts.find_one({"subscriber": subscriber_name}, {"_id": 0})
+    if not contact:
+        return {"subscriber": subscriber_name, "to_email": "", "cc_email": "", "bcc_emails": "", "sales_rep": ""}
+    return contact
+
+@api_router.put("/subscriber-contacts/{subscriber_name}")
+async def upsert_subscriber_contact(subscriber_name: str, data: dict, current_user: dict = Depends(get_current_user)):
+    """Create or update contact config for a subscriber."""
+    doc = {
+        "subscriber": subscriber_name,
+        "to_email": data.get("to_email", ""),
+        "cc_email": data.get("cc_email", ""),
+        "bcc_emails": data.get("bcc_emails", ""),
+        "sales_rep": data.get("sales_rep", ""),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": current_user.get("username", ""),
+    }
+    await _db.subscriber_contacts.update_one(
+        {"subscriber": subscriber_name},
+        {"$set": doc},
+        upsert=True
+    )
+    return doc
+
+@api_router.get("/support/dashboard-data")
+async def support_dashboard_data(current_user: dict = Depends(get_current_user)):
+    """Aggregate subscriber device data for the Support Dashboard."""
+    import httpx, time, asyncio
+    headers = _readisys_auth_headers()
+    now = time.time()
+
+    # Reuse cached data
+    bp_data = _bp_cache["data"] if (_bp_cache["data"] and (now - _bp_cache["ts"]) < 300) else None
+    status_data = _status_cache["data"] if (_status_cache["data"] and (now - _status_cache["ts"]) < 300) else None
+
+    if not bp_data or not status_data:
+        try:
+            async with httpx.AsyncClient(timeout=25) as client:
+                tasks = {}
+                if not bp_data:
+                    tasks["bp"] = client.get("https://readisys.survivalpath.ai/api/status-overview/expiring-expired-bp", headers=headers)
+                if not status_data:
+                    tasks["status"] = client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
+                results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+                keys = list(tasks.keys())
+                for i, key in enumerate(keys):
+                    resp = results[i]
+                    if isinstance(resp, Exception): continue
+                    if resp.status_code == 200:
+                        if key == "bp":
+                            bp_data = resp.json()
+                            _bp_cache["data"] = bp_data
+                            _bp_cache["ts"] = now
+                        elif key == "status":
+                            status_data = resp.json()
+                            _status_cache["data"] = status_data
+                            _status_cache["ts"] = now
+        except Exception as e:
+            logger.warning(f"support dashboard fetch error: {e}")
+
+    # Fallback to stale
+    if not bp_data and _bp_cache["data"]: bp_data = _bp_cache["data"]
+    if not status_data and _status_cache["data"]: status_data = _status_cache["data"]
+    bp_data = bp_data or {}
+    status_data = status_data or {}
+
+    by_sub = bp_data.get("by_subscriber", [])
+    devices = bp_data.get("devices", [])
+
+    # Build per-subscriber device lists grouped by status
+    device_map = {}
+    for d in devices:
+        sub = d.get("subscriber", "")
+        if sub not in device_map:
+            device_map[sub] = []
+        device_map[sub].append(d)
+
+    # Get all subscriber contacts
+    contacts_map = {}
+    async for c in _db.subscriber_contacts.find({}, {"_id": 0}):
+        contacts_map[c["subscriber"]] = c
+
+    subscribers = []
+    for s in by_sub:
+        name = s.get("subscriber", "")
+        expired = s.get("expired_bp", 0)
+        expiring = s.get("expiring_batt_pads", 0)
+        total_issues = expired + expiring
+        contact = contacts_map.get(name, {})
+        subscribers.append({
+            "subscriber": name,
+            "expired_bp": expired,
+            "expiring_bp": expiring,
+            "total_issues": total_issues,
+            "devices": device_map.get(name, []),
+            "contact": contact,
+        })
+
+    # Sort by total issues desc
+    subscribers.sort(key=lambda x: x["total_issues"], reverse=True)
+
+    totals = status_data.get("totals", {})
+    dsc = totals.get("detailed_status_counts", {})
+
+    return {
+        "subscribers": subscribers,
+        "total_subscribers": len([s for s in subscribers if s["total_issues"] > 0]),
+        "fleet_totals": {
+            "expired_bp": dsc.get("expired_bp", 0),
+            "expiring_bp": dsc.get("expiring_batt_pads", 0),
+            "not_ready": dsc.get("not_ready", 0),
+            "reposition": dsc.get("reposition", 0),
+            "not_present": dsc.get("not_present", 0),
+            "unknown": dsc.get("unknown", 0),
+            "lost_contact": dsc.get("lost_contact", 0),
+        },
+    }
+
+@api_router.post("/support/send-notification")
+async def send_support_notification(data: dict, current_user: dict = Depends(get_current_user)):
+    """Send a notification email to a subscriber about their AED issues."""
+    to_email = data.get("to_email", "")
+    cc_email = data.get("cc_email", "")
+    bcc_emails = data.get("bcc_emails", "")
+    subject = data.get("subject", "")
+    html_body = data.get("html_body", "")
+    subscriber = data.get("subscriber", "")
+
+    if not to_email or not subject or not html_body:
+        raise HTTPException(status_code=400, detail="Missing required fields: to_email, subject, html_body")
+
+    mailgun_key = os.environ.get("MAILGUN_API_KEY", "")
+    mailgun_domain = os.environ.get("MAILGUN_DOMAIN", "cardiac-solutions.ai")
+    sender = os.environ.get("DISPATCH_SENDER", "no-reply@cardiac-solutions.ai")
+
+    if not mailgun_key:
+        raise HTTPException(status_code=500, detail="Mailgun not configured")
+
+    try:
+        mg_data = {
+            "from": f"Cardiac Solutions <{sender}>",
+            "to": [to_email],
+            "subject": subject,
+            "html": html_body,
+        }
+        if cc_email:
+            mg_data["cc"] = [e.strip() for e in cc_email.split(",") if e.strip()]
+        if bcc_emails:
+            mg_data["bcc"] = [e.strip() for e in bcc_emails.split(",") if e.strip()]
+
+        resp = requests.post(
+            f"https://api.mailgun.net/v3/{mailgun_domain}/messages",
+            auth=("api", mailgun_key),
+            data=mg_data,
+        )
+        success = resp.status_code == 200
+        logger.info(f"Support notification to {to_email} for {subscriber}: {resp.status_code} {resp.text[:200]}")
+
+        # Log to DB
+        await _db.notification_history.insert_one({
+            "subscriber": subscriber,
+            "to_email": to_email,
+            "cc_email": cc_email,
+            "bcc_emails": bcc_emails,
+            "subject": subject,
+            "sent_by": current_user.get("username", ""),
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+            "success": success,
+            "mailgun_response": resp.text[:500],
+        })
+
+        return {"success": success, "message": f"Email {'sent' if success else 'failed'} to {to_email}"}
+    except Exception as e:
+        logger.error(f"Support notification error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 # ==================== Dashboard Routes ====================
 
