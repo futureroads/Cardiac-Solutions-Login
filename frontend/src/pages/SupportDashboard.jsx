@@ -336,11 +336,12 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
   );
 }
 
-function ContactsModal({ onClose }) {
+function ContactsModal({ subscribers, onClose }) {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editSub, setEditSub] = useState(null);
   const [form, setForm] = useState({ to_email: "", cc_email: "", bcc_emails: "", sales_rep: "" });
+  const [search, setSearch] = useState("");
 
   const fetchContacts = useCallback(async () => {
     const token = localStorage.getItem("token");
@@ -364,62 +365,107 @@ function ContactsModal({ onClose }) {
     fetchContacts();
   };
 
+  // Merge all subscribers (from dashboard data) with existing contacts
+  const contactMap = {};
+  for (const c of contacts) contactMap[c.subscriber] = c;
+  const allSubNames = [...new Set([
+    ...(subscribers || []).map(s => s.subscriber),
+    ...contacts.map(c => c.subscriber),
+  ])].sort();
+
+  const filteredSubs = allSubNames.filter(n => !search || n.toLowerCase().includes(search.toLowerCase()));
+
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm p-6 w-[700px] max-w-[95vw] max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()} data-testid="contacts-modal">
-        <div className="flex justify-between items-center mb-4">
-          <div className="font-orbitron text-sm text-cyan-400 tracking-wider">SUBSCRIBER CONTACTS</div>
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm p-6 w-[750px] max-w-[95vw] max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="contacts-modal">
+        <div className="flex justify-between items-center mb-4 flex-shrink-0">
+          <div>
+            <div className="font-orbitron text-sm text-cyan-400 tracking-wider">SUBSCRIBER CONTACTS</div>
+            <div className="text-[9px] text-slate-500 mt-0.5">{allSubNames.length} subscribers</div>
+          </div>
           <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
         </div>
 
         {editSub ? (
           <div className="space-y-3">
-            <div className="font-orbitron text-xs text-white mb-2">{editSub}</div>
+            <div className="font-orbitron text-xs text-cyan-400 mb-2">{editSub}</div>
             {[
-              { key: "to_email", label: "Customer Email (TO)" },
-              { key: "cc_email", label: "Sales Rep (CC)" },
-              { key: "bcc_emails", label: "BCC (comma-separated)" },
-              { key: "sales_rep", label: "Sales Rep Name" },
+              { key: "to_email", label: "Customer Email (TO)", placeholder: "subscriber@company.com" },
+              { key: "cc_email", label: "Sales Rep Email (CC)", placeholder: "rep@cardiac-solutions.net" },
+              { key: "bcc_emails", label: "BCC (comma-separated)", placeholder: "internal1@email.com, internal2@email.com" },
+              { key: "sales_rep", label: "Sales Rep Name", placeholder: "Jon Seale" },
             ].map(f => (
               <div key={f.key}>
                 <label className="font-orbitron text-[8px] text-slate-500 mb-1 block">{f.label}</label>
                 <input
                   value={form[f.key]}
                   onChange={e => setForm({ ...form, [f.key]: e.target.value })}
-                  className="w-full px-3 py-2 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs"
+                  placeholder={f.placeholder}
+                  className="w-full px-3 py-2 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-600"
                   data-testid={`contact-${f.key}`}
                 />
               </div>
             ))}
             <div className="flex gap-2 mt-3">
-              <button onClick={saveContact} className="font-orbitron text-[9px] px-4 py-1.5 border border-cyan-500/40 text-cyan-400 rounded-sm hover:bg-cyan-500/10">SAVE</button>
-              <button onClick={() => setEditSub(null)} className="font-orbitron text-[9px] px-4 py-1.5 border border-slate-600 text-slate-400 rounded-sm hover:bg-slate-800">CANCEL</button>
+              <button onClick={saveContact} className="font-orbitron text-[9px] px-4 py-1.5 border border-cyan-500/40 text-cyan-400 rounded-sm hover:bg-cyan-500/10" data-testid="save-contact-btn">SAVE</button>
+              <button onClick={() => setEditSub(null)} className="font-orbitron text-[9px] px-4 py-1.5 border border-slate-600 text-slate-400 rounded-sm hover:bg-slate-800">BACK</button>
             </div>
           </div>
         ) : (
           <>
-            {loading ? (
-              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
-            ) : contacts.length === 0 ? (
-              <div className="text-slate-500 text-center py-8 font-orbitron text-[10px]">NO CONTACTS CONFIGURED YET<br />Click a subscriber in the dashboard to set up contacts</div>
-            ) : (
-              <div className="space-y-2">
-                {contacts.map(c => (
-                  <div key={c.subscriber} className="border border-slate-700/50 bg-slate-900/50 rounded-sm p-3 flex justify-between items-center">
-                    <div>
-                      <div className="font-orbitron text-[10px] text-white">{c.subscriber}</div>
-                      <div className="text-[9px] text-slate-400 mt-0.5">{c.to_email || "No email"} | CC: {c.cc_email || "—"}</div>
-                    </div>
-                    <button
-                      onClick={() => { setEditSub(c.subscriber); setForm({ to_email: c.to_email, cc_email: c.cc_email, bcc_emails: c.bcc_emails, sales_rep: c.sales_rep || "" }); }}
-                      className="font-orbitron text-[8px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10"
-                    >
-                      EDIT
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="mb-3 flex-shrink-0">
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search subscribers..."
+                className="w-full px-3 py-2 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-600 font-orbitron"
+                data-testid="contacts-search"
+              />
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {loading ? (
+                <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
+              ) : (
+                <div className="space-y-1.5">
+                  {filteredSubs.map(name => {
+                    const c = contactMap[name];
+                    const hasContact = c && c.to_email;
+                    return (
+                      <div key={name} className="border border-slate-700/50 bg-slate-900/50 rounded-sm p-2.5 flex justify-between items-center">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="font-orbitron text-[10px] text-white truncate">{name}</div>
+                            {hasContact ? (
+                              <span className="text-[7px] px-1.5 py-0.5 bg-green-500/15 text-green-400 rounded-sm font-orbitron">SET</span>
+                            ) : (
+                              <span className="text-[7px] px-1.5 py-0.5 bg-red-500/15 text-red-400 rounded-sm font-orbitron">EMPTY</span>
+                            )}
+                          </div>
+                          {hasContact && (
+                            <div className="text-[8px] text-slate-400 mt-0.5 truncate">TO: {c.to_email} {c.cc_email ? `| CC: ${c.cc_email}` : ''}</div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => {
+                            setEditSub(name);
+                            setForm({
+                              to_email: c?.to_email || "",
+                              cc_email: c?.cc_email || "",
+                              bcc_emails: c?.bcc_emails || "",
+                              sales_rep: c?.sales_rep || "",
+                            });
+                          }}
+                          className="font-orbitron text-[8px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 flex-shrink-0 ml-2"
+                          data-testid={`edit-contact-${name}`}
+                        >
+                          {hasContact ? "EDIT" : "ADD"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -519,8 +565,8 @@ export default function SupportDashboard({ user, onLogout }) {
               <StatCard value={totals.unknown || 0} label="UNKNOWN" color="#64748b" icon={Shield} />
             </div>
 
-            {/* Search */}
-            <div className="mb-4">
+            {/* Search + Sort controls */}
+            <div className="mb-4 flex items-center gap-4">
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
@@ -528,6 +574,28 @@ export default function SupportDashboard({ user, onLogout }) {
                 className="px-4 py-2 rounded-sm bg-slate-900/80 border border-slate-700/50 text-white text-sm font-orbitron w-full max-w-xs"
                 data-testid="subscriber-search"
               />
+              <div className="flex items-center gap-2">
+                <span className="font-orbitron text-[8px] text-slate-500 tracking-wider">SORT BY:</span>
+                <select
+                  value={`${sortField}:${sortDir}`}
+                  onChange={e => {
+                    const [f, d] = e.target.value.split(":");
+                    setSortField(f);
+                    setSortDir(d);
+                  }}
+                  className="px-3 py-2 rounded-sm bg-slate-900/80 border border-slate-700/50 text-white text-xs font-orbitron appearance-none cursor-pointer"
+                  data-testid="sort-dropdown"
+                >
+                  <option value="total_issues:desc" style={{ background: "#0f172a" }}>MOST ISSUES</option>
+                  <option value="total_issues:asc" style={{ background: "#0f172a" }}>FEWEST ISSUES</option>
+                  <option value="subscriber:asc" style={{ background: "#0f172a" }}>A - Z</option>
+                  <option value="subscriber:desc" style={{ background: "#0f172a" }}>Z - A</option>
+                  <option value="expired_bp:desc" style={{ background: "#0f172a" }}>EXPIRED B/P</option>
+                  <option value="expiring_bp:desc" style={{ background: "#0f172a" }}>EXPIRING B/P</option>
+                  <option value="not_ready:desc" style={{ background: "#0f172a" }}>NOT READY</option>
+                  <option value="reposition:desc" style={{ background: "#0f172a" }}>REPOSITION</option>
+                </select>
+              </div>
             </div>
 
             {/* Subscriber Table */}
@@ -642,7 +710,7 @@ export default function SupportDashboard({ user, onLogout }) {
           onSent={fetchData}
         />
       )}
-      {showContacts && <ContactsModal onClose={() => { setShowContacts(false); fetchData(); }} />}
+      {showContacts && <ContactsModal subscribers={subscribers} onClose={() => { setShowContacts(false); fetchData(); }} />}
     </div>
   );
 }
