@@ -20,7 +20,8 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
   - Device detail: serial number, site/building/placement, status, image
   - Email type filter, device removal, editable TO/CC/BCC
   - Mailgun email sending + notification history logging
-  - 38 subscriber contacts seeded from Excel spreadsheet
+  - **48 subscriber contacts seeded from Excel spreadsheet** (46 from latest import + 2 legacy)
+  - Contacts modal with SET/EMPTY badges, search, alphabetical sort
 - [x] Backend Management page with live Readisys data
 - [x] Service Console with parallel API loading, ticket CRUD, dispatch, tech response
 - [x] Hybrid Training, Customer Portal, Outage Status pages
@@ -57,10 +58,10 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - Refactor large frontend components
 
 ## Changelog
+- 2026-04-08: Bulk imported 48 subscriber contacts from Excel spreadsheet (Sentinel Customer Database 2026)
 - 2026-04-08: Camera images integrated from Readisys API into Support Dashboard notification modal
 - 2026-04-08: Upgraded to Voice API for full per-subscriber status (40 subs, all issue types)
 - 2026-04-08: Added NOT RDY and REPOS columns to subscriber table
 - 2026-04-08: Email template integrated from user's .docx (3 sections: Alignment, Missing, Pads)
-- 2026-04-08: 38 subscriber contacts seeded from Excel spreadsheet
 - 2026-04-08: Support Dashboard + dashboard assignment system built
 - 2026-04-02: Service Console performance fix + dispatch email fix
