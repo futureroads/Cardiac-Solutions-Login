@@ -181,7 +181,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[800px] max-w-[95vw] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="notification-modal">
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[1100px] max-w-[95vw] max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="notification-modal">
         {/* Header */}
         <div className="p-5 border-b border-cyan-500/15 flex-shrink-0">
           <div className="flex justify-between items-center">
@@ -239,7 +239,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
           {loadingDevices ? (
             <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /><span className="ml-2 text-slate-400 text-xs">Loading devices...</span></div>
           ) : (
-          <div className="bg-white rounded-sm p-4 text-slate-900 text-sm">
+          <div className="bg-white rounded-sm p-6 text-slate-900 text-sm">
             <p className="mb-2">Hello <strong>{contact?.contact_name || subscriber}</strong>,</p>
             <p className="mb-2 text-[13px]">During our recent review of your AED(s), we identified issues as outlined below.</p>
             <p className="mb-4 text-[13px]">Resolving these issues is critical to effectively monitor the health of your device. This also ensures that your units are ready to be used in an emergency.</p>
