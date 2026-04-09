@@ -12,27 +12,28 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - [x] User Access admin page (full CRUD + Dashboard Type dropdown)
 - [x] Standard Dashboard with dynamic status LEDs, DI scrolling, OpenAI TTS preload
 - [x] **Support Dashboard** with:
-  - Fleet stats (40 subscribers, 203 Expired, 28 Expiring, 6 Not Ready, 144 Reposition, 3 Unknown)
+  - Fleet stats (subscribers, issues by type)
   - Sortable table: EXP B/P, EXPIRING, NOT RDY, REPOS, TOTAL columns
   - Real-time data from Readisys Voice API per-subscriber status
   - Notification modal with email template from user's .docx
-  - **Camera images** from Readisys `/voice/aed/{id}/last-image` API
-  - Device detail: serial number, site/building/placement, status, image
-  - Email type filter, device removal, editable TO/CC/BCC
-  - Mailgun email sending + notification history logging
-  - **48 subscriber contacts seeded from Excel spreadsheet** (46 from latest import + 2 legacy)
+  - Camera images from Readisys `/voice/aed/{id}/last-image` API
+  - Device detail columns: Batt/Pads Exp, Battery %, Signal, Capture Timestamp
+  - **Device Detail Drawer** — click any device row to see full-size image, all device info, diagnostics, and editable notes (saved to MongoDB)
+  - **Notification History** — view all sent emails with subscriber filter
+  - Email subject: "AED Report and Action Items"
+  - Section label: "AED Batteries and Pads Expired/Expiring"
+  - 51 subscriber contacts seeded from Excel + Readisys name variants
   - Contacts modal with SET/EMPTY badges, search, alphabetical sort
 - [x] Backend Management page with live Readisys data
 - [x] Service Console with parallel API loading, ticket CRUD, dispatch, tech response
-- [x] Hybrid Training, Customer Portal, Outage Status pages
 
-## Key API Endpoints (from AEDA APIs doc)
-- `GET /voice/subscriber/{name}/devices` — all devices for subscriber with s3_url
-- `GET /voice/aed/{sentinel_id}/last-image` — camera image metadata + download_url
-- `GET /aed-images/download?url={s3_url}` — actual image binary (PNG)
-- `GET /voice/subscriber/{name}/status?brief=true` — per-subscriber counts
-- `GET /voice/subscribers` — list all subscribers
-- `GET /devices/by-status?subscriber=X&status=Y` — devices filtered by status
+## Key API Endpoints
+- `GET /api/support/dashboard-data` — aggregated subscriber issues
+- `GET /api/support/subscriber/{name}/devices` — all devices for subscriber
+- `GET /api/support/aed-image/{sentinel_id}` — camera image metadata
+- `POST /api/support/send-notification` — send email via Mailgun
+- `GET /api/support/notification-history` — sent email history with optional subscriber filter
+- `GET/PUT /api/support/device-notes/{sentinel_id}` — device notes CRUD
 
 ## Tech Stack
 - Frontend: React 19 + Framer Motion + Tailwind CSS + Shadcn UI
@@ -43,25 +44,26 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 ## Credentials
 - **Admin**: futureroads / @@U1s9m6c7@@
 - **Support User**: Lew / Lew123 (dashboard_type: support)
-- **Users**: Stark/Stark123, Tony/Tony123, Tracey/Tracey123, Nate/Nate123, Jon/Jon123
 
 ## Prioritized Backlog
 ### P1 (High)
 - Build Daily Report module page
 - Build Notifications module page
+- View past images for a device (needs Readisys API check)
 
 ### P2 (Medium)
 - Build Survival Path module page
 
 ### P3 (Nice to Have)
-- Refactor server.py (~2500 lines) into modular route files
+- Refactor server.py (~2600 lines) into modular route files
 - Refactor large frontend components
 
 ## Changelog
-- 2026-04-08: Bulk imported 48 subscriber contacts from Excel spreadsheet (Sentinel Customer Database 2026)
-- 2026-04-08: Camera images integrated from Readisys API into Support Dashboard notification modal
-- 2026-04-08: Upgraded to Voice API for full per-subscriber status (40 subs, all issue types)
-- 2026-04-08: Added NOT RDY and REPOS columns to subscriber table
-- 2026-04-08: Email template integrated from user's .docx (3 sections: Alignment, Missing, Pads)
+- 2026-04-09: Added Device Detail Drawer (full image, all device info, diagnostics, editable notes)
+- 2026-04-09: Added Notification History modal with subscriber filter
+- 2026-04-09: Added Batt/Pads Exp, Battery %, Signal, Capture Timestamp columns to email preview
+- 2026-04-09: Updated email subject to "AED Report and Action Items"
+- 2026-04-09: Renamed section to "AED Batteries and Pads Expired/Expiring"
+- 2026-04-08: Bulk imported 48 subscriber contacts from Excel spreadsheet
+- 2026-04-08: Camera images integrated from Readisys API
 - 2026-04-08: Support Dashboard + dashboard assignment system built
-- 2026-04-02: Service Console performance fix + dispatch email fix

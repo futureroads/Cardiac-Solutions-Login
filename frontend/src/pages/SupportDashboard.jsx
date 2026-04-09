@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Send, X, Trash2, Loader2, Settings,
   AlertTriangle, Clock, ChevronDown, ChevronUp, Mail,
-  Users, Activity, Shield,
+  Users, Activity, Shield, History, Battery, Wifi,
+  StickyNote, ZoomIn, ChevronLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import API_BASE from "@/apiBase";
@@ -22,6 +23,239 @@ function StatCard({ value, label, color, icon: Icon }) {
   );
 }
 
+function DeviceDrawer({ device, onClose }) {
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API}/support/device-notes/${encodeURIComponent(device.sentinel_id)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setNotes(data.notes || "");
+        }
+      } catch {}
+      setLoaded(true);
+    })();
+  }, [device.sentinel_id]);
+
+  const saveNotes = async () => {
+    setSaving(true);
+    try {
+      const token = localStorage.getItem("token");
+      await fetch(`${API}/support/device-notes/${encodeURIComponent(device.sentinel_id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ notes }),
+      });
+      toast.success("Notes saved");
+    } catch { toast.error("Failed to save notes"); }
+    setSaving(false);
+  };
+
+  const loc = [device.site, device.building, device.placement].filter(Boolean).join(" / ") || "—";
+  const capturedAt = device.captured_at ? new Date(device.captured_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+  const battColor = (device.battery_level_pct ?? 0) > 50 ? "#22c55e" : (device.battery_level_pct ?? 0) > 20 ? "#f59e0b" : "#ef4444";
+  const sigColor = device.cellular_signal_quality === "HIGH" ? "#22c55e" : device.cellular_signal_quality === "MEDIUM" ? "#f59e0b" : "#ef4444";
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[60] flex justify-end" onClick={onClose}>
+      <div className="bg-[#0a0f1c] border-l border-cyan-500/30 w-[520px] max-w-[95vw] h-full flex flex-col overflow-hidden" onClick={e => e.stopPropagation()} data-testid="device-drawer">
+        {/* Header */}
+        <div className="p-4 border-b border-cyan-500/15 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button onClick={onClose} className="text-slate-500 hover:text-cyan-400"><ChevronLeft className="w-5 h-5" /></button>
+              <div>
+                <div className="font-orbitron text-sm text-cyan-400 tracking-wider">{device.sentinel_id}</div>
+                <div className="text-[9px] text-slate-500 font-orbitron">{device.model || "AED Device"}</div>
+              </div>
+            </div>
+            <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
+          </div>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Camera Image */}
+          <div>
+            <div className="font-orbitron text-[8px] text-slate-500 tracking-wider mb-2">CAMERA IMAGE</div>
+            {device.image_url ? (
+              <div className="border border-slate-700/50 rounded-sm overflow-hidden bg-black">
+                <img src={device.image_url} alt={device.sentinel_id} className="w-full object-contain max-h-[300px]" />
+                <div className="px-3 py-1.5 bg-slate-900/80 text-[9px] text-slate-400 font-orbitron flex justify-between">
+                  <span>Captured: {capturedAt}</span>
+                  <span>Last seen: {device.last_seen_date || "—"}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="border border-slate-700/50 rounded-sm p-8 text-center text-slate-500 text-xs">No image available</div>
+            )}
+          </div>
+
+          {/* Device Info Grid */}
+          <div>
+            <div className="font-orbitron text-[8px] text-slate-500 tracking-wider mb-2">DEVICE DETAILS</div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: "SERIAL NUMBER", value: device.sentinel_id },
+                { label: "STATUS", value: device.detailed_status || "—", color: device.detailed_status === "READY" ? "#22c55e" : "#ef4444" },
+                { label: "LOCATION", value: loc, span: true },
+                { label: "MODEL", value: device.model || "—", span: true },
+                { label: "BATTERY EXPIRATION", value: device.battery_expiration || "—" },
+                { label: "PAD EXPIRATION", value: device.pad_expiration || "—" },
+              ].map((item, i) => (
+                <div key={i} className={`border border-slate-700/40 bg-slate-900/50 rounded-sm p-2.5 ${item.span ? "col-span-2" : ""}`}>
+                  <div className="font-orbitron text-[7px] text-slate-500 tracking-wider">{item.label}</div>
+                  <div className="text-xs text-white mt-0.5" style={item.color ? { color: item.color } : {}}>{item.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Battery & Signal */}
+          <div>
+            <div className="font-orbitron text-[8px] text-slate-500 tracking-wider mb-2">DIAGNOSTICS</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="border border-slate-700/40 bg-slate-900/50 rounded-sm p-2.5">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Battery className="w-3 h-3" style={{ color: battColor }} />
+                  <span className="font-orbitron text-[7px] text-slate-500 tracking-wider">BATTERY LEVEL</span>
+                </div>
+                <div className="font-orbitron text-lg font-bold" style={{ color: battColor }}>{device.battery_level_pct != null ? `${device.battery_level_pct}%` : "—"}</div>
+              </div>
+              <div className="border border-slate-700/40 bg-slate-900/50 rounded-sm p-2.5">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Wifi className="w-3 h-3" style={{ color: sigColor }} />
+                  <span className="font-orbitron text-[7px] text-slate-500 tracking-wider">SIGNAL</span>
+                </div>
+                <div className="font-orbitron text-lg font-bold" style={{ color: sigColor }}>{device.cellular_signal_label || device.cellular_signal_quality || "—"}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <StickyNote className="w-3 h-3 text-amber-400" />
+              <span className="font-orbitron text-[8px] text-slate-500 tracking-wider">NOTES</span>
+            </div>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Add notes about this device..."
+              className="w-full px-3 py-2 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-600 resize-none h-24"
+              data-testid="device-notes-input"
+            />
+            <button
+              onClick={saveNotes}
+              disabled={saving || !loaded}
+              className="mt-2 font-orbitron text-[8px] px-4 py-1.5 border border-cyan-500/40 text-cyan-400 rounded-sm hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-1.5"
+              data-testid="save-notes-btn"
+            >
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <StickyNote className="w-3 h-3" />}
+              SAVE NOTES
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotificationHistoryModal({ onClose }) {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("");
+
+  const fetchHistory = useCallback(async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const url = filter
+        ? `${API}/support/notification-history?subscriber=${encodeURIComponent(filter)}`
+        : `${API}/support/notification-history`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setHistory(await res.json());
+    } catch {}
+    setLoading(false);
+  }, [filter]);
+
+  useEffect(() => { fetchHistory(); }, [fetchHistory]);
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[900px] max-w-[95vw] max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="history-modal">
+        <div className="p-5 border-b border-cyan-500/15 flex-shrink-0">
+          <div className="flex justify-between items-center">
+            <div>
+              <div className="font-orbitron text-sm text-cyan-400 tracking-wider">NOTIFICATION HISTORY</div>
+              <div className="text-[9px] text-slate-500 mt-0.5">{history.length} emails sent</div>
+            </div>
+            <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-5 h-5" /></button>
+          </div>
+          <div className="mt-3">
+            <input
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              placeholder="Filter by subscriber name..."
+              className="w-full px-3 py-2 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-600 font-orbitron"
+              data-testid="history-filter"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
+          ) : history.length === 0 ? (
+            <div className="text-center text-slate-500 py-8 font-orbitron text-[10px]">NO NOTIFICATIONS FOUND</div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-cyan-500/15">
+                  <th className="text-left p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider">SUBSCRIBER</th>
+                  <th className="text-left p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider">TO</th>
+                  <th className="text-left p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider">SUBJECT</th>
+                  <th className="text-left p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider">SENT BY</th>
+                  <th className="text-left p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider">DATE</th>
+                  <th className="text-center p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider">STATUS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h, i) => {
+                  const sentDate = h.sent_at ? new Date(h.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+                  return (
+                    <tr key={i} className={`border-b border-slate-800/50 ${i % 2 === 0 ? "bg-transparent" : "bg-slate-900/20"}`}>
+                      <td className="p-2 font-orbitron text-[10px] text-white">{h.subscriber || "—"}</td>
+                      <td className="p-2 text-slate-300 text-[10px]">{h.to_email || "—"}</td>
+                      <td className="p-2 text-slate-300 text-[10px] max-w-[200px] truncate">{h.subject || "—"}</td>
+                      <td className="p-2 text-slate-400 text-[10px]">{h.sent_by || "—"}</td>
+                      <td className="p-2 text-slate-400 text-[10px] whitespace-nowrap">{sentDate}</td>
+                      <td className="p-2 text-center">
+                        {h.success ? (
+                          <span className="text-[7px] px-1.5 py-0.5 bg-green-500/15 text-green-400 rounded-sm font-orbitron">SENT</span>
+                        ) : (
+                          <span className="text-[7px] px-1.5 py-0.5 bg-red-500/15 text-red-400 rounded-sm font-orbitron">FAILED</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NotificationModal({ subscriber, contact, onClose, onSent }) {
   const [toEmail, setToEmail] = useState(contact?.to_email || "");
   const [ccEmail, setCcEmail] = useState(contact?.cc_email || "");
@@ -31,6 +265,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
   const [emailType, setEmailType] = useState("all");
   const [devices, setDevices] = useState([]);
   const [loadingDevices, setLoadingDevices] = useState(true);
+  const [drawerDevice, setDrawerDevice] = useState(null);
 
   // Fetch subscriber devices with full detail
   useEffect(() => {
@@ -286,8 +521,8 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                         const loc = [d.site, d.building, d.placement].filter(Boolean).join(" / ") || d.location || "—";
                         const capturedAt = d.captured_at ? new Date(d.captured_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
                         return (
-                          <tr key={d.sentinel_id} className="hover:bg-slate-50">
-                            <td className="p-2 border border-slate-200 font-bold">{d.sentinel_id}</td>
+                          <tr key={d.sentinel_id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setDrawerDevice(d)}>
+                            <td className="p-2 border border-slate-200 font-bold text-blue-700 hover:underline">{d.sentinel_id}</td>
                             <td className="p-2 border border-slate-200 text-[11px]">{loc}</td>
                             <td className="p-2 border border-slate-200 text-[11px]">{d.days_summary || d.detailed_status || "—"}</td>
                             <td className="p-2 border border-slate-200 text-[10px] text-center">
@@ -315,7 +550,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                               )}</td>
                             <td className="p-2 border border-slate-200 text-center">
                               <button
-                                onClick={() => setRemovedDevices(prev => new Set([...prev, d.sentinel_id]))}
+                                onClick={(e) => { e.stopPropagation(); setRemovedDevices(prev => new Set([...prev, d.sentinel_id])); }}
                                 className="text-red-400 hover:text-red-600"
                                 data-testid={`remove-device-${d.sentinel_id}`}
                               >
@@ -359,6 +594,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
           </button>
         </div>
       </div>
+      {drawerDevice && <DeviceDrawer device={drawerDevice} onClose={() => setDrawerDevice(null)} />}
     </div>
   );
 }
@@ -506,6 +742,7 @@ export default function SupportDashboard({ user, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [selectedSub, setSelectedSub] = useState(null);
   const [showContacts, setShowContacts] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [sortField, setSortField] = useState("total_issues");
   const [sortDir, setSortDir] = useState("desc");
   const [search, setSearch] = useState("");
@@ -565,6 +802,13 @@ export default function SupportDashboard({ user, onLogout }) {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowHistory(true)}
+            className="font-orbitron text-[8px] px-3 py-1.5 border border-amber-500/30 text-amber-400 rounded-sm hover:bg-amber-500/10 flex items-center gap-1.5"
+            data-testid="history-btn"
+          >
+            <History className="w-3 h-3" /> HISTORY
+          </button>
           <button
             onClick={() => setShowContacts(true)}
             className="font-orbitron text-[8px] px-3 py-1.5 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 flex items-center gap-1.5"
@@ -740,6 +984,7 @@ export default function SupportDashboard({ user, onLogout }) {
         />
       )}
       {showContacts && <ContactsModal subscribers={subscribers} onClose={() => { setShowContacts(false); fetchData(); }} />}
+      {showHistory && <NotificationHistoryModal onClose={() => setShowHistory(false)} />}
     </div>
   );
 }

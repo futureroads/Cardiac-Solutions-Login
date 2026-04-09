@@ -1097,6 +1097,42 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@api_router.get("/support/notification-history")
+async def get_notification_history(subscriber: str = None, current_user: dict = Depends(get_current_user)):
+    """Get notification history, optionally filtered by subscriber."""
+    query = {}
+    if subscriber:
+        query["subscriber"] = {"$regex": subscriber, "$options": "i"}
+    history = []
+    async for doc in _db.notification_history.find(query, {"_id": 0}).sort("sent_at", -1).limit(200):
+        history.append(doc)
+    return history
+
+
+@api_router.get("/support/device-notes/{sentinel_id}")
+async def get_device_notes(sentinel_id: str, current_user: dict = Depends(get_current_user)):
+    """Get notes for a specific device."""
+    doc = await _db.device_notes.find_one({"sentinel_id": sentinel_id}, {"_id": 0})
+    return doc or {"sentinel_id": sentinel_id, "notes": ""}
+
+
+@api_router.put("/support/device-notes/{sentinel_id}")
+async def save_device_notes(sentinel_id: str, data: dict, current_user: dict = Depends(get_current_user)):
+    """Save or update notes for a device."""
+    await _db.device_notes.update_one(
+        {"sentinel_id": sentinel_id},
+        {"$set": {
+            "sentinel_id": sentinel_id,
+            "notes": data.get("notes", ""),
+            "updated_by": current_user.get("username", ""),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"success": True}
+
+
+
 @api_router.get("/support/subscriber/{subscriber}/devices")
 async def support_subscriber_devices(subscriber: str, current_user: dict = Depends(get_current_user)):
     """Get all devices for a subscriber using the voice API with full status detail."""
