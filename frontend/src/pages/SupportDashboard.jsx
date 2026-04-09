@@ -75,15 +75,15 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
 
   // Map statuses to template sections
   const sectionMap = {
-    "EXPIRED B/P": { title: "AED Pads Expired/Expiring", action: "Next Steps", actionText: "Please contact our team by phone or email as soon as possible to arrange for replacement options for these devices." },
-    "EXPIRING BATT/PADS": { title: "AED Pads Expired/Expiring", action: "Next Steps", actionText: "Please contact our team by phone or email as soon as possible to arrange for replacement options for these devices." },
+    "EXPIRED B/P": { title: "AED Batteries and Pads Expired/Expiring", action: "Next Steps", actionText: "Please contact our team by phone or email as soon as possible to arrange for replacement options for these devices." },
+    "EXPIRING BATT/PADS": { title: "AED Batteries and Pads Expired/Expiring", action: "Next Steps", actionText: "Please contact our team by phone or email as soon as possible to arrange for replacement options for these devices." },
     "REPOSITION": { title: "AED(s) Alignment Issues", action: "Required Action", actionText: "Please take a moment as soon as possible to inspect the AED(s) noted above. If it appears to have been moved from its original location, please reposition it so it is in the location shown in the photo below (fully to the left side of the storage cabinet and as far toward the back of the storage cabinet as possible)." },
     "NOT PRESENT": { title: "AED(s) Missing", action: "Required Action", actionText: "Please take a moment as soon as possible to inspect the AED(s) noted above. If it appears to have been moved from its original location, please place it back in its original location and reposition inside the storage case consistent with the photo below (fully to the left side of the storage cabinet and as far toward the back of the storage cabinet as possible).\n\nOnce this repositioning has been done, please notify us and we will check to ensure the AED is now working properly. If you discover the AED is missing, please notify us so we can discuss providing you with a new unit." },
     "NOT READY": { title: "AED(s) Not Ready", action: "Required Action", actionText: "Please take a moment as soon as possible to inspect the AED(s) noted above and ensure they are properly set up and ready for use." },
     "UNKNOWN": { title: "AED(s) Status Unknown", action: "Required Action", actionText: "Please take a moment as soon as possible to inspect the AED(s) noted above. We are unable to determine the current status of these units." },
   };
 
-  const subject = "AED Attention";
+  const subject = "AED Report and Action Items";
 
   const buildEmailHtml = () => {
     const s = `style`;
@@ -112,17 +112,23 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
       html += `<tr ${s}="background:#f5f5f5;"><th ${s}="text-align:left;padding:8px;border:1px solid #ddd;">Serial Number</th>`;
       html += `<th ${s}="text-align:left;padding:8px;border:1px solid #ddd;">Location</th>`;
       html += `<th ${s}="text-align:left;padding:8px;border:1px solid #ddd;">Status</th>`;
+      html += `<th ${s}="text-align:center;padding:8px;border:1px solid #ddd;">Batt/Pads Exp</th>`;
       html += `<th ${s}="text-align:left;padding:8px;border:1px solid #ddd;">Image</th></tr>`;
       for (const d of sec.devices) {
         const loc = [d.site, d.building, d.placement].filter(Boolean).join(" / ") || d.location || "—";
         const imgUrl = d.image_url || "";
+        const battExp = d.battery_expiration || "—";
+        const padExp = d.pad_expiration || "—";
+        const capturedAt = d.captured_at ? new Date(d.captured_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "";
         html += `<tr>`;
         html += `<td ${s}="padding:8px;border:1px solid #ddd;font-weight:bold;">${d.sentinel_id}</td>`;
         html += `<td ${s}="padding:8px;border:1px solid #ddd;">${loc}</td>`;
         html += `<td ${s}="padding:8px;border:1px solid #ddd;">${d.days_summary || d.detailed_status || "—"}</td>`;
+        html += `<td ${s}="padding:8px;border:1px solid #ddd;text-align:center;font-size:11px;">Batt: ${battExp}<br>Pads: ${padExp}</td>`;
         html += `<td ${s}="padding:8px;border:1px solid #ddd;">`;
         if (imgUrl) {
           html += `<img src="${imgUrl}" alt="${d.sentinel_id}" ${s}="max-width:120px;max-height:80px;" />`;
+          if (capturedAt) html += `<div ${s}="font-size:10px;color:#888;margin-top:2px;">${capturedAt}</div>`;
         } else {
           html += "—";
         }
@@ -249,8 +255,8 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
               const merged = {};
               for (const [status, devs] of Object.entries(filteredGrouped)) {
                 const sec = {
-                  "EXPIRED B/P": { title: "AED Pads Expired/Expiring", action: "Next Steps", actionText: "Please contact our team by phone or email as soon as possible to arrange for replacement options for these devices." },
-                  "EXPIRING BATT/PADS": { title: "AED Pads Expired/Expiring", action: "Next Steps", actionText: "Please contact our team by phone or email as soon as possible to arrange for replacement options for these devices." },
+                  "EXPIRED B/P": { title: "AED Batteries and Pads Expired/Expiring", action: "Next Steps", actionText: "Please contact our team by phone or email as soon as possible to arrange for replacement options for these devices." },
+                  "EXPIRING BATT/PADS": { title: "AED Batteries and Pads Expired/Expiring", action: "Next Steps", actionText: "Please contact our team by phone or email as soon as possible to arrange for replacement options for these devices." },
                   "REPOSITION": { title: "AED(s) Alignment Issues", action: "Required Action", actionText: "Please take a moment as soon as possible to inspect the AED(s) noted above." },
                   "NOT PRESENT": { title: "AED(s) Missing", action: "Required Action", actionText: "Please place it back in its original location. If missing, please notify us." },
                   "NOT READY": { title: "AED(s) Not Ready", action: "Required Action", actionText: "Please inspect the AED(s) noted above and ensure they are ready for use." },
@@ -268,6 +274,9 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                         <th className="text-left p-2 border border-slate-200">Serial Number</th>
                         <th className="text-left p-2 border border-slate-200">Location</th>
                         <th className="text-left p-2 border border-slate-200">Status</th>
+                        <th className="text-center p-2 border border-slate-200">Batt/Pads Exp</th>
+                        <th className="text-center p-2 border border-slate-200 w-16">Batt %</th>
+                        <th className="text-center p-2 border border-slate-200 w-16">Signal</th>
                         <th className="text-left p-2 border border-slate-200 w-28">Image</th>
                         <th className="w-8 border border-slate-200"></th>
                       </tr>
@@ -275,18 +284,35 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                     <tbody>
                       {sec.devices.map(d => {
                         const loc = [d.site, d.building, d.placement].filter(Boolean).join(" / ") || d.location || "—";
+                        const capturedAt = d.captured_at ? new Date(d.captured_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
                         return (
                           <tr key={d.sentinel_id} className="hover:bg-slate-50">
                             <td className="p-2 border border-slate-200 font-bold">{d.sentinel_id}</td>
                             <td className="p-2 border border-slate-200 text-[11px]">{loc}</td>
                             <td className="p-2 border border-slate-200 text-[11px]">{d.days_summary || d.detailed_status || "—"}</td>
+                            <td className="p-2 border border-slate-200 text-[10px] text-center">
+                              <div>Batt: {d.battery_expiration || "—"}</div>
+                              <div>Pads: {d.pad_expiration || "—"}</div>
+                            </td>
+                            <td className="p-2 border border-slate-200 text-center">
+                              <span className={`text-[11px] font-bold ${(d.battery_level_pct ?? 0) > 50 ? "text-green-600" : (d.battery_level_pct ?? 0) > 20 ? "text-amber-600" : "text-red-600"}`}>
+                                {d.battery_level_pct != null ? `${d.battery_level_pct}%` : "—"}
+                              </span>
+                            </td>
+                            <td className="p-2 border border-slate-200 text-center">
+                              <span className={`text-[10px] ${d.cellular_signal_quality === "HIGH" ? "text-green-600" : d.cellular_signal_quality === "MEDIUM" ? "text-amber-600" : "text-red-600"}`}>
+                                {d.cellular_signal_label || d.cellular_signal_quality || "—"}
+                              </span>
+                            </td>
                             <td className="p-2 border border-slate-200">
                               {d.image_url ? (
-                                <img src={d.image_url} alt={d.sentinel_id} className="max-w-[100px] max-h-[60px] rounded-sm" loading="lazy" />
+                                <div>
+                                  <img src={d.image_url} alt={d.sentinel_id} className="max-w-[100px] max-h-[60px] rounded-sm" loading="lazy" />
+                                  {capturedAt && <div className="text-[9px] text-slate-400 mt-0.5">{capturedAt}</div>}
+                                </div>
                               ) : (
                                 <span className="text-slate-300 text-[10px]">No image</span>
-                              )}
-                            </td>
+                              )}</td>
                             <td className="p-2 border border-slate-200 text-center">
                               <button
                                 onClick={() => setRemovedDevices(prev => new Set([...prev, d.sentinel_id]))}
