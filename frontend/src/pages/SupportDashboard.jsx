@@ -318,7 +318,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
     "UNKNOWN": { title: "AED(s) Status Unknown", action: "Required Action", actionText: "Please take a moment as soon as possible to inspect the AED(s) noted above. We are unable to determine the current status of these units." },
   };
 
-  const subject = "AED Report and Action Items";
+  const [subject, setSubject] = useState("AED Report and Action Items");
 
   const buildEmailHtml = () => {
     const s = `style`;
@@ -466,8 +466,10 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                 data-testid="bcc-email-input" />
             </div>
             <div className="flex items-center gap-2">
-              <span className="font-orbitron text-[9px] text-slate-500 w-[100px] flex-shrink-0">Subject:</span>
-              <span className="text-xs text-white">{subject}</span>
+              <span className="font-orbitron text-[9px] text-cyan-400 w-[100px] flex-shrink-0">Subject:</span>
+              <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Email subject line"
+                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs"
+                data-testid="subject-input" />
             </div>
           </div>
         </div>
