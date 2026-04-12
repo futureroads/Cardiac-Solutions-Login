@@ -1070,11 +1070,12 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
         if bcc_emails:
             mg_data["bcc"] = [e.strip() for e in bcc_emails.split(",") if e.strip()]
 
-        resp = requests.post(
-            f"https://api.mailgun.net/v3/{mailgun_domain}/messages",
-            auth=("api", mailgun_key),
-            data=mg_data,
-        )
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"https://api.mailgun.net/v3/{mailgun_domain}/messages",
+                auth=("api", mailgun_key),
+                data=mg_data,
+            )
         success = resp.status_code == 200
         logger.info(f"Support notification to {to_email} for {subscriber}: {resp.status_code} {resp.text[:200]}")
 
