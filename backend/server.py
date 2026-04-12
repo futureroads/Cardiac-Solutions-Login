@@ -1059,6 +1059,7 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
         raise HTTPException(status_code=500, detail="Mailgun not configured")
 
     try:
+        import httpx
         mg_data = {
             "from": f"Cardiac Solutions <{sender}>",
             "to": [to_email],
