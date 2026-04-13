@@ -1106,9 +1106,34 @@ async def get_notification_history(subscriber: str = None, current_user: dict = 
     if subscriber:
         query["subscriber"] = {"$regex": subscriber, "$options": "i"}
     history = []
-    async for doc in _db.notification_history.find(query, {"_id": 0}).sort("sent_at", -1).limit(200):
+    async for doc in _db.notification_history.find(query).sort("sent_at", -1).limit(200):
+        doc["id"] = str(doc.pop("_id"))
         history.append(doc)
     return history
+
+
+@api_router.put("/support/notification-history/{history_id}/status")
+async def update_notification_status(history_id: str, data: dict, current_user: dict = Depends(get_current_user)):
+    """Update the status and notes of a notification history entry."""
+    from bson import ObjectId
+    new_status = data.get("status", "")
+    notes = data.get("notes", "")
+    status_entry = {
+        "status": new_status,
+        "notes": notes,
+        "changed_by": current_user.get("username", ""),
+        "changed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    result = await _db.notification_history.update_one(
+        {"_id": ObjectId(history_id)},
+        {
+            "$set": {"current_status": new_status, "status_notes": notes},
+            "$push": {"status_history": status_entry},
+        },
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"success": True}
 
 
 @api_router.get("/support/device-notes/{sentinel_id}")

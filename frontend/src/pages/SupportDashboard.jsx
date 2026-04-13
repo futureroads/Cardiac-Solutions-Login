@@ -172,6 +172,17 @@ function NotificationHistoryModal({ onClose }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [editStatus, setEditStatus] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const statusOptions = [
+    { value: "SENT", label: "SENT", bg: "bg-green-500/15", text: "text-green-400" },
+    { value: "IN PROGRESS", label: "IN PROGRESS", bg: "bg-blue-500/15", text: "text-blue-400" },
+    { value: "RESOLVED", label: "RESOLVED", bg: "bg-cyan-500/15", text: "text-cyan-400" },
+    { value: "FAILED", label: "FAILED", bg: "bg-red-500/15", text: "text-red-400" },
+  ];
 
   const fetchHistory = useCallback(async () => {
     setLoading(true);
@@ -187,6 +198,35 @@ function NotificationHistoryModal({ onClose }) {
   }, [filter]);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
+
+  const openEdit = (h) => {
+    setEditingId(h.id);
+    setEditStatus(h.current_status || (h.success ? "SENT" : "FAILED"));
+    setEditNotes(h.status_notes || "");
+  };
+
+  const saveStatus = async () => {
+    setSaving(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API}/support/notification-history/${editingId}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: editStatus, notes: editNotes }),
+      });
+      if (res.ok) {
+        toast.success("Status updated");
+        setEditingId(null);
+        fetchHistory();
+      } else toast.error("Failed to update");
+    } catch { toast.error("Error updating status"); }
+    setSaving(false);
+  };
+
+  const getStatusStyle = (h) => {
+    const status = h.current_status || (h.success ? "SENT" : "FAILED");
+    return statusOptions.find(s => s.value === status) || statusOptions[0];
+  };
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
@@ -230,18 +270,62 @@ function NotificationHistoryModal({ onClose }) {
               <tbody>
                 {history.map((h, i) => {
                   const sentDate = h.sent_at ? new Date(h.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+                  const style = getStatusStyle(h);
+                  const isEditing = editingId === h.id;
                   return (
-                    <tr key={i} className={`border-b border-slate-800/50 ${i % 2 === 0 ? "bg-transparent" : "bg-slate-900/20"}`}>
+                    <tr key={h.id || i} className={`border-b border-slate-800/50 ${i % 2 === 0 ? "bg-transparent" : "bg-slate-900/20"}`}>
                       <td className="p-2 font-orbitron text-[10px] text-white">{h.subscriber || "—"}</td>
                       <td className="p-2 text-slate-300 text-[10px]">{h.to_email || "—"}</td>
                       <td className="p-2 text-slate-300 text-[10px] max-w-[200px] truncate">{h.subject || "—"}</td>
                       <td className="p-2 text-slate-400 text-[10px]">{h.sent_by || "—"}</td>
                       <td className="p-2 text-slate-400 text-[10px] whitespace-nowrap">{sentDate}</td>
-                      <td className="p-2 text-center">
-                        {h.success ? (
-                          <span className="text-[7px] px-1.5 py-0.5 bg-green-500/15 text-green-400 rounded-sm font-orbitron">SENT</span>
-                        ) : (
-                          <span className="text-[7px] px-1.5 py-0.5 bg-red-500/15 text-red-400 rounded-sm font-orbitron">FAILED</span>
+                      <td className="p-2 text-center relative">
+                        {isEditing ? (
+                          <div className="absolute right-0 top-full mt-1 z-20 bg-[#0a0f1c] border border-cyan-500/30 rounded-sm p-3 w-[240px] shadow-xl" onClick={e => e.stopPropagation()}>
+                            <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mb-2">UPDATE STATUS</div>
+                            <div className="flex flex-wrap gap-1 mb-3">
+                              {statusOptions.map(opt => (
+                                <button
+                                  key={opt.value}
+                                  onClick={() => setEditStatus(opt.value)}
+                                  className={`text-[7px] px-2 py-1 rounded-sm font-orbitron border ${editStatus === opt.value ? `${opt.bg} ${opt.text} border-current` : "border-slate-700 text-slate-500 hover:border-slate-500"}`}
+                                  data-testid={`status-opt-${opt.value.toLowerCase().replace(/ /g, "-")}`}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mb-1">NOTES</div>
+                            <textarea
+                              value={editNotes}
+                              onChange={e => setEditNotes(e.target.value)}
+                              placeholder="Add resolution notes..."
+                              className="w-full px-2 py-1.5 rounded-sm bg-slate-900 border border-slate-700 text-white text-[10px] placeholder-slate-600 resize-none h-16 mb-2"
+                              data-testid="status-notes-input"
+                            />
+                            <div className="flex gap-2 justify-end">
+                              <button onClick={() => setEditingId(null)} className="text-[8px] px-2 py-1 text-slate-500 hover:text-white font-orbitron">CANCEL</button>
+                              <button
+                                onClick={saveStatus}
+                                disabled={saving}
+                                className="text-[8px] px-3 py-1 bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 rounded-sm font-orbitron hover:bg-cyan-500/25 disabled:opacity-50 flex items-center gap-1"
+                                data-testid="save-status-btn"
+                              >
+                                {saving ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : null}
+                                SAVE
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                        <button
+                          onClick={() => isEditing ? setEditingId(null) : openEdit(h)}
+                          className={`text-[7px] px-1.5 py-0.5 ${style.bg} ${style.text} rounded-sm font-orbitron cursor-pointer hover:opacity-80`}
+                          data-testid={`status-badge-${i}`}
+                        >
+                          {(h.current_status || (h.success ? "SENT" : "FAILED"))}
+                        </button>
+                        {h.status_notes && !isEditing && (
+                          <div className="text-[8px] text-slate-500 mt-0.5 italic truncate max-w-[120px] mx-auto" title={h.status_notes}>{h.status_notes}</div>
                         )}
                       </td>
                     </tr>
