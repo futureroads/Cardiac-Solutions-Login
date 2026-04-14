@@ -346,7 +346,10 @@ function NotificationHistoryModal({ onClose }) {
 
 function NotificationModal({ subscriber, contact, onClose, onSent }) {
   const [toEmail, setToEmail] = useState(contact?.to_email || "");
-  const [ccEmail, setCcEmail] = useState(contact?.cc_email || "");
+  const baseCc = contact?.cc_email || "";
+  const alwaysCc = "tprince@cardiac-solutions.net";
+  const initialCc = baseCc.includes(alwaysCc) ? baseCc : [baseCc, alwaysCc].filter(Boolean).join(", ");
+  const [ccEmail, setCcEmail] = useState(initialCc);
   const [bccEmails, setBccEmails] = useState(contact?.bcc_emails || "");
   const [removedDevices, setRemovedDevices] = useState(new Set());
   const [sending, setSending] = useState(false);
