@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader, Marker, OverlayView } from "@react-google-maps/api";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import API_BASE from "@/apiBase";
 
@@ -132,14 +132,26 @@ export default function MapPage({ user }) {
                   onMouseOut={() => setHoveredId(null)}
                 >
                   {hoveredId === i && (
-                    <InfoWindow onCloseClick={() => setHoveredId(null)} options={{ disableAutoPan: true, maxWidth: 200 }}>
-                      <div style={{ padding: "2px 4px", fontFamily: "Orbitron, monospace", background: "#0a0f1c", margin: "-8px", borderRadius: 2 }}>
+                    <OverlayView
+                      position={{ lat, lng }}
+                      mapPaneName={OverlayView.FLOAT_PANE}
+                      getPixelPositionOffset={(w, h) => ({ x: -(w / 2), y: -h - 30 })}
+                    >
+                      <div style={{
+                        background: "rgba(6,10,20,0.92)",
+                        border: "1px solid rgba(6,182,212,0.4)",
+                        borderRadius: 3,
+                        padding: "5px 10px",
+                        fontFamily: "Orbitron, monospace",
+                        whiteSpace: "nowrap",
+                        pointerEvents: "none",
+                      }}>
                         <div style={{ fontWeight: 700, fontSize: 10, color: "#06b6d4", letterSpacing: 1 }}>{loc.subscriber}</div>
                         <div style={{ fontSize: 9, color: "#475569", marginTop: 1 }}>
                           {[loc.city, loc.state].filter(Boolean).join(", ")}
                         </div>
                       </div>
-                    </InfoWindow>
+                    </OverlayView>
                   )}
                 </Marker>
               );
