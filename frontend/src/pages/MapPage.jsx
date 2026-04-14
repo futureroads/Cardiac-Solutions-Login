@@ -1,13 +1,14 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { GoogleMap, useJsApiLoader } from "@react-google-maps/api";
-import { ArrowLeft } from "lucide-react";
+import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from "@react-google-maps/api";
+import { ArrowLeft, Loader2 } from "lucide-react";
+import API_BASE from "@/apiBase";
 
+const API = API_BASE + "/api";
 const MAP_KEY = process.env.REACT_APP_GOOGLE_MAPS_KEY;
 
 const containerStyle = { width: "100%", height: "100%" };
-
-const center = { lat: 39.8283, lng: -98.5795 };
+const center = { lat: 33.5, lng: -86.8 };
 
 const darkMapStyles = [
   { elementType: "geometry", stylers: [{ color: "#0a0f1c" }] },
@@ -34,27 +35,34 @@ const mapOptions = {
   fullscreenControl: false,
   minZoom: 4,
   maxZoom: 18,
-  restriction: {
-    latLngBounds: { north: 50, south: 24, west: -130, east: -65 },
-    strictBounds: false,
-  },
 };
 
 export default function MapPage({ user }) {
   const navigate = useNavigate();
-  const [map, setMap] = useState(null);
+  const [locations, setLocations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [hoveredId, setHoveredId] = useState(null);
 
-  const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: MAP_KEY,
-  });
+  const { isLoaded, loadError } = useJsApiLoader({ googleMapsApiKey: MAP_KEY });
 
-  const onLoad = useCallback((mapInstance) => {
-    setMap(mapInstance);
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API}/support/map-locations`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const locs = (data.locations || []).filter(l => l.geocode_lat && l.geocode_lng);
+          setLocations(locs);
+        }
+      } catch {}
+      setLoading(false);
+    })();
   }, []);
 
-  const onUnmount = useCallback(() => {
-    setMap(null);
-  }, []);
+  const onLoad = useCallback(() => {}, []);
 
   if (loadError) {
     return (
@@ -80,6 +88,12 @@ export default function MapPage({ user }) {
             <div className="text-[9px] text-slate-500 font-orbitron tracking-wider">AED LOCATION MONITORING</div>
           </div>
         </div>
+        <div className="flex items-center gap-3">
+          {loading && <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />}
+          <div className="font-orbitron text-[9px] text-slate-500">
+            {locations.length} LOCATIONS
+          </div>
+        </div>
       </div>
 
       {/* Map */}
@@ -92,11 +106,48 @@ export default function MapPage({ user }) {
           <GoogleMap
             mapContainerStyle={containerStyle}
             center={center}
-            zoom={5}
+            zoom={7}
             options={mapOptions}
             onLoad={onLoad}
-            onUnmount={onUnmount}
-          />
+          >
+            {locations.map((loc, i) => {
+              const lat = parseFloat(loc.geocode_lat);
+              const lng = parseFloat(loc.geocode_lng);
+              if (isNaN(lat) || isNaN(lng)) return null;
+              return (
+                <Marker
+                  key={`${loc.subscriber}-${i}`}
+                  position={{ lat, lng }}
+                  title={loc.subscriber}
+                  icon={{
+                    path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z",
+                    fillColor: "#06b6d4",
+                    fillOpacity: 1,
+                    strokeColor: "#0a0f1c",
+                    strokeWeight: 1.5,
+                    scale: 1.5,
+                    anchor: { x: 12, y: 24 },
+                  }}
+                  onMouseOver={() => setHoveredId(i)}
+                  onMouseOut={() => setHoveredId(null)}
+                >
+                  {hoveredId === i && (
+                    <InfoWindow onCloseClick={() => setHoveredId(null)}>
+                      <div style={{ padding: "4px 8px", fontFamily: "Orbitron, monospace", minWidth: 160 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12, color: "#0a0f1c", marginBottom: 4 }}>{loc.subscriber}</div>
+                        {loc.location_name && loc.location_name !== loc.subscriber && (
+                          <div style={{ fontSize: 10, color: "#475569" }}>{loc.location_name}</div>
+                        )}
+                        <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>
+                          {[loc.city, loc.state].filter(Boolean).join(", ")}
+                        </div>
+                      </div>
+                    </InfoWindow>
+                  )}
+                </Marker>
+              );
+            })}
+          </GoogleMap>
         )}
       </div>
     </div>
