@@ -102,7 +102,7 @@ async def log_to_db(level, message, context=""):
         pass  # Can't log the log failure
 
 # All available module IDs
-ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path", "hybrid_training", "customer_portal"]
+ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path", "hybrid_training", "customer_portal", "map"]
 
 # Create the main app
 app = FastAPI(title="Cardiac Solutions API")

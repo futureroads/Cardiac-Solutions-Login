@@ -12,6 +12,7 @@ import HybridTraining from "./pages/HybridTraining";
 import CustomerPortal from "./pages/CustomerPortal";
 import ServiceTickets from "./pages/ServiceTickets";
 import TechResponse from "./pages/TechResponse";
+import MapPage from "./pages/MapPage";
 import { Toaster } from "./components/ui/sonner";
 
 function App() {
@@ -159,6 +160,14 @@ function App() {
             element={
               isAuthenticated ? 
                 <ServiceTickets user={user} onLogout={handleLogout} /> : 
+                <Navigate to="/" replace />
+            } 
+          />
+          <Route 
+            path="/map" 
+            element={
+              isAuthenticated ? 
+                <MapPage user={user} /> : 
                 <Navigate to="/" replace />
             } 
           />

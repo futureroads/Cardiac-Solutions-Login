@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   Brain,
   Building2,
+  MapPin,
 } from "lucide-react";
 
 const ALL_MODULES = [
@@ -60,6 +61,16 @@ const ALL_MODULES = [
     route: "/dashboard",
     description:
       "Comprehensive AED monitoring dashboard with system status, service summary, AI recommendations, and voice query.",
+    badgeCount: null,
+  },
+  {
+    moduleKey: "map",
+    title: "MAP",
+    status: "LIVE",
+    icon: MapPin,
+    route: "/map",
+    description:
+      "Interactive USA map displaying subscriber AED locations, device clusters, and regional coverage overview.",
     badgeCount: null,
   },
   {
