@@ -1027,16 +1027,16 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
         if doc.get("subscriber"):
             notified_subs.add(doc["subscriber"])
 
-    # Count notified subscribers per issue type
+    # Count notified DEVICE counts per issue type (not just subscriber counts)
     notified_counts = {"expired_bp": 0, "expiring_bp": 0, "not_ready": 0, "reposition": 0, "unknown": 0, "total": 0}
     for s in subscribers:
         if s["subscriber"] in notified_subs:
-            notified_counts["total"] += 1
-            if s.get("expired_bp", 0) > 0: notified_counts["expired_bp"] += 1
-            if s.get("expiring_bp", 0) > 0: notified_counts["expiring_bp"] += 1
-            if s.get("not_ready", 0) > 0: notified_counts["not_ready"] += 1
-            if s.get("reposition", 0) > 0: notified_counts["reposition"] += 1
-            if s.get("unknown", 0) > 0: notified_counts["unknown"] += 1
+            notified_counts["total"] += s.get("total_issues", 0)
+            notified_counts["expired_bp"] += s.get("expired_bp", 0)
+            notified_counts["expiring_bp"] += s.get("expiring_bp", 0)
+            notified_counts["not_ready"] += s.get("not_ready", 0)
+            notified_counts["reposition"] += s.get("reposition", 0)
+            notified_counts["unknown"] += s.get("unknown", 0)
         # Tag each subscriber row
         s["notified"] = s["subscriber"] in notified_subs
 

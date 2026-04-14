@@ -12,10 +12,11 @@ import API_BASE from "@/apiBase";
 const API = API_BASE + "/api";
 
 function StatCard({ value, label, color, icon: Icon, onClick, active, notified }) {
+  const pct = value > 0 && notified != null ? Math.min(100, Math.round((notified / value) * 100)) : 0;
   return (
     <div
       onClick={onClick}
-      className={`border rounded-sm p-4 min-w-[120px] cursor-pointer transition-all ${active ? "border-current ring-1 ring-current bg-[rgba(10,15,28,1)]" : "border-slate-700/50 bg-[rgba(10,15,28,0.85)] hover:border-slate-600"}`}
+      className={`border rounded-sm p-4 min-w-[130px] cursor-pointer transition-all ${active ? "border-current ring-1 ring-current bg-[rgba(10,15,28,1)]" : "border-slate-700/50 bg-[rgba(10,15,28,0.85)] hover:border-slate-600"}`}
       style={active ? { borderColor: color, boxShadow: `0 0 12px ${color}22` } : {}}
     >
       <div className="flex items-start justify-between">
@@ -23,10 +24,15 @@ function StatCard({ value, label, color, icon: Icon, onClick, active, notified }
         {Icon && <Icon className="w-4 h-4 opacity-60" style={{ color }} />}
       </div>
       <div className="font-orbitron text-[7px] tracking-wider text-slate-400 mt-1.5 uppercase">{label}</div>
-      {notified != null && (
-        <div className="font-orbitron text-[7px] tracking-wider mt-1.5">
-          <span className="text-green-400">{notified}</span>
-          <span className="text-slate-600"> NOTIFIED</span>
+      {notified != null && value > 0 && (
+        <div className="mt-2">
+          <div className="h-[3px] rounded-full bg-slate-800 overflow-hidden">
+            <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${pct}%` }} />
+          </div>
+          <div className="font-orbitron text-[7px] tracking-wider mt-1">
+            <span className="text-green-400">{notified}</span>
+            <span className="text-slate-600">/{value} NOTIFIED</span>
+          </div>
         </div>
       )}
     </div>
