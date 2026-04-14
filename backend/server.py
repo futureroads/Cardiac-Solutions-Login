@@ -1021,12 +1021,32 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
 
     subscribers.sort(key=lambda x: x["total_issues"], reverse=True)
 
+    # Get notified subscriber names from notification_history
+    notified_subs = set()
+    async for doc in _db.notification_history.find({}, {"_id": 0, "subscriber": 1}):
+        if doc.get("subscriber"):
+            notified_subs.add(doc["subscriber"])
+
+    # Count notified subscribers per issue type
+    notified_counts = {"expired_bp": 0, "expiring_bp": 0, "not_ready": 0, "reposition": 0, "unknown": 0, "total": 0}
+    for s in subscribers:
+        if s["subscriber"] in notified_subs:
+            notified_counts["total"] += 1
+            if s.get("expired_bp", 0) > 0: notified_counts["expired_bp"] += 1
+            if s.get("expiring_bp", 0) > 0: notified_counts["expiring_bp"] += 1
+            if s.get("not_ready", 0) > 0: notified_counts["not_ready"] += 1
+            if s.get("reposition", 0) > 0: notified_counts["reposition"] += 1
+            if s.get("unknown", 0) > 0: notified_counts["unknown"] += 1
+        # Tag each subscriber row
+        s["notified"] = s["subscriber"] in notified_subs
+
     totals = status_data.get("totals", {})
     dsc = totals.get("detailed_status_counts", {})
 
     return {
         "subscribers": subscribers,
         "total_subscribers": len(subscribers),
+        "notified_counts": notified_counts,
         "fleet_totals": {
             "expired_bp": dsc.get("expired_bp", 0),
             "expiring_bp": dsc.get("expiring_batt_pads", 0),

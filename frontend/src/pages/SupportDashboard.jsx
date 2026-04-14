@@ -11,7 +11,7 @@ import API_BASE from "@/apiBase";
 
 const API = API_BASE + "/api";
 
-function StatCard({ value, label, color, icon: Icon, onClick, active }) {
+function StatCard({ value, label, color, icon: Icon, onClick, active, notified }) {
   return (
     <div
       onClick={onClick}
@@ -23,6 +23,12 @@ function StatCard({ value, label, color, icon: Icon, onClick, active }) {
         {Icon && <Icon className="w-4 h-4 opacity-60" style={{ color }} />}
       </div>
       <div className="font-orbitron text-[7px] tracking-wider text-slate-400 mt-1.5 uppercase">{label}</div>
+      {notified != null && (
+        <div className="font-orbitron text-[7px] tracking-wider mt-1.5">
+          <span className="text-green-400">{notified}</span>
+          <span className="text-slate-600"> NOTIFIED</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -857,6 +863,7 @@ export default function SupportDashboard({ user, onLogout }) {
 
   const subscribers = data?.subscribers || [];
   const totals = data?.fleet_totals || {};
+  const nc = data?.notified_counts || {};
 
   const filtered = subscribers
     .filter(s => s.total_issues > 0)
@@ -931,12 +938,12 @@ export default function SupportDashboard({ user, onLogout }) {
           <>
             {/* Fleet Stats */}
             <div className="flex gap-3 flex-wrap mb-6">
-              <StatCard value={data?.total_subscribers || 0} label="SUBSCRIBERS WITH ISSUES" color="#06b6d4" icon={Users} onClick={() => setActiveFilter("all")} active={activeFilter === "all"} />
-              <StatCard value={totals.expired_bp || 0} label="EXPIRED B/P" color="#ef4444" icon={AlertTriangle} onClick={() => setActiveFilter("expired_bp")} active={activeFilter === "expired_bp"} />
-              <StatCard value={totals.expiring_bp || 0} label="EXPIRING B/P" color="#f59e0b" icon={Clock} onClick={() => setActiveFilter("expiring_bp")} active={activeFilter === "expiring_bp"} />
-              <StatCard value={totals.not_ready || 0} label="NOT READY" color="#f97316" icon={Activity} onClick={() => setActiveFilter("not_ready")} active={activeFilter === "not_ready"} />
-              <StatCard value={totals.reposition || 0} label="REPOSITION" color="#a855f7" icon={Shield} onClick={() => setActiveFilter("reposition")} active={activeFilter === "reposition"} />
-              <StatCard value={totals.unknown || 0} label="UNKNOWN" color="#64748b" icon={Shield} onClick={() => setActiveFilter("unknown")} active={activeFilter === "unknown"} />
+              <StatCard value={data?.total_subscribers || 0} label="SUBSCRIBERS WITH ISSUES" color="#06b6d4" icon={Users} onClick={() => setActiveFilter("all")} active={activeFilter === "all"} notified={nc.total || 0} />
+              <StatCard value={totals.expired_bp || 0} label="EXPIRED B/P" color="#ef4444" icon={AlertTriangle} onClick={() => setActiveFilter("expired_bp")} active={activeFilter === "expired_bp"} notified={nc.expired_bp || 0} />
+              <StatCard value={totals.expiring_bp || 0} label="EXPIRING B/P" color="#f59e0b" icon={Clock} onClick={() => setActiveFilter("expiring_bp")} active={activeFilter === "expiring_bp"} notified={nc.expiring_bp || 0} />
+              <StatCard value={totals.not_ready || 0} label="NOT READY" color="#f97316" icon={Activity} onClick={() => setActiveFilter("not_ready")} active={activeFilter === "not_ready"} notified={nc.not_ready || 0} />
+              <StatCard value={totals.reposition || 0} label="REPOSITION" color="#a855f7" icon={Shield} onClick={() => setActiveFilter("reposition")} active={activeFilter === "reposition"} notified={nc.reposition || 0} />
+              <StatCard value={totals.unknown || 0} label="UNKNOWN" color="#64748b" icon={Shield} onClick={() => setActiveFilter("unknown")} active={activeFilter === "unknown"} notified={nc.unknown || 0} />
             </div>
 
             {/* Search + Sort controls */}
@@ -1052,13 +1059,16 @@ export default function SupportDashboard({ user, onLogout }) {
                         <span className="font-orbitron text-sm font-bold text-pink-400">{s.total_issues}</span>
                       </td>
                       <td className="p-3 text-center">
-                        <button
-                          onClick={() => setSelectedSub(s)}
-                          className="font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 inline-flex items-center gap-1"
-                          data-testid={`notify-btn-${s.subscriber}`}
-                        >
-                          <Send className="w-2.5 h-2.5" /> NOTIFY
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          {s.notified && <span className="text-[7px] px-1.5 py-0.5 bg-green-500/15 text-green-400 rounded-sm font-orbitron">SENT</span>}
+                          <button
+                            onClick={() => setSelectedSub(s)}
+                            className="font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 inline-flex items-center gap-1"
+                            data-testid={`notify-btn-${s.subscriber}`}
+                          >
+                            <Send className="w-2.5 h-2.5" /> NOTIFY
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
