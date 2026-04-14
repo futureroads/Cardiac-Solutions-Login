@@ -11,9 +11,13 @@ import API_BASE from "@/apiBase";
 
 const API = API_BASE + "/api";
 
-function StatCard({ value, label, color, icon: Icon }) {
+function StatCard({ value, label, color, icon: Icon, onClick, active }) {
   return (
-    <div className="border border-slate-700/50 bg-[rgba(10,15,28,0.85)] rounded-sm p-4 min-w-[120px]">
+    <div
+      onClick={onClick}
+      className={`border rounded-sm p-4 min-w-[120px] cursor-pointer transition-all ${active ? "border-current ring-1 ring-current bg-[rgba(10,15,28,1)]" : "border-slate-700/50 bg-[rgba(10,15,28,0.85)] hover:border-slate-600"}`}
+      style={active ? { borderColor: color, boxShadow: `0 0 12px ${color}22` } : {}}
+    >
       <div className="flex items-start justify-between">
         <div className="font-orbitron text-2xl font-black" style={{ color }}>{value}</div>
         {Icon && <Icon className="w-4 h-4 opacity-60" style={{ color }} />}
@@ -832,6 +836,7 @@ export default function SupportDashboard({ user, onLogout }) {
   const [sortField, setSortField] = useState("total_issues");
   const [sortDir, setSortDir] = useState("desc");
   const [search, setSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
 
   const token = localStorage.getItem("token") || "";
 
@@ -852,7 +857,16 @@ export default function SupportDashboard({ user, onLogout }) {
 
   const filtered = subscribers
     .filter(s => s.total_issues > 0)
-    .filter(s => !search || s.subscriber.toLowerCase().includes(search.toLowerCase()));
+    .filter(s => !search || s.subscriber.toLowerCase().includes(search.toLowerCase()))
+    .filter(s => {
+      if (activeFilter === "all") return true;
+      if (activeFilter === "expired_bp") return (s.expired_bp || 0) > 0;
+      if (activeFilter === "expiring_bp") return (s.expiring_bp || 0) > 0;
+      if (activeFilter === "not_ready") return (s.not_ready || 0) > 0;
+      if (activeFilter === "reposition") return (s.reposition || 0) > 0;
+      if (activeFilter === "unknown") return (s.unknown || 0) > 0;
+      return true;
+    });
 
   const sorted = [...filtered].sort((a, b) => {
     if (sortField === "subscriber") {
@@ -914,12 +928,12 @@ export default function SupportDashboard({ user, onLogout }) {
           <>
             {/* Fleet Stats */}
             <div className="flex gap-3 flex-wrap mb-6">
-              <StatCard value={data?.total_subscribers || 0} label="SUBSCRIBERS WITH ISSUES" color="#06b6d4" icon={Users} />
-              <StatCard value={totals.expired_bp || 0} label="EXPIRED B/P" color="#ef4444" icon={AlertTriangle} />
-              <StatCard value={totals.expiring_bp || 0} label="EXPIRING B/P" color="#f59e0b" icon={Clock} />
-              <StatCard value={totals.not_ready || 0} label="NOT READY" color="#f97316" icon={Activity} />
-              <StatCard value={totals.reposition || 0} label="REPOSITION" color="#a855f7" icon={Shield} />
-              <StatCard value={totals.unknown || 0} label="UNKNOWN" color="#64748b" icon={Shield} />
+              <StatCard value={data?.total_subscribers || 0} label="SUBSCRIBERS WITH ISSUES" color="#06b6d4" icon={Users} onClick={() => setActiveFilter("all")} active={activeFilter === "all"} />
+              <StatCard value={totals.expired_bp || 0} label="EXPIRED B/P" color="#ef4444" icon={AlertTriangle} onClick={() => setActiveFilter("expired_bp")} active={activeFilter === "expired_bp"} />
+              <StatCard value={totals.expiring_bp || 0} label="EXPIRING B/P" color="#f59e0b" icon={Clock} onClick={() => setActiveFilter("expiring_bp")} active={activeFilter === "expiring_bp"} />
+              <StatCard value={totals.not_ready || 0} label="NOT READY" color="#f97316" icon={Activity} onClick={() => setActiveFilter("not_ready")} active={activeFilter === "not_ready"} />
+              <StatCard value={totals.reposition || 0} label="REPOSITION" color="#a855f7" icon={Shield} onClick={() => setActiveFilter("reposition")} active={activeFilter === "reposition"} />
+              <StatCard value={totals.unknown || 0} label="UNKNOWN" color="#64748b" icon={Shield} onClick={() => setActiveFilter("unknown")} active={activeFilter === "unknown"} />
             </div>
 
             {/* Search + Sort controls */}
