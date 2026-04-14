@@ -132,13 +132,10 @@ export default function MapPage({ user }) {
                   onMouseOut={() => setHoveredId(null)}
                 >
                   {hoveredId === i && (
-                    <InfoWindow onCloseClick={() => setHoveredId(null)}>
-                      <div style={{ padding: "4px 8px", fontFamily: "Orbitron, monospace", minWidth: 160 }}>
-                        <div style={{ fontWeight: 700, fontSize: 12, color: "#0a0f1c", marginBottom: 4 }}>{loc.subscriber}</div>
-                        {loc.location_name && loc.location_name !== loc.subscriber && (
-                          <div style={{ fontSize: 10, color: "#475569" }}>{loc.location_name}</div>
-                        )}
-                        <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>
+                    <InfoWindow onCloseClick={() => setHoveredId(null)} options={{ disableAutoPan: true, maxWidth: 200 }}>
+                      <div style={{ padding: "2px 4px", fontFamily: "Orbitron, monospace", background: "#0a0f1c", margin: "-8px", borderRadius: 2 }}>
+                        <div style={{ fontWeight: 700, fontSize: 10, color: "#06b6d4", letterSpacing: 1 }}>{loc.subscriber}</div>
+                        <div style={{ fontSize: 9, color: "#475569", marginTop: 1 }}>
                           {[loc.city, loc.state].filter(Boolean).join(", ")}
                         </div>
                       </div>
