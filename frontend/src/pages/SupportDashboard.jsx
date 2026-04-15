@@ -189,6 +189,7 @@ function NotificationHistoryModal({ onClose }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
+  const [sortBy, setSortBy] = useState("date"); // "date" or "alpha"
   const [editingId, setEditingId] = useState(null);
   const [editStatus, setEditStatus] = useState("");
   const [editNotes, setEditNotes] = useState("");
@@ -256,14 +257,26 @@ function NotificationHistoryModal({ onClose }) {
             </div>
             <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-5 h-5" /></button>
           </div>
-          <div className="mt-3">
+          <div className="mt-3 flex gap-3 items-center">
             <input
               value={filter}
               onChange={e => setFilter(e.target.value)}
               placeholder="Filter by subscriber name..."
-              className="w-full px-3 py-2 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-600 font-orbitron"
+              className="flex-1 px-3 py-2 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-600 font-orbitron"
               data-testid="history-filter"
             />
+            <div className="flex gap-1 flex-shrink-0">
+              <button
+                onClick={() => setSortBy("date")}
+                className={`font-orbitron text-[7px] px-2.5 py-1.5 rounded-sm border ${sortBy === "date" ? "border-cyan-500/50 text-cyan-400 bg-cyan-500/10" : "border-slate-700 text-slate-500 hover:text-slate-300"}`}
+                data-testid="sort-date"
+              >DATE</button>
+              <button
+                onClick={() => setSortBy("alpha")}
+                className={`font-orbitron text-[7px] px-2.5 py-1.5 rounded-sm border ${sortBy === "alpha" ? "border-cyan-500/50 text-cyan-400 bg-cyan-500/10" : "border-slate-700 text-slate-500 hover:text-slate-300"}`}
+                data-testid="sort-alpha"
+              >A-Z</button>
+            </div>
           </div>
         </div>
 
@@ -285,7 +298,10 @@ function NotificationHistoryModal({ onClose }) {
                 </tr>
               </thead>
               <tbody>
-                {history.map((h, i) => {
+                {[...history].sort((a, b) => {
+                  if (sortBy === "alpha") return (a.subscriber || "").localeCompare(b.subscriber || "");
+                  return new Date(b.sent_at || 0) - new Date(a.sent_at || 0);
+                }).map((h, i) => {
                   const sentDate = h.sent_at ? new Date(h.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
                   const style = getStatusStyle(h);
                   const isEditing = editingId === h.id;
