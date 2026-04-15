@@ -30,6 +30,7 @@ const MODULE_OPTIONS = [
   { id: "outage_status", title: "Outage Status" },
   { id: "hybrid_training", title: "Hybrid Training" },
   { id: "customer_portal", title: "Customer Portal" },
+  { id: "map", title: "Map" },
 ];
 
 const ROLE_OPTIONS = ["admin", "C Level", "Director", "Manager", "Supervisor", "Employee"];
