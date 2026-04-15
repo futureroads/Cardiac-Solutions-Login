@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoogleMap, useJsApiLoader, Marker, OverlayView } from "@react-google-maps/api";
 import { ArrowLeft, Loader2 } from "lucide-react";
@@ -42,6 +42,7 @@ export default function MapPage({ user }) {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hoveredId, setHoveredId] = useState(null);
+  const mapRef = useRef(null);
 
   const { isLoaded, loadError } = useJsApiLoader({ googleMapsApiKey: MAP_KEY });
 
@@ -56,13 +57,27 @@ export default function MapPage({ user }) {
           const data = await res.json();
           const locs = (data.locations || []).filter(l => l.geocode_lat && l.geocode_lng);
           setLocations(locs);
+          // Auto-fit bounds once locations and map are ready
+          if (locs.length > 0 && mapRef.current) {
+            const bounds = new window.google.maps.LatLngBounds();
+            locs.forEach(l => bounds.extend({ lat: parseFloat(l.geocode_lat), lng: parseFloat(l.geocode_lng) }));
+            mapRef.current.fitBounds(bounds, 60);
+          }
         }
       } catch {}
       setLoading(false);
     })();
   }, []);
 
-  const onLoad = useCallback(() => {}, []);
+  const onLoad = useCallback((mapInstance) => {
+    mapRef.current = mapInstance;
+    // If locations already loaded, fit bounds
+    if (locations.length > 0) {
+      const bounds = new window.google.maps.LatLngBounds();
+      locations.forEach(l => bounds.extend({ lat: parseFloat(l.geocode_lat), lng: parseFloat(l.geocode_lng) }));
+      mapInstance.fitBounds(bounds, 60);
+    }
+  }, [locations]);
 
   if (loadError) {
     return (
