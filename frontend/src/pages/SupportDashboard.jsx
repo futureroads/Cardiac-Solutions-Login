@@ -386,6 +386,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
   const [devices, setDevices] = useState([]);
   const [loadingDevices, setLoadingDevices] = useState(true);
   const [drawerDevice, setDrawerDevice] = useState(null);
+  const [customDetails, setCustomDetails] = useState({});
 
   // Fetch subscriber devices with full detail
   useEffect(() => {
@@ -478,7 +479,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
         html += `<tr>`;
         html += `<td ${s}="padding:8px;border:1px solid #ddd;font-weight:bold;">${d.sentinel_id}</td>`;
         html += `<td ${s}="padding:8px;border:1px solid #ddd;">${loc}</td>`;
-        html += `<td ${s}="padding:8px;border:1px solid #ddd;">${d.days_summary || d.detailed_status || "—"}</td>`;
+        html += `<td ${s}="padding:8px;border:1px solid #ddd;">${customDetails[d.sentinel_id] !== undefined ? customDetails[d.sentinel_id] : (d.days_summary || d.detailed_status || "—")}</td>`;
         html += `<td ${s}="padding:8px;border:1px solid #ddd;text-align:center;font-size:11px;">Batt: ${battExp}<br>Pads: ${padExp}</td>`;
         html += `<td ${s}="padding:8px;border:1px solid #ddd;">`;
         if (imgUrl) {
@@ -597,7 +598,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
         {/* Email Preview */}
         <div className="flex-1 overflow-y-auto px-5 py-3">
           <div className="font-orbitron text-[8px] tracking-wider text-amber-400 mb-2">
-            EMAIL PREVIEW - REMOVE WRONG AEDs WITH THE ICON
+            EMAIL PREVIEW - EDIT DETAILS PER AED &amp; REMOVE WRONG AEDs WITH THE ICON
           </div>
           {loadingDevices ? (
             <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /><span className="ml-2 text-slate-400 text-xs">Loading devices...</span></div>
@@ -630,7 +631,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                       <tr className="bg-slate-50">
                         <th className="text-left p-2 border border-slate-200">Serial Number</th>
                         <th className="text-left p-2 border border-slate-200">Location</th>
-                        <th className="text-left p-2 border border-slate-200">Status</th>
+                        <th className="text-left p-2 border border-slate-200">Details <span className="text-blue-400 font-normal text-[9px]">(editable)</span></th>
                         <th className="text-center p-2 border border-slate-200">Batt/Pads Exp</th>
                         <th className="text-center p-2 border border-slate-200 w-16">Batt %</th>
                         <th className="text-center p-2 border border-slate-200 w-16">Signal</th>
@@ -646,7 +647,16 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                           <tr key={d.sentinel_id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setDrawerDevice(d)}>
                             <td className="p-2 border border-slate-200 font-bold text-blue-700 hover:underline">{d.sentinel_id}</td>
                             <td className="p-2 border border-slate-200 text-[11px]">{loc}</td>
-                            <td className="p-2 border border-slate-200 text-[11px]">{d.days_summary || d.detailed_status || "—"}</td>
+                            <td className="p-2 border border-slate-200 text-[11px]">
+                              <textarea
+                                value={customDetails[d.sentinel_id] !== undefined ? customDetails[d.sentinel_id] : (d.days_summary || d.detailed_status || "—")}
+                                onChange={e => { e.stopPropagation(); setCustomDetails(prev => ({ ...prev, [d.sentinel_id]: e.target.value })); }}
+                                onClick={e => e.stopPropagation()}
+                                className="w-full min-w-[120px] px-1.5 py-1 rounded border border-blue-300 bg-blue-50 text-slate-800 text-[11px] resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                rows={2}
+                                data-testid={`edit-details-${d.sentinel_id}`}
+                              />
+                            </td>
                             <td className="p-2 border border-slate-200 text-[10px] text-center">
                               <div>Batt: {d.battery_expiration || "—"}</div>
                               <div>Pads: {d.pad_expiration || "—"}</div>

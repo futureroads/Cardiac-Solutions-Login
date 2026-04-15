@@ -19,7 +19,10 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
   - Camera images from Readisys `/voice/aed/{id}/last-image` API
   - Device detail columns: Batt/Pads Exp, Battery %, Signal, Capture Timestamp
   - **Device Detail Drawer** — click any device row to see full-size image, all device info, diagnostics, and editable notes (saved to MongoDB)
-  - **Notification History** — view all sent emails with subscriber filter
+  - **Notification History** — view all sent emails with subscriber filter, manual status override, notes, sorting
+  - **Editable Details per AED** — support reps can customize detail text per device before sending; reflected in Mailgun HTML
+  - Clickable issue counts open DeviceListModal; interactive stat card filters with progress bars
+  - Status Correction Feedback modal; Auto CC tprince@cardiac-solutions.net
   - Email subject: "AED Report and Action Items"
   - Section label: "AED Batteries and Pads Expired/Expiring"
   - 51 subscriber contacts seeded from Excel + Readisys name variants
@@ -59,6 +62,8 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - Refactor large frontend components
 
 ## Changelog
+- 2026-04-15: Added editable DETAILS field per AED device in notification email modal (preview + Mailgun HTML)
+- 2026-04-14: Added Map Module (Google Maps), stat card filters, progress bars, notification history sorting, clickable issue counts, status correction feedback, auto CC
 - 2026-04-09: Added Device Detail Drawer (full image, all device info, diagnostics, editable notes)
 - 2026-04-09: Added Notification History modal with subscriber filter
 - 2026-04-09: Added Batt/Pads Exp, Battery %, Signal, Capture Timestamp columns to email preview
