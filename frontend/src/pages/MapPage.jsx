@@ -43,6 +43,9 @@ export default function MapPage({ user }) {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hoveredId, setHoveredId] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const [selectedData, setSelectedData] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const mapRef = useRef(null);
 
   const { isLoaded, loadError } = useJsApiLoader({ googleMapsApiKey: MAP_KEY });
@@ -80,6 +83,30 @@ export default function MapPage({ user }) {
   const onLoad = useCallback((mapInstance) => {
     mapRef.current = mapInstance;
   }, []);
+
+  const handleMarkerClick = useCallback(async (loc, i) => {
+    if (selectedId === i) { setSelectedId(null); setSelectedData(null); return; }
+    setSelectedId(i);
+    setSelectedData(null);
+    setLoadingDetail(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API}/support/subscriber/${encodeURIComponent(loc.subscriber)}/devices`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const devices = data.devices || [];
+        const issues = {};
+        devices.forEach(d => {
+          const s = d.detailed_status || "READY";
+          issues[s] = (issues[s] || 0) + 1;
+        });
+        setSelectedData({ total: devices.length, issues, subscriber: loc.subscriber, city: loc.city, state: loc.state });
+      }
+    } catch {}
+    setLoadingDetail(false);
+  }, [selectedId]);
 
   if (loadError) {
     return (
@@ -151,10 +178,11 @@ export default function MapPage({ user }) {
                     scale: 1.5,
                     anchor: { x: 12, y: 24 },
                   }}
-                  onMouseOver={() => setHoveredId(i)}
+                  onMouseOver={() => { if (selectedId !== i) setHoveredId(i); }}
                   onMouseOut={() => setHoveredId(null)}
+                  onClick={() => handleMarkerClick(loc, i)}
                 >
-                  {hoveredId === i && (
+                  {hoveredId === i && selectedId !== i && (
                     <OverlayView
                       position={{ lat, lng }}
                       mapPaneName={OverlayView.FLOAT_PANE}
@@ -173,6 +201,53 @@ export default function MapPage({ user }) {
                         <div style={{ fontSize: 9, color: "#475569", marginTop: 1 }}>
                           {[loc.city, loc.state].filter(Boolean).join(", ")}
                         </div>
+                      </div>
+                    </OverlayView>
+                  )}
+                  {selectedId === i && (
+                    <OverlayView
+                      position={{ lat, lng }}
+                      mapPaneName={OverlayView.FLOAT_PANE}
+                      getPixelPositionOffset={(w, h) => ({ x: -(w / 2), y: -h - 36 })}
+                    >
+                      <div style={{
+                        background: "rgba(6,10,20,0.95)",
+                        border: "1px solid rgba(6,182,212,0.5)",
+                        borderRadius: 4,
+                        padding: "8px 14px",
+                        fontFamily: "Orbitron, monospace",
+                        whiteSpace: "nowrap",
+                        minWidth: 180,
+                      }}>
+                        <div style={{ fontWeight: 700, fontSize: 11, color: "#06b6d4", letterSpacing: 1, marginBottom: 4 }}>{loc.subscriber}</div>
+                        <div style={{ fontSize: 9, color: "#475569", marginBottom: 6 }}>
+                          {[loc.city, loc.state].filter(Boolean).join(", ")}
+                        </div>
+                        {loadingDetail ? (
+                          <div style={{ fontSize: 9, color: "#64748b" }}>Loading...</div>
+                        ) : selectedData ? (
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#22c55e", marginBottom: 4 }}>
+                              {selectedData.total} AEDs
+                            </div>
+                            {Object.entries(selectedData.issues)
+                              .filter(([k]) => k !== "READY")
+                              .sort(([,a],[,b]) => b - a)
+                              .map(([status, count]) => (
+                                <div key={status} style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#94a3b8", marginTop: 2 }}>
+                                  <span>{status}</span>
+                                  <span style={{ color: "#ef4444", fontWeight: 700, marginLeft: 12 }}>{count}</span>
+                                </div>
+                              ))
+                            }
+                            {selectedData.issues["READY"] && (
+                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#94a3b8", marginTop: 2 }}>
+                                <span>READY</span>
+                                <span style={{ color: "#22c55e", fontWeight: 700, marginLeft: 12 }}>{selectedData.issues["READY"]}</span>
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
                       </div>
                     </OverlayView>
                   )}
