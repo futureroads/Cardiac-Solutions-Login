@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoogleMap, useJsApiLoader, Marker, OverlayView } from "@react-google-maps/api";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Maximize2 } from "lucide-react";
 import API_BASE from "@/apiBase";
 
 const API = API_BASE + "/api";
@@ -57,27 +57,28 @@ export default function MapPage({ user }) {
           const data = await res.json();
           const locs = (data.locations || []).filter(l => l.geocode_lat && l.geocode_lng);
           setLocations(locs);
-          // Auto-fit bounds once locations and map are ready
-          if (locs.length > 0 && mapRef.current) {
-            const bounds = new window.google.maps.LatLngBounds();
-            locs.forEach(l => bounds.extend({ lat: parseFloat(l.geocode_lat), lng: parseFloat(l.geocode_lng) }));
-            mapRef.current.fitBounds(bounds, 60);
-          }
         }
       } catch {}
       setLoading(false);
     })();
   }, []);
 
-  const onLoad = useCallback((mapInstance) => {
-    mapRef.current = mapInstance;
-    // If locations already loaded, fit bounds
-    if (locations.length > 0) {
+  const fitAllMarkers = useCallback(() => {
+    if (locations.length > 0 && mapRef.current && window.google) {
       const bounds = new window.google.maps.LatLngBounds();
       locations.forEach(l => bounds.extend({ lat: parseFloat(l.geocode_lat), lng: parseFloat(l.geocode_lng) }));
-      mapInstance.fitBounds(bounds, 60);
+      mapRef.current.fitBounds(bounds, 60);
     }
   }, [locations]);
+
+  // Auto-zoom when locations load
+  useEffect(() => {
+    fitAllMarkers();
+  }, [fitAllMarkers]);
+
+  const onLoad = useCallback((mapInstance) => {
+    mapRef.current = mapInstance;
+  }, []);
 
   if (loadError) {
     return (
@@ -108,6 +109,13 @@ export default function MapPage({ user }) {
           <div className="font-orbitron text-[9px] text-slate-500">
             {locations.length} LOCATIONS
           </div>
+          <button
+            onClick={fitAllMarkers}
+            className="font-orbitron text-[8px] px-3 py-1.5 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 flex items-center gap-1.5"
+            data-testid="fit-all-btn"
+          >
+            <Maximize2 className="w-3 h-3" /> FIT ALL
+          </button>
         </div>
       </div>
 
