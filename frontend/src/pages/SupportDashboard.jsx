@@ -13,11 +13,12 @@ const API = API_BASE + "/api";
 
 function StatCard({ value, label, color, icon: Icon, onClick, active, notified }) {
   const pct = value > 0 && notified != null ? Math.min(100, Math.round((notified / value) * 100)) : 0;
+  const allDone = value > 0 && notified != null && notified >= value;
   return (
     <div
       onClick={onClick}
-      className={`border rounded-sm p-4 min-w-[130px] cursor-pointer transition-all ${active ? "border-current ring-1 ring-current bg-[rgba(10,15,28,1)]" : "border-slate-700/50 bg-[rgba(10,15,28,0.85)] hover:border-slate-600"}`}
-      style={active ? { borderColor: color, boxShadow: `0 0 12px ${color}22` } : {}}
+      className={`border rounded-sm p-4 min-w-[130px] cursor-pointer transition-all ${allDone ? "border-green-500/50 bg-[rgba(34,197,94,0.08)]" : active ? "border-current ring-1 ring-current bg-[rgba(10,15,28,1)]" : "border-slate-700/50 bg-[rgba(10,15,28,0.85)] hover:border-slate-600"}`}
+      style={active && !allDone ? { borderColor: color, boxShadow: `0 0 12px ${color}22` } : allDone ? { boxShadow: "0 0 12px rgba(34,197,94,0.15)" } : {}}
     >
       <div className="flex items-start justify-between">
         <div className="font-orbitron text-2xl font-black" style={{ color }}>{value}</div>
