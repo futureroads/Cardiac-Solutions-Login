@@ -1160,6 +1160,21 @@ async def update_notification_status(history_id: str, data: dict, current_user: 
     return {"success": True}
 
 
+@api_router.post("/support/device-feedback")
+async def submit_device_feedback(data: dict, current_user: dict = Depends(get_current_user)):
+    """Save status correction feedback for a device."""
+    await _db.device_feedback.insert_one({
+        "sentinel_id": data.get("sentinel_id", ""),
+        "subscriber": data.get("subscriber", ""),
+        "current_status": data.get("current_status", ""),
+        "correct_status": data.get("correct_status", ""),
+        "comments": data.get("comments", ""),
+        "submitted_by": current_user.get("username", ""),
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"success": True}
+
+
 @api_router.get("/support/device-notes/{sentinel_id}")
 async def get_device_notes(sentinel_id: str, current_user: dict = Depends(get_current_user)):
     """Get notes for a specific device."""

@@ -4,7 +4,7 @@ import {
   ArrowLeft, Send, X, Trash2, Loader2, Settings,
   AlertTriangle, Clock, ChevronDown, ChevronUp, Mail,
   Users, Activity, Shield, History, Battery, Wifi,
-  StickyNote, ZoomIn, ChevronLeft,
+  StickyNote, ZoomIn, ChevronLeft, Edit3,
 } from "lucide-react";
 import { toast } from "sonner";
 import API_BASE from "@/apiBase";
@@ -721,6 +721,182 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
   );
 }
 
+function StatusFeedbackModal({ device, subscriber, onClose }) {
+  const [correctStatus, setCorrectStatus] = useState(device.detailed_status || "");
+  const [comments, setComments] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const statusOptions = ["READY", "EXPIRED B/P", "EXPIRING BATT/PADS", "NOT READY", "REPOSITION", "UNKNOWN", "NOT PRESENT", "LOST CONTACT"];
+  const capturedAt = device.captured_at ? new Date(device.captured_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const token = localStorage.getItem("token");
+      await fetch(`${API}/support/device-feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ sentinel_id: device.sentinel_id, subscriber, current_status: device.detailed_status, correct_status: correctStatus, comments }),
+      });
+      toast.success("Feedback submitted");
+      onClose();
+    } catch { toast.error("Failed to submit"); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-[70] flex items-center justify-center" onClick={onClose}>
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[480px] max-w-[95vw] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()} data-testid="feedback-modal">
+        <div className="p-5 border-b border-cyan-500/15 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <Edit3 className="w-4 h-4 text-cyan-400" />
+            <span className="font-orbitron text-sm text-cyan-400 tracking-wider">Report correct AED status</span>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="flex gap-4">
+            {device.image_url ? (
+              <img src={device.image_url} alt={device.sentinel_id} className="w-28 h-28 object-cover rounded-sm border border-slate-700" />
+            ) : (
+              <div className="w-28 h-28 bg-slate-900 border border-slate-700 rounded-sm flex items-center justify-center text-slate-600 text-[9px]">No image</div>
+            )}
+            <div className="space-y-2 flex-1">
+              <div><div className="font-orbitron text-[7px] text-slate-500 tracking-wider">SUBSCRIBER</div><div className="text-white text-xs">{subscriber}</div></div>
+              <div><div className="font-orbitron text-[7px] text-slate-500 tracking-wider">AED ID</div><div className="text-white text-xs font-bold">{device.sentinel_id}</div></div>
+              <div><div className="font-orbitron text-[7px] text-slate-500 tracking-wider">AED MODEL</div><div className="text-white text-xs">{device.model || "—"}</div></div>
+              <div><div className="font-orbitron text-[7px] text-slate-500 tracking-wider">IMAGE DATE</div><div className="text-white text-xs">{capturedAt}</div></div>
+              <div><div className="font-orbitron text-[7px] text-slate-500 tracking-wider">CURRENT STATUS</div><div className="text-red-400 text-xs font-bold">{device.detailed_status || "—"}</div></div>
+            </div>
+          </div>
+          <div>
+            <div className="font-orbitron text-[8px] text-slate-400 tracking-wider mb-2">CORRECT STATUS</div>
+            <select value={correctStatus} onChange={e => setCorrectStatus(e.target.value)}
+              className="w-full px-3 py-2 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs" data-testid="correct-status-select">
+              {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <div className="font-orbitron text-[8px] text-slate-400 tracking-wider mb-2">COMMENTS</div>
+            <textarea value={comments} onChange={e => setComments(e.target.value)} placeholder="Add any notes about what you see in the image..."
+              className="w-full px-3 py-2 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-600 resize-none h-24" data-testid="feedback-comments" />
+          </div>
+          <div className="flex justify-end">
+            <button onClick={submit} disabled={saving}
+              className="font-orbitron text-[9px] px-5 py-2 bg-cyan-500/15 border border-cyan-500/40 text-cyan-400 rounded-sm hover:bg-cyan-500/25 disabled:opacity-50 flex items-center gap-2"
+              data-testid="submit-feedback-btn">
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Edit3 className="w-3 h-3" />} Submit feedback
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeviceListModal({ subscriber, issueType, onClose }) {
+  const [devices, setDevices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [feedbackDevice, setFeedbackDevice] = useState(null);
+
+  const issueLabels = { expired_bp: "EXPIRED B/P", expiring_bp: "EXPIRING BATT/PADS", not_ready: "NOT READY", reposition: "REPOSITION", unknown: "UNKNOWN" };
+  const issueStatuses = {
+    expired_bp: ["EXPIRED B/P"],
+    expiring_bp: ["EXPIRING BATT/PADS"],
+    not_ready: ["NOT READY"],
+    reposition: ["REPOSITION"],
+    unknown: ["UNKNOWN"],
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API}/support/subscriber/${encodeURIComponent(subscriber)}/devices`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const all = data.devices || [];
+          const statuses = issueStatuses[issueType] || [];
+          setDevices(all.filter(d => statuses.includes(d.detailed_status)));
+        }
+      } catch {}
+      setLoading(false);
+    })();
+  }, [subscriber, issueType]);
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[1100px] max-w-[95vw] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="device-list-modal">
+        <div className="p-5 border-b border-cyan-500/15 flex justify-between items-center flex-shrink-0">
+          <div>
+            <div className="font-orbitron text-sm text-cyan-400 tracking-wider">{subscriber}</div>
+            <div className="text-[9px] text-slate-500 font-orbitron mt-0.5">{issueLabels[issueType] || issueType} — {devices.length} devices</div>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
+          ) : devices.length === 0 ? (
+            <div className="text-center text-slate-500 py-12 font-orbitron text-[10px]">NO DEVICES FOUND</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {devices.map(d => {
+                const loc = [d.site, d.building, d.placement].filter(Boolean).join(" / ") || "—";
+                const capturedAt = d.captured_at ? new Date(d.captured_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+                const battColor = (d.battery_level_pct ?? 0) > 50 ? "#22c55e" : (d.battery_level_pct ?? 0) > 20 ? "#f59e0b" : "#ef4444";
+                return (
+                  <div key={d.sentinel_id} className="border border-slate-700/50 bg-slate-900/30 rounded-sm overflow-hidden">
+                    <div className="flex gap-3 p-3">
+                      {/* Image */}
+                      <div className="flex-shrink-0 w-28">
+                        {d.image_url ? (
+                          <img src={d.image_url} alt={d.sentinel_id} className="w-28 h-20 object-cover rounded-sm border border-slate-700" loading="lazy" />
+                        ) : (
+                          <div className="w-28 h-20 bg-slate-800 border border-slate-700 rounded-sm flex items-center justify-center text-slate-600 text-[8px]">No image</div>
+                        )}
+                        <div className="text-[8px] text-slate-500 mt-1 text-center">{capturedAt}</div>
+                      </div>
+                      {/* Details */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between">
+                          <div className="font-orbitron text-xs text-white font-bold">{d.sentinel_id}</div>
+                          <span className="text-[7px] px-1.5 py-0.5 bg-red-500/15 text-red-400 rounded-sm font-orbitron flex-shrink-0">{d.detailed_status}</span>
+                        </div>
+                        <div className="text-[9px] text-slate-400 mt-1">{d.model || "—"}</div>
+                        <div className="text-[9px] text-slate-500 mt-0.5 truncate">{loc}</div>
+                        <div className="flex items-center gap-3 mt-2">
+                          <div className="flex items-center gap-1">
+                            <Battery className="w-3 h-3" style={{ color: battColor }} />
+                            <span className="text-[9px] font-bold" style={{ color: battColor }}>{d.battery_level_pct != null ? `${d.battery_level_pct}%` : "—"}</span>
+                          </div>
+                          <div className="text-[9px] text-slate-500">Batt: {d.battery_expiration || "—"}</div>
+                          <div className="text-[9px] text-slate-500">Pads: {d.pad_expiration || "—"}</div>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Action bar */}
+                    <div className="border-t border-slate-700/30 px-3 py-1.5 flex justify-end gap-2">
+                      <button onClick={() => setFeedbackDevice(d)}
+                        className="font-orbitron text-[7px] px-2 py-1 border border-amber-500/30 text-amber-400 rounded-sm hover:bg-amber-500/10 inline-flex items-center gap-1"
+                        data-testid={`feedback-btn-${d.sentinel_id}`}>
+                        <Edit3 className="w-2.5 h-2.5" /> CORRECT STATUS
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        {feedbackDevice && <StatusFeedbackModal device={feedbackDevice} subscriber={subscriber} onClose={() => setFeedbackDevice(null)} />}
+      </div>
+    </div>
+  );
+}
+
 function ContactsModal({ subscribers, onClose }) {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -865,6 +1041,7 @@ export default function SupportDashboard({ user, onLogout }) {
   const [selectedSub, setSelectedSub] = useState(null);
   const [showContacts, setShowContacts] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [deviceList, setDeviceList] = useState(null);
   const [sortField, setSortField] = useState("total_issues");
   const [sortDir, setSortDir] = useState("desc");
   const [search, setSearch] = useState("");
@@ -1052,28 +1229,28 @@ export default function SupportDashboard({ user, onLogout }) {
                       </td>
                       <td className="p-3 text-center">
                         {s.expired_bp > 0 ? (
-                          <span className="font-orbitron text-sm font-bold text-red-400">{s.expired_bp}</span>
+                          <span className="font-orbitron text-sm font-bold text-red-400 cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "expired_bp" })}>{s.expired_bp}</span>
                         ) : (
                           <span className="text-slate-600">0</span>
                         )}
                       </td>
                       <td className="p-3 text-center">
                         {s.expiring_bp > 0 ? (
-                          <span className="font-orbitron text-sm font-bold text-amber-400">{s.expiring_bp}</span>
+                          <span className="font-orbitron text-sm font-bold text-amber-400 cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "expiring_bp" })}>{s.expiring_bp}</span>
                         ) : (
                           <span className="text-slate-600">0</span>
                         )}
                       </td>
                       <td className="p-3 text-center">
                         {(s.not_ready || 0) > 0 ? (
-                          <span className="font-orbitron text-sm font-bold text-orange-400">{s.not_ready}</span>
+                          <span className="font-orbitron text-sm font-bold text-orange-400 cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "not_ready" })}>{s.not_ready}</span>
                         ) : (
                           <span className="text-slate-600">0</span>
                         )}
                       </td>
                       <td className="p-3 text-center">
                         {(s.reposition || 0) > 0 ? (
-                          <span className="font-orbitron text-sm font-bold text-purple-400">{s.reposition}</span>
+                          <span className="font-orbitron text-sm font-bold text-purple-400 cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "reposition" })}>{s.reposition}</span>
                         ) : (
                           <span className="text-slate-600">0</span>
                         )}
@@ -1121,6 +1298,7 @@ export default function SupportDashboard({ user, onLogout }) {
       )}
       {showContacts && <ContactsModal subscribers={subscribers} onClose={() => { setShowContacts(false); fetchData(); }} />}
       {showHistory && <NotificationHistoryModal onClose={() => setShowHistory(false)} />}
+      {deviceList && <DeviceListModal subscriber={deviceList.subscriber} issueType={deviceList.issueType} onClose={() => setDeviceList(null)} />}
     </div>
   );
 }
