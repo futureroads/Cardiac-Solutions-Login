@@ -40,12 +40,10 @@ const mapOptions = {
 
 export default function MapPage({ user }) {
   const navigate = useNavigate();
-  const [locations, setLocations] = useState([]);
+  const [subscribers, setSubscribers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hoveredId, setHoveredId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
-  const [selectedData, setSelectedData] = useState(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
   const mapRef = useRef(null);
 
   const { isLoaded, loadError } = useJsApiLoader({ googleMapsApiKey: MAP_KEY });
@@ -59,54 +57,31 @@ export default function MapPage({ user }) {
         });
         if (res.ok) {
           const data = await res.json();
-          const locs = (data.locations || []).filter(l => l.geocode_lat && l.geocode_lng);
-          setLocations(locs);
+          const subs = (data.subscribers || []).filter(s => s.has_geocode && s.geocode_lat && s.geocode_lng);
+          setSubscribers(subs);
         }
       } catch {}
       setLoading(false);
     })();
   }, []);
 
+  const geoSubs = subscribers;
+
   const fitAllMarkers = useCallback(() => {
-    if (locations.length > 0 && mapRef.current && window.google) {
+    if (geoSubs.length > 0 && mapRef.current && window.google) {
       const bounds = new window.google.maps.LatLngBounds();
-      locations.forEach(l => bounds.extend({ lat: parseFloat(l.geocode_lat), lng: parseFloat(l.geocode_lng) }));
+      geoSubs.forEach(s => bounds.extend({ lat: parseFloat(s.geocode_lat), lng: parseFloat(s.geocode_lng) }));
       mapRef.current.fitBounds(bounds, 60);
     }
-  }, [locations]);
+  }, [geoSubs]);
 
-  // Auto-zoom when locations load
-  useEffect(() => {
-    fitAllMarkers();
-  }, [fitAllMarkers]);
+  useEffect(() => { fitAllMarkers(); }, [fitAllMarkers]);
 
-  const onLoad = useCallback((mapInstance) => {
-    mapRef.current = mapInstance;
+  const onLoad = useCallback((mapInstance) => { mapRef.current = mapInstance; }, []);
+
+  const handleMarkerClick = useCallback((i) => {
+    setSelectedId(prev => prev === i ? null : i);
   }, []);
-
-  const handleMarkerClick = useCallback(async (loc, i) => {
-    if (selectedId === i) { setSelectedId(null); setSelectedData(null); return; }
-    setSelectedId(i);
-    setSelectedData(null);
-    setLoadingDetail(true);
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API}/support/subscriber/${encodeURIComponent(loc.subscriber)}/devices`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const devices = data.devices || [];
-        const issues = {};
-        devices.forEach(d => {
-          const s = d.detailed_status || "READY";
-          issues[s] = (issues[s] || 0) + 1;
-        });
-        setSelectedData({ total: devices.length, issues, subscriber: loc.subscriber, city: loc.city, state: loc.state });
-      }
-    } catch {}
-    setLoadingDetail(false);
-  }, [selectedId]);
 
   if (loadError) {
     return (
@@ -129,13 +104,13 @@ export default function MapPage({ user }) {
           </button>
           <div>
             <div className="font-orbitron text-sm tracking-wider text-cyan-400">SUBSCRIBER MAP</div>
-            <div className="text-[9px] text-slate-500 font-orbitron tracking-wider">AED LOCATION MONITORING</div>
+            <div className="text-[9px] text-slate-500 font-orbitron tracking-wider">AED READINESS MONITORING</div>
           </div>
         </div>
         <div className="flex items-center gap-3">
           {loading && <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />}
           <div className="font-orbitron text-[9px] text-slate-500">
-            {locations.length} LOCATIONS
+            {geoSubs.length} LOCATIONS
           </div>
           <button
             onClick={fitAllMarkers}
@@ -161,17 +136,24 @@ export default function MapPage({ user }) {
             options={mapOptions}
             onLoad={onLoad}
           >
-            {locations.map((loc, i) => {
-              const lat = parseFloat(loc.geocode_lat);
-              const lng = parseFloat(loc.geocode_lng);
+            {geoSubs.map((sub, i) => {
+              const lat = parseFloat(sub.geocode_lat);
+              const lng = parseFloat(sub.geocode_lng);
               if (isNaN(lat) || isNaN(lng)) return null;
+
+              const counts = sub.status_counts || {};
+              const total = sub.aed_count || 0;
+              const readyCount = counts.READY || 0;
+              const readyPct = total > 0 ? Math.round((readyCount / total) * 100) : 0;
+              const pinColor = readyPct >= 90 ? "#22c55e" : readyPct >= 50 ? "#f59e0b" : "#ef4444";
+
               return (
                 <Marker
-                  key={`${loc.subscriber}-${i}`}
+                  key={`${sub.subscriber}-${i}`}
                   position={{ lat, lng }}
                   icon={{
                     path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z",
-                    fillColor: "#22c55e",
+                    fillColor: pinColor,
                     fillOpacity: 1,
                     strokeColor: "#0a0f1c",
                     strokeWeight: 1.5,
@@ -180,7 +162,7 @@ export default function MapPage({ user }) {
                   }}
                   onMouseOver={() => { if (selectedId !== i) setHoveredId(i); }}
                   onMouseOut={() => setHoveredId(null)}
-                  onClick={() => handleMarkerClick(loc, i)}
+                  onClick={() => handleMarkerClick(i)}
                 >
                   {hoveredId === i && selectedId !== i && (
                     <OverlayView
@@ -197,9 +179,9 @@ export default function MapPage({ user }) {
                         whiteSpace: "nowrap",
                         pointerEvents: "none",
                       }}>
-                        <div style={{ fontWeight: 700, fontSize: 10, color: "#06b6d4", letterSpacing: 1 }}>{loc.subscriber}</div>
+                        <div style={{ fontWeight: 700, fontSize: 10, color: "#06b6d4", letterSpacing: 1 }}>{sub.display_name || sub.subscriber}</div>
                         <div style={{ fontSize: 9, color: "#475569", marginTop: 1 }}>
-                          {[loc.city, loc.state].filter(Boolean).join(", ")}
+                          {total} AEDs - {readyPct}% Ready
                         </div>
                       </div>
                     </OverlayView>
@@ -219,40 +201,31 @@ export default function MapPage({ user }) {
                         whiteSpace: "nowrap",
                         minWidth: 180,
                       }}>
-                        <div style={{ fontWeight: 700, fontSize: 11, color: "#06b6d4", letterSpacing: 1, marginBottom: 4 }}>{loc.subscriber}</div>
-                        <div style={{ fontSize: 9, color: "#475569", marginBottom: 6 }}>
-                          {[loc.city, loc.state].filter(Boolean).join(", ")}
+                        <div style={{ fontWeight: 700, fontSize: 11, color: "#06b6d4", letterSpacing: 1, marginBottom: 4 }}>{sub.display_name || sub.subscriber}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#22c55e" }}>
+                            {total} AEDs
+                          </span>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: readyPct >= 90 ? "#22c55e" : readyPct >= 50 ? "#f59e0b" : "#ef4444" }}>
+                            {readyPct}% READY
+                          </span>
                         </div>
-                        {loadingDetail ? (
-                          <div style={{ fontSize: 9, color: "#64748b" }}>Loading...</div>
-                        ) : selectedData ? (
-                          <div>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: "#22c55e" }}>
-                                {selectedData.total} AEDs
-                              </span>
-                              <span style={{ fontSize: 10, fontWeight: 700, color: selectedData.issues["READY"] ? "#22c55e" : "#ef4444" }}>
-                                {selectedData.total > 0 ? Math.round(((selectedData.issues["READY"] || 0) / selectedData.total) * 100) : 0}% READY
-                              </span>
+                        {Object.entries(counts)
+                          .filter(([k, v]) => k !== "READY" && k !== "UNCLASSIFIED" && v > 0)
+                          .sort(([,a],[,b]) => b - a)
+                          .map(([status, count]) => (
+                            <div key={status} style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#94a3b8", marginTop: 2 }}>
+                              <span>{status}</span>
+                              <span style={{ color: "#ef4444", fontWeight: 700, marginLeft: 12 }}>{count}</span>
                             </div>
-                            {Object.entries(selectedData.issues)
-                              .filter(([k]) => k !== "READY")
-                              .sort(([,a],[,b]) => b - a)
-                              .map(([status, count]) => (
-                                <div key={status} style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#94a3b8", marginTop: 2 }}>
-                                  <span>{status}</span>
-                                  <span style={{ color: "#ef4444", fontWeight: 700, marginLeft: 12 }}>{count}</span>
-                                </div>
-                              ))
-                            }
-                            {selectedData.issues["READY"] && (
-                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#94a3b8", marginTop: 2 }}>
-                                <span>READY</span>
-                                <span style={{ color: "#22c55e", fontWeight: 700, marginLeft: 12 }}>{selectedData.issues["READY"]}</span>
-                              </div>
-                            )}
+                          ))
+                        }
+                        {readyCount > 0 && (
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#94a3b8", marginTop: 2 }}>
+                            <span>READY</span>
+                            <span style={{ color: "#22c55e", fontWeight: 700, marginLeft: 12 }}>{readyCount}</span>
                           </div>
-                        ) : null}
+                        )}
                       </div>
                     </OverlayView>
                   )}

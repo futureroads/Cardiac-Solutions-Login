@@ -1251,50 +1251,25 @@ async def aed_image_proxy(sentinel_id: str, current_user: dict = Depends(get_cur
 
 @api_router.get("/support/map-locations")
 async def get_all_map_locations(current_user: dict = Depends(get_current_user)):
-    """Fetch map locations for all subscribers by proxying the Readisys API."""
-    import httpx, urllib.parse
+    """Proxy the Readisys subscriber readiness summary endpoint for map data."""
+    import httpx
     headers = _readisys_auth_headers()
-    all_locations = []
     try:
-        # Get all subscribers first
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get("https://readisys.survivalpath.ai/api/voice/subscribers", headers=headers)
+            resp = await client.get(
+                "https://readisys.survivalpath.ai/api/map/readiness/subscribers/summary",
+                headers=headers,
+            )
             if resp.status_code != 200:
-                return {"locations": [], "_error": f"Subscribers API returned {resp.status_code}"}
-            subscribers = resp.json() if isinstance(resp.json(), list) else resp.json().get("subscribers", [])
-
-        # Fetch map locations for each subscriber in parallel
-        import asyncio
-        async def fetch_one(sub_name):
-            try:
-                enc = urllib.parse.quote(sub_name)
-                async with httpx.AsyncClient(timeout=15) as client:
-                    r = await client.get(
-                        f"https://readisys.survivalpath.ai/api/subscriber/{enc}/map-locations",
-                        headers=headers,
-                    )
-                    if r.status_code == 200:
-                        data = r.json()
-                        locs = data if isinstance(data, list) else data.get("locations", [])
-                        for loc in locs:
-                            loc["subscriber"] = sub_name
-                        return locs
-            except:
-                pass
-            return []
-
-        sub_names = []
-        for s in subscribers:
-            name = s.get("name") or s.get("subscriber") or (s if isinstance(s, str) else "")
-            if name:
-                sub_names.append(name)
-
-        results = await asyncio.gather(*[fetch_one(n) for n in sub_names])
-        for r in results:
-            all_locations.extend(r)
+                return {"subscribers": [], "_error": f"API returned {resp.status_code}"}
+            data = resp.json()
+            return {
+                "subscribers": data.get("subscribers", []),
+                "count": data.get("readiness_subscriber_count", 0),
+                "generated_at": data.get("generated_at"),
+            }
     except Exception as e:
-        return {"locations": [], "_error": str(e)}
-    return {"locations": all_locations, "count": len(all_locations)}
+        return {"subscribers": [], "_error": str(e)}
 
 
 @api_router.get("/support/image-download")

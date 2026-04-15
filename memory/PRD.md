@@ -62,6 +62,7 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - Refactor large frontend components
 
 ## Changelog
+- 2026-04-15: Switched Map Module to use new `GET /api/map/readiness/subscribers/summary` API — single call replaces N+1 subscriber calls, pins color-coded by readiness %, instant popups
 - 2026-04-15: Added editable DETAILS field per AED device in notification email modal (preview + Mailgun HTML)
 - 2026-04-14: Added Map Module (Google Maps), stat card filters, progress bars, notification history sorting, clickable issue counts, status correction feedback, auto CC
 - 2026-04-09: Added Device Detail Drawer (full image, all device info, diagnostics, editable notes)
