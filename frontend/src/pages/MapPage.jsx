@@ -227,8 +227,13 @@ export default function MapPage({ user }) {
                           <div style={{ fontSize: 9, color: "#64748b" }}>Loading...</div>
                         ) : selectedData ? (
                           <div>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: "#22c55e", marginBottom: 4 }}>
-                              {selectedData.total} AEDs
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#22c55e" }}>
+                                {selectedData.total} AEDs
+                              </span>
+                              <span style={{ fontSize: 10, fontWeight: 700, color: selectedData.issues["READY"] ? "#22c55e" : "#ef4444" }}>
+                                {selectedData.total > 0 ? Math.round(((selectedData.issues["READY"] || 0) / selectedData.total) * 100) : 0}% READY
+                              </span>
                             </div>
                             {Object.entries(selectedData.issues)
                               .filter(([k]) => k !== "READY")
