@@ -156,8 +156,8 @@ export default function MapPage({ user }) {
                     fillColor: pinColor,
                     fillOpacity: 1,
                     strokeColor: "#0a0f1c",
-                    strokeWeight: 1.5,
-                    scale: 1.5,
+                    strokeWeight: 2,
+                    scale: 2.2,
                     anchor: { x: 12, y: 24 },
                   }}
                   onMouseOver={() => { if (selectedId !== i) setHoveredId(i); }}
@@ -174,13 +174,13 @@ export default function MapPage({ user }) {
                         background: "rgba(6,10,20,0.92)",
                         border: "1px solid rgba(6,182,212,0.4)",
                         borderRadius: 3,
-                        padding: "5px 10px",
+                        padding: "8px 14px",
                         fontFamily: "Orbitron, monospace",
                         whiteSpace: "nowrap",
                         pointerEvents: "none",
                       }}>
-                        <div style={{ fontWeight: 700, fontSize: 10, color: "#06b6d4", letterSpacing: 1 }}>{sub.display_name || sub.subscriber}</div>
-                        <div style={{ fontSize: 9, color: "#475569", marginTop: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: "#06b6d4", letterSpacing: 1 }}>{sub.display_name || sub.subscriber}</div>
+                        <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>
                           {total} AEDs - {readyPct}% Ready
                         </div>
                       </div>
@@ -196,17 +196,17 @@ export default function MapPage({ user }) {
                         background: "rgba(6,10,20,0.95)",
                         border: "1px solid rgba(6,182,212,0.5)",
                         borderRadius: 4,
-                        padding: "8px 14px",
+                        padding: "10px 16px",
                         fontFamily: "Orbitron, monospace",
                         whiteSpace: "nowrap",
-                        minWidth: 180,
+                        minWidth: 200,
                       }}>
-                        <div style={{ fontWeight: 700, fontSize: 11, color: "#06b6d4", letterSpacing: 1, marginBottom: 4 }}>{sub.display_name || sub.subscriber}</div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "#22c55e" }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: "#06b6d4", letterSpacing: 1, marginBottom: 6 }}>{sub.display_name || sub.subscriber}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                          <span style={{ fontSize: 15, fontWeight: 700, color: "#22c55e" }}>
                             {total} AEDs
                           </span>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: readyPct >= 90 ? "#22c55e" : readyPct >= 50 ? "#f59e0b" : "#ef4444" }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: readyPct >= 90 ? "#22c55e" : readyPct >= 50 ? "#f59e0b" : "#ef4444" }}>
                             {readyPct}% READY
                           </span>
                         </div>
@@ -214,16 +214,16 @@ export default function MapPage({ user }) {
                           .filter(([k, v]) => k !== "READY" && k !== "UNCLASSIFIED" && v > 0)
                           .sort(([,a],[,b]) => b - a)
                           .map(([status, count]) => (
-                            <div key={status} style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#94a3b8", marginTop: 2 }}>
+                            <div key={status} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#94a3b8", marginTop: 3 }}>
                               <span>{status}</span>
-                              <span style={{ color: "#ef4444", fontWeight: 700, marginLeft: 12 }}>{count}</span>
+                              <span style={{ color: "#ef4444", fontWeight: 700, marginLeft: 16 }}>{count}</span>
                             </div>
                           ))
                         }
                         {readyCount > 0 && (
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#94a3b8", marginTop: 2 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#94a3b8", marginTop: 3 }}>
                             <span>READY</span>
-                            <span style={{ color: "#22c55e", fontWeight: 700, marginLeft: 12 }}>{readyCount}</span>
+                            <span style={{ color: "#22c55e", fontWeight: 700, marginLeft: 16 }}>{readyCount}</span>
                           </div>
                         )}
                       </div>
