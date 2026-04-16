@@ -624,6 +624,8 @@ async def startup():
     asyncio.create_task(_prewarm_caches())
     # Start daily notified AEDs status refresh loop
     asyncio.create_task(_notified_aeds_daily_loop())
+    # Backfill notified AEDs from historical notification data
+    asyncio.create_task(_backfill_notified_aeds())
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     global _mongo_client, _db
@@ -1379,6 +1381,114 @@ async def trigger_notified_aeds_refresh(current_user: dict = Depends(get_current
     """Manually trigger a refresh of notified AED statuses."""
     asyncio.create_task(_refresh_notified_aeds_statuses())
     return {"success": True, "message": "Refresh started in background"}
+
+
+async def _backfill_notified_aeds():
+    """Backfill notified_aeds from historical notification_history records.
+    For each subscriber that was notified, fetch their issue devices and create tracking entries."""
+    import httpx, urllib.parse
+    logger.info("[NOTIFIED_AEDS] Starting backfill from notification history...")
+    headers = _readisys_auth_headers()
+
+    # Check if backfill already ran
+    meta = await _db.system_meta.find_one({"key": "notified_aeds_backfill_done"})
+    if meta and meta.get("value"):
+        logger.info("[NOTIFIED_AEDS] Backfill already completed, skipping")
+        return
+
+    # Get all notification history grouped by subscriber
+    sub_notifications = {}
+    async for doc in _db.notification_history.find({}, {"_id": 0, "subscriber": 1, "sent_at": 1, "sent_by": 1, "success": 1}):
+        if not doc.get("subscriber") or doc.get("success") is False:
+            continue
+        sub = doc["subscriber"]
+        if sub not in sub_notifications:
+            sub_notifications[sub] = []
+        sub_notifications[sub].append({
+            "date": doc.get("sent_at", ""),
+            "sent_by": doc.get("sent_by", ""),
+        })
+
+    if not sub_notifications:
+        logger.info("[NOTIFIED_AEDS] No notification history to backfill from")
+        await _db.system_meta.update_one(
+            {"key": "notified_aeds_backfill_done"},
+            {"$set": {"key": "notified_aeds_backfill_done", "value": True}},
+            upsert=True,
+        )
+        return
+
+    total_added = 0
+    for sub_name, notifications in sub_notifications.items():
+        try:
+            enc = urllib.parse.quote(sub_name)
+            async with httpx.AsyncClient(timeout=20) as client:
+                resp = await client.get(
+                    f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc}/devices?limit=500",
+                    headers=headers,
+                )
+                if resp.status_code != 200:
+                    logger.warning(f"[NOTIFIED_AEDS] Backfill: {sub_name} returned {resp.status_code}")
+                    continue
+                data = resp.json()
+                devices = data.get("devices", [])
+
+                # Only track devices with issues
+                issue_statuses = {"EXPIRED B/P", "EXPIRING BATT/PADS", "REPOSITION", "NOT READY", "NOT PRESENT", "LOST CONTACT", "UNKNOWN"}
+                issue_devices = [d for d in devices if d.get("detailed_status", "") in issue_statuses]
+
+                # Sort notifications by date to find first/last
+                notifications.sort(key=lambda x: x.get("date", ""))
+                first_date = notifications[0]["date"] if notifications else ""
+                last_date = notifications[-1]["date"] if notifications else ""
+
+                for dev in issue_devices:
+                    sid = dev.get("sentinel_id", "")
+                    if not sid:
+                        continue
+                    # Skip if already tracked
+                    existing = await _db.notified_aeds.find_one({"sentinel_id": sid, "subscriber": sub_name})
+                    if existing:
+                        continue
+
+                    await _db.notified_aeds.insert_one({
+                        "sentinel_id": sid,
+                        "subscriber": sub_name,
+                        "issue_type": dev.get("detailed_status", "UNKNOWN"),
+                        "status_at_notification": dev.get("detailed_status", "UNKNOWN"),
+                        "current_status": dev.get("detailed_status", "UNKNOWN"),
+                        "first_notified_at": first_date,
+                        "last_notified_at": last_date,
+                        "notification_dates": notifications,
+                        "resolved": False,
+                        "resolved_at": None,
+                        "location": " / ".join(filter(None, [dev.get("site", ""), dev.get("building", ""), dev.get("placement", "")])),
+                        "model": dev.get("model", ""),
+                    })
+                    total_added += 1
+        except Exception as e:
+            logger.warning(f"[NOTIFIED_AEDS] Backfill error for {sub_name}: {e}")
+
+    # Mark backfill as done
+    await _db.system_meta.update_one(
+        {"key": "notified_aeds_backfill_done"},
+        {"$set": {"key": "notified_aeds_backfill_done", "value": True}},
+        upsert=True,
+    )
+    logger.info(f"[NOTIFIED_AEDS] Backfill complete: {total_added} devices added from {len(sub_notifications)} subscribers")
+
+
+@api_router.post("/support/notified-aeds/backfill")
+async def trigger_backfill(current_user: dict = Depends(get_current_user)):
+    """Manually trigger backfill of notified AEDs from notification history."""
+    # Reset the backfill flag so it runs again
+    await _db.system_meta.update_one(
+        {"key": "notified_aeds_backfill_done"},
+        {"$set": {"value": False}},
+        upsert=True,
+    )
+    asyncio.create_task(_backfill_notified_aeds())
+    return {"success": True, "message": "Backfill started in background"}
 
 
 

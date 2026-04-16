@@ -1421,13 +1421,13 @@ export default function SupportDashboard({ user, onLogout }) {
                         <div className="text-center">
                           <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mb-1">ACTUAL READY</div>
                           <div className="font-orbitron text-lg font-black" style={{ color: (r.pct_ready || 0) >= 90 ? "#22c55e" : (r.pct_ready || 0) >= 70 ? "#f59e0b" : "#ef4444" }}>
-                            {r.pct_ready || 0}%
+                            {Number(r.pct_ready || 0).toFixed(1)}%
                           </div>
                         </div>
                         <div className="text-center">
                           <div className="font-orbitron text-[7px] text-green-400 tracking-wider mb-1">ADJUSTED READY</div>
                           <div className="font-orbitron text-lg font-black text-green-400">
-                            {r.pct_ready_adjusted || 0}%
+                            {Number(r.pct_ready_adjusted || 0).toFixed(1)}%
                           </div>
                         </div>
                         <div className="text-center">
