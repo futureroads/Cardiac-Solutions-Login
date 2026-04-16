@@ -402,7 +402,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
           // Filter to only issue devices
           const issueDevices = (data.devices || []).filter(d => {
             const s = (d.detailed_status || "").toUpperCase();
-            return ["EXPIRED B/P", "EXPIRING BATT/PADS", "REPOSITION", "NOT READY", "NOT PRESENT", "LOST CONTACT", "UNKNOWN"].includes(s);
+            return ["EXPIRED B/P", "EXPIRING BATT/PADS", "REPOSITION", "NOT READY", "NOT PRESENT", "UNKNOWN"].includes(s);
           });
           setDevices(issueDevices);
         }
@@ -823,12 +823,13 @@ function DeviceListModal({ subscriber, issueType, onClose }) {
   const [loading, setLoading] = useState(true);
   const [feedbackDevice, setFeedbackDevice] = useState(null);
 
-  const issueLabels = { expired_bp: "EXPIRED B/P", expiring_bp: "EXPIRING BATT/PADS", not_ready: "NOT READY", reposition: "REPOSITION", unknown: "UNKNOWN" };
+  const issueLabels = { expired_bp: "EXPIRED B/P", expiring_bp: "EXPIRING BATT/PADS", not_ready: "NOT READY", reposition: "REPOSITION", not_present: "NOT PRESENT", unknown: "UNKNOWN" };
   const issueStatuses = {
     expired_bp: ["EXPIRED B/P"],
     expiring_bp: ["EXPIRING BATT/PADS"],
     not_ready: ["NOT READY"],
     reposition: ["REPOSITION"],
+    not_present: ["NOT PRESENT"],
     unknown: ["UNKNOWN"],
   };
 
@@ -1322,6 +1323,7 @@ export default function SupportDashboard({ user, onLogout }) {
       if (activeFilter === "expiring_bp") return (s.expiring_bp || 0) > 0;
       if (activeFilter === "not_ready") return (s.not_ready || 0) > 0;
       if (activeFilter === "reposition") return (s.reposition || 0) > 0;
+      if (activeFilter === "not_present") return (s.not_present || 0) > 0;
       if (activeFilter === "unknown") return (s.unknown || 0) > 0;
       return true;
     });
@@ -1391,6 +1393,7 @@ export default function SupportDashboard({ user, onLogout }) {
               <StatCard value={totals.expiring_bp || 0} label="EXPIRING B/P" color="#f59e0b" icon={Clock} onClick={() => setActiveFilter("expiring_bp")} active={activeFilter === "expiring_bp"} notified={nc.expiring_bp || 0} />
               <StatCard value={totals.not_ready || 0} label="NOT READY" color="#f97316" icon={Activity} onClick={() => setActiveFilter("not_ready")} active={activeFilter === "not_ready"} notified={nc.not_ready || 0} />
               <StatCard value={totals.reposition || 0} label="REPOSITION" color="#a855f7" icon={Shield} onClick={() => setActiveFilter("reposition")} active={activeFilter === "reposition"} notified={nc.reposition || 0} />
+              <StatCard value={totals.not_present || 0} label="NOT PRESENT" color="#38bdf8" icon={AlertCircle} onClick={() => setActiveFilter("not_present")} active={activeFilter === "not_present"} notified={nc.not_present || 0} />
               <StatCard value={totals.unknown || 0} label="UNKNOWN" color="#64748b" icon={Shield} onClick={() => setActiveFilter("unknown")} active={activeFilter === "unknown"} notified={nc.unknown || 0} />
             </div>
 
@@ -1531,6 +1534,7 @@ export default function SupportDashboard({ user, onLogout }) {
                   <option value="expiring_bp:desc" style={{ background: "#0f172a" }}>EXPIRING B/P</option>
                   <option value="not_ready:desc" style={{ background: "#0f172a" }}>NOT READY</option>
                   <option value="reposition:desc" style={{ background: "#0f172a" }}>REPOSITION</option>
+                  <option value="not_present:desc" style={{ background: "#0f172a" }}>NOT PRESENT</option>
                 </select>
               </div>
             </div>
@@ -1555,6 +1559,9 @@ export default function SupportDashboard({ user, onLogout }) {
                     </th>
                     <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-purple-400/70 cursor-pointer w-20" onClick={() => toggleSort("reposition")}>
                       REPOS <SortIcon field="reposition" />
+                    </th>
+                    <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-sky-400/70 cursor-pointer w-20" onClick={() => toggleSort("not_present")}>
+                      NOT PRES <SortIcon field="not_present" />
                     </th>
                     <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-pink-400/70 cursor-pointer w-20" onClick={() => toggleSort("total_issues")}>
                       TOTAL <SortIcon field="total_issues" />
@@ -1607,6 +1614,13 @@ export default function SupportDashboard({ user, onLogout }) {
                       <td className="p-3 text-center">
                         {(s.reposition || 0) > 0 ? (
                           <span className="font-orbitron text-sm font-bold text-purple-400 cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "reposition" })}>{s.reposition}</span>
+                        ) : (
+                          <span className="text-slate-600">0</span>
+                        )}
+                      </td>
+                      <td className="p-3 text-center">
+                        {(s.not_present || 0) > 0 ? (
+                          <span className="font-orbitron text-sm font-bold text-sky-400 cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "not_present" })}>{s.not_present}</span>
                         ) : (
                           <span className="text-slate-600">0</span>
                         )}

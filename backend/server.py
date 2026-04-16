@@ -1006,7 +1006,7 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
         not_present = counts.get("not_present", 0)
         unknown = counts.get("unknown", 0)
         lost_contact = counts.get("lost_contact", 0)
-        total = expired + expiring + not_ready + reposition + not_present + unknown + lost_contact
+        total = expired + expiring + not_ready + reposition + not_present + unknown
         if total > 0:
             subscribers.append({
                 "subscriber": name,
@@ -1027,7 +1027,7 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
 
     # Get notified subscriber names from notification_history
     notified_subs = set()
-    notified_counts = {"expired_bp": 0, "expiring_bp": 0, "not_ready": 0, "reposition": 0, "unknown": 0, "total": 0}
+    notified_counts = {"expired_bp": 0, "expiring_bp": 0, "not_ready": 0, "reposition": 0, "not_present": 0, "unknown": 0, "total": 0}
     try:
         async for doc in _db.notification_history.find({}, {"_id": 0, "subscriber": 1}):
             if doc.get("subscriber"):
@@ -1041,6 +1041,7 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
                 notified_counts["expiring_bp"] += s.get("expiring_bp", 0)
                 notified_counts["not_ready"] += s.get("not_ready", 0)
                 notified_counts["reposition"] += s.get("reposition", 0)
+                notified_counts["not_present"] += s.get("not_present", 0)
                 notified_counts["unknown"] += s.get("unknown", 0)
             s["notified"] = s["subscriber"] in notified_subs
     except Exception as e:
@@ -1434,7 +1435,7 @@ async def _backfill_notified_aeds():
                 devices = data.get("devices", [])
 
                 # Only track devices with issues
-                issue_statuses = {"EXPIRED B/P", "EXPIRING BATT/PADS", "REPOSITION", "NOT READY", "NOT PRESENT", "LOST CONTACT", "UNKNOWN"}
+                issue_statuses = {"EXPIRED B/P", "EXPIRING BATT/PADS", "REPOSITION", "NOT READY", "NOT PRESENT", "UNKNOWN"}
                 issue_devices = [d for d in devices if d.get("detailed_status", "") in issue_statuses]
 
                 # Sort notifications by date to find first/last
