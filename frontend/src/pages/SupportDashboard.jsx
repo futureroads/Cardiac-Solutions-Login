@@ -1591,42 +1591,22 @@ export default function SupportDashboard({ user, onLogout }) {
                         )}
                       </td>
                       <td className="p-3 text-center">
-                        {s.expired_bp > 0 ? (
-                          <span className="font-orbitron text-sm font-bold text-red-400 cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "expired_bp" })}>{s.expired_bp}</span>
-                        ) : (
-                          <span className="text-slate-600">0</span>
-                        )}
+                        {(() => { const v = s.expired_bp || 0; const n = s.notified_devices?.expired_bp || 0; if (v === 0) return <span className="text-slate-600">0</span>; return (<span className="font-orbitron text-sm cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "expired_bp" })}>{n > 0 ? <><span className="text-green-400">{n}&#10003;</span><span className="text-slate-500 text-[9px]">/{v}</span></> : <span className="font-bold text-red-400">{v}</span>}</span>); })()}
                       </td>
                       <td className="p-3 text-center">
-                        {s.expiring_bp > 0 ? (
-                          <span className="font-orbitron text-sm font-bold text-amber-400 cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "expiring_bp" })}>{s.expiring_bp}</span>
-                        ) : (
-                          <span className="text-slate-600">0</span>
-                        )}
+                        {(() => { const v = s.expiring_bp || 0; const n = s.notified_devices?.expiring_bp || 0; if (v === 0) return <span className="text-slate-600">0</span>; return (<span className="font-orbitron text-sm cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "expiring_bp" })}>{n > 0 ? <><span className="text-green-400">{n}&#10003;</span><span className="text-slate-500 text-[9px]">/{v}</span></> : <span className="font-bold text-amber-400">{v}</span>}</span>); })()}
                       </td>
                       <td className="p-3 text-center">
-                        {(s.not_ready || 0) > 0 ? (
-                          <span className="font-orbitron text-sm font-bold text-orange-400 cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "not_ready" })}>{s.not_ready}</span>
-                        ) : (
-                          <span className="text-slate-600">0</span>
-                        )}
+                        {(() => { const v = s.not_ready || 0; const n = s.notified_devices?.not_ready || 0; if (v === 0) return <span className="text-slate-600">0</span>; return (<span className="font-orbitron text-sm cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "not_ready" })}>{n > 0 ? <><span className="text-green-400">{n}&#10003;</span><span className="text-slate-500 text-[9px]">/{v}</span></> : <span className="font-bold text-orange-400">{v}</span>}</span>); })()}
                       </td>
                       <td className="p-3 text-center">
-                        {(s.reposition || 0) > 0 ? (
-                          <span className="font-orbitron text-sm font-bold text-purple-400 cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "reposition" })}>{s.reposition}</span>
-                        ) : (
-                          <span className="text-slate-600">0</span>
-                        )}
+                        {(() => { const v = s.reposition || 0; const n = s.notified_devices?.reposition || 0; if (v === 0) return <span className="text-slate-600">0</span>; return (<span className="font-orbitron text-sm cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "reposition" })}>{n > 0 ? <><span className="text-green-400">{n}&#10003;</span><span className="text-slate-500 text-[9px]">/{v}</span></> : <span className="font-bold text-purple-400">{v}</span>}</span>); })()}
                       </td>
                       <td className="p-3 text-center">
-                        {(s.not_present || 0) > 0 ? (
-                          <span className="font-orbitron text-sm font-bold text-sky-400 cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "not_present" })}>{s.not_present}</span>
-                        ) : (
-                          <span className="text-slate-600">0</span>
-                        )}
+                        {(() => { const v = s.not_present || 0; const n = s.notified_devices?.not_present || 0; if (v === 0) return <span className="text-slate-600">0</span>; return (<span className="font-orbitron text-sm cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "not_present" })}>{n > 0 ? <><span className="text-green-400">{n}&#10003;</span><span className="text-slate-500 text-[9px]">/{v}</span></> : <span className="font-bold text-sky-400">{v}</span>}</span>); })()}
                       </td>
                       <td className="p-3 text-center">
-                        <span className="font-orbitron text-sm font-bold text-pink-400">{s.total_issues}</span>
+                        {(() => { const v = s.total_issues; const n = s.notified_devices?.total || 0; return n > 0 ? <span className="font-orbitron text-sm"><span className="text-green-400 font-bold">{n}&#10003;</span><span className="text-slate-500 text-[9px]">/{v}</span></span> : <span className="font-orbitron text-sm font-bold text-pink-400">{v}</span>; })()}
                       </td>
                       <td className="p-3 text-center">
                         <div className="flex items-center justify-center gap-2">

@@ -1028,6 +1028,23 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
     # Get notified subscriber names from notification_history
     notified_subs = set()
     notified_counts = {"expired_bp": 0, "expiring_bp": 0, "not_ready": 0, "reposition": 0, "not_present": 0, "unknown": 0, "total": 0}
+
+    # Get per-subscriber, per-issue-type notified device counts from notified_aeds
+    sub_notified_map = {}  # {subscriber: {issue_type: count}}
+    try:
+        pipeline = [
+            {"$match": {"resolved": False}},
+            {"$group": {"_id": {"subscriber": "$subscriber", "issue_type": "$issue_type"}, "count": {"$sum": 1}}},
+        ]
+        async for doc in _db.notified_aeds.aggregate(pipeline):
+            sub = doc["_id"]["subscriber"]
+            itype = doc["_id"]["issue_type"]
+            if sub not in sub_notified_map:
+                sub_notified_map[sub] = {}
+            sub_notified_map[sub][itype] = doc["count"]
+    except Exception as e:
+        logger.warning(f"Failed to fetch notified_aeds counts: {e}")
+
     try:
         async for doc in _db.notification_history.find({}, {"_id": 0, "subscriber": 1}):
             if doc.get("subscriber"):
@@ -1044,10 +1061,22 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
                 notified_counts["not_present"] += s.get("not_present", 0)
                 notified_counts["unknown"] += s.get("unknown", 0)
             s["notified"] = s["subscriber"] in notified_subs
+            # Attach per-issue notified counts for this subscriber
+            sn = sub_notified_map.get(s["subscriber"], {})
+            s["notified_devices"] = {
+                "expired_bp": sn.get("EXPIRED B/P", 0),
+                "expiring_bp": sn.get("EXPIRING BATT/PADS", 0),
+                "not_ready": sn.get("NOT READY", 0),
+                "reposition": sn.get("REPOSITION", 0),
+                "not_present": sn.get("NOT PRESENT", 0),
+                "unknown": sn.get("UNKNOWN", 0),
+            }
+            s["notified_devices"]["total"] = sum(s["notified_devices"].values())
     except Exception as e:
         logger.warning(f"Failed to fetch notification history: {e}")
         for s in subscribers:
             s["notified"] = False
+            s["notified_devices"] = {}
 
     totals = status_data.get("totals", {})
     dsc = totals.get("detailed_status_counts", {})
