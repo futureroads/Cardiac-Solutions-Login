@@ -647,8 +647,6 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                         <th className="text-left p-2 border border-slate-200">Location</th>
                         <th className="text-left p-2 border border-slate-200">Details <span className="text-blue-400 font-normal text-[9px]">(editable)</span></th>
                         <th className="text-center p-2 border border-slate-200">Batt/Pads Exp</th>
-                        <th className="text-center p-2 border border-slate-200 w-16">Batt %</th>
-                        <th className="text-center p-2 border border-slate-200 w-16">Signal</th>
                         <th className="text-left p-2 border border-slate-200 w-28">Image</th>
                         <th className="w-8 border border-slate-200"></th>
                       </tr>
@@ -674,16 +672,6 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                             <td className="p-2 border border-slate-200 text-[10px] text-center">
                               <div>Batt: {d.battery_expiration || "—"}</div>
                               <div>Pads: {d.pad_expiration || "—"}</div>
-                            </td>
-                            <td className="p-2 border border-slate-200 text-center">
-                              <span className={`text-[11px] font-bold ${(d.battery_level_pct ?? 0) > 50 ? "text-green-600" : (d.battery_level_pct ?? 0) > 20 ? "text-amber-600" : "text-red-600"}`}>
-                                {d.battery_level_pct != null ? `${d.battery_level_pct}%` : "—"}
-                              </span>
-                            </td>
-                            <td className="p-2 border border-slate-200 text-center">
-                              <span className={`text-[10px] ${d.cellular_signal_quality === "HIGH" ? "text-green-600" : d.cellular_signal_quality === "MEDIUM" ? "text-amber-600" : "text-red-600"}`}>
-                                {d.cellular_signal_label || d.cellular_signal_quality || "—"}
-                              </span>
                             </td>
                             <td className="p-2 border border-slate-200">
                               {d.image_url ? (
