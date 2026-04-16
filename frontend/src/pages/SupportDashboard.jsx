@@ -1376,7 +1376,7 @@ export default function SupportDashboard({ user, onLogout }) {
           <>
             {/* Fleet Stats */}
             <div className="flex gap-3 flex-wrap mb-6">
-              <StatCard value={data?.total_subscribers || 0} label="SUBSCRIBERS WITH ISSUES" color="#06b6d4" icon={Users} onClick={() => setActiveFilter("all")} active={activeFilter === "all"} notified={nc.total || 0} />
+              <StatCard value={data?.total_subscribers || 0} label="SUBSCRIBERS WITH ISSUES" color="#06b6d4" icon={Users} onClick={() => setActiveFilter("all")} active={activeFilter === "all"} notified={subscribers.filter(s => s.notified).length} />
               <StatCard value={totals.expired_bp || 0} label="EXPIRED B/P" color="#ef4444" icon={AlertTriangle} onClick={() => setActiveFilter("expired_bp")} active={activeFilter === "expired_bp"} notified={nc.expired_bp || 0} />
               <StatCard value={totals.expiring_bp || 0} label="EXPIRING B/P" color="#f59e0b" icon={Clock} onClick={() => setActiveFilter("expiring_bp")} active={activeFilter === "expiring_bp"} notified={nc.expiring_bp || 0} />
               <StatCard value={totals.not_ready || 0} label="NOT READY" color="#f97316" icon={Activity} onClick={() => setActiveFilter("not_ready")} active={activeFilter === "not_ready"} notified={nc.not_ready || 0} />
