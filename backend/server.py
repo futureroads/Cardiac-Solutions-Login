@@ -622,6 +622,8 @@ async def startup():
         print(f"[SERVER] DB connection deferred: {e}", flush=True)
     # Pre-warm Readisys caches in background so first dashboard load has data
     asyncio.create_task(_prewarm_caches())
+    # Start daily notified AEDs status refresh loop
+    asyncio.create_task(_notified_aeds_daily_loop())
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     global _mongo_client, _db
@@ -1047,6 +1049,21 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
     totals = status_data.get("totals", {})
     dsc = totals.get("detailed_status_counts", {})
 
+    # Get notified AED tracking data for adjusted readiness
+    notified_aed_unresolved = 0
+    try:
+        notified_aed_unresolved = await _db.notified_aeds.count_documents({"resolved": False})
+    except:
+        pass
+
+    total_monitored = totals.get("total", 0)
+    total_ready = dsc.get("ready", 0)
+    total_issues_fleet = total_monitored - total_ready if total_monitored > total_ready else 0
+    pct_ready = round((total_ready / total_monitored) * 100, 1) if total_monitored else 0
+    adjusted_issues = max(0, total_issues_fleet - notified_aed_unresolved)
+    adjusted_ready_count = total_monitored - adjusted_issues if total_monitored > adjusted_issues else total_monitored
+    pct_ready_adjusted = round((adjusted_ready_count / total_monitored) * 100, 1) if total_monitored else 0
+
     return {
         "subscribers": subscribers,
         "total_subscribers": len(subscribers),
@@ -1059,6 +1076,15 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
             "not_present": dsc.get("not_present", 0),
             "unknown": dsc.get("unknown", 0),
             "lost_contact": dsc.get("lost_contact", 0),
+        },
+        "readiness": {
+            "total_monitored": total_monitored,
+            "total_ready": total_ready,
+            "total_issues": total_issues_fleet,
+            "pct_ready": pct_ready,
+            "notified_aed_unresolved": notified_aed_unresolved,
+            "adjusted_issues": adjusted_issues,
+            "pct_ready_adjusted": pct_ready_adjusted,
         },
     }
 
@@ -1117,6 +1143,41 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
             "mailgun_response": resp.text[:500],
         })
 
+        # Track each notified AED device in notified_aeds collection
+        notified_devices = data.get("devices", [])
+        if notified_devices and success:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            sent_by = current_user.get("username", "")
+            for dev in notified_devices:
+                sid = dev.get("sentinel_id", "")
+                if not sid:
+                    continue
+                existing = await _db.notified_aeds.find_one({"sentinel_id": sid, "subscriber": subscriber})
+                if existing:
+                    # Append to notification history
+                    await _db.notified_aeds.update_one(
+                        {"sentinel_id": sid, "subscriber": subscriber},
+                        {
+                            "$push": {"notification_dates": {"date": now_iso, "sent_by": sent_by}},
+                            "$set": {"last_notified_at": now_iso, "current_status": dev.get("detailed_status", "UNKNOWN")},
+                        },
+                    )
+                else:
+                    await _db.notified_aeds.insert_one({
+                        "sentinel_id": sid,
+                        "subscriber": subscriber,
+                        "issue_type": dev.get("detailed_status", "UNKNOWN"),
+                        "status_at_notification": dev.get("detailed_status", "UNKNOWN"),
+                        "current_status": dev.get("detailed_status", "UNKNOWN"),
+                        "first_notified_at": now_iso,
+                        "last_notified_at": now_iso,
+                        "notification_dates": [{"date": now_iso, "sent_by": sent_by}],
+                        "resolved": False,
+                        "resolved_at": None,
+                        "location": dev.get("location", ""),
+                        "model": dev.get("model", ""),
+                    })
+
         return {"success": success, "message": f"Email {'sent' if success else 'failed'} to {to_email}"}
     except Exception as e:
         logger.error(f"Support notification error: {e}")
@@ -1158,6 +1219,167 @@ async def update_notification_status(history_id: str, data: dict, current_user: 
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Notification not found")
     return {"success": True}
+
+
+@api_router.get("/support/notified-aeds")
+async def get_notified_aeds(subscriber: str = None, status_filter: str = None, current_user: dict = Depends(get_current_user)):
+    """Get all tracked notified AEDs with optional filters."""
+    query = {}
+    if subscriber:
+        query["subscriber"] = {"$regex": subscriber, "$options": "i"}
+    if status_filter == "unresolved":
+        query["resolved"] = False
+    elif status_filter == "resolved":
+        query["resolved"] = True
+
+    aeds = []
+    async for doc in _db.notified_aeds.find(query, {"_id": 0}).sort("last_notified_at", -1):
+        doc["notification_count"] = len(doc.get("notification_dates", []))
+        if doc.get("first_notified_at"):
+            try:
+                first = datetime.fromisoformat(doc["first_notified_at"].replace("Z", "+00:00"))
+                doc["days_since_notified"] = (datetime.now(timezone.utc) - first).days
+            except:
+                doc["days_since_notified"] = 0
+        aeds.append(doc)
+    return {"notified_aeds": aeds, "total": len(aeds)}
+
+
+@api_router.get("/support/notified-aeds/summary")
+async def get_notified_aeds_summary(current_user: dict = Depends(get_current_user)):
+    """Get summary stats for notified AEDs — counts by status, resolved vs unresolved."""
+    total = await _db.notified_aeds.count_documents({})
+    unresolved = await _db.notified_aeds.count_documents({"resolved": False})
+    resolved = await _db.notified_aeds.count_documents({"resolved": True})
+
+    # Count by current_status
+    pipeline = [
+        {"$group": {"_id": "$current_status", "count": {"$sum": 1}}},
+    ]
+    status_counts = {}
+    async for doc in _db.notified_aeds.aggregate(pipeline):
+        status_counts[doc["_id"]] = doc["count"]
+
+    # Count by issue_type (original issue at notification)
+    pipeline2 = [
+        {"$match": {"resolved": False}},
+        {"$group": {"_id": "$issue_type", "count": {"$sum": 1}}},
+    ]
+    issue_counts = {}
+    async for doc in _db.notified_aeds.aggregate(pipeline2):
+        issue_counts[doc["_id"]] = doc["count"]
+
+    # Count by subscriber (unresolved)
+    pipeline3 = [
+        {"$match": {"resolved": False}},
+        {"$group": {"_id": "$subscriber", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ]
+    subscriber_counts = []
+    async for doc in _db.notified_aeds.aggregate(pipeline3):
+        subscriber_counts.append({"subscriber": doc["_id"], "count": doc["count"]})
+
+    return {
+        "total_tracked": total,
+        "unresolved": unresolved,
+        "resolved": resolved,
+        "current_status_counts": status_counts,
+        "unresolved_by_issue_type": issue_counts,
+        "unresolved_by_subscriber": subscriber_counts,
+        "last_refresh": await _get_last_notified_aeds_refresh(),
+    }
+
+
+async def _get_last_notified_aeds_refresh():
+    """Get the timestamp of the last daily refresh."""
+    doc = await _db.system_meta.find_one({"key": "notified_aeds_last_refresh"}, {"_id": 0})
+    return doc.get("value") if doc else None
+
+
+async def _refresh_notified_aeds_statuses():
+    """Background task: refresh current_status of all unresolved notified AEDs from Readisys."""
+    import httpx, urllib.parse
+    logger.info("[NOTIFIED_AEDS] Starting daily status refresh...")
+    headers = _readisys_auth_headers()
+
+    # Get all unresolved notified AEDs grouped by subscriber
+    subs = {}
+    async for doc in _db.notified_aeds.find({"resolved": False}, {"_id": 0, "sentinel_id": 1, "subscriber": 1}):
+        sub = doc["subscriber"]
+        if sub not in subs:
+            subs[sub] = []
+        subs[sub].append(doc["sentinel_id"])
+
+    updated = 0
+    resolved = 0
+    for sub_name, sentinel_ids in subs.items():
+        try:
+            enc = urllib.parse.quote(sub_name)
+            async with httpx.AsyncClient(timeout=20) as client:
+                resp = await client.get(
+                    f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc}/status",
+                    headers=headers,
+                )
+                if resp.status_code != 200:
+                    continue
+                data = resp.json()
+                devices = data.get("devices", [])
+                device_map = {d.get("sentinel_id"): d for d in devices}
+
+                for sid in sentinel_ids:
+                    dev = device_map.get(sid)
+                    if not dev:
+                        continue
+                    new_status = dev.get("detailed_status", "UNKNOWN")
+                    update_fields = {"current_status": new_status}
+                    if new_status == "READY":
+                        update_fields["resolved"] = True
+                        update_fields["resolved_at"] = datetime.now(timezone.utc).isoformat()
+                        resolved += 1
+                    await _db.notified_aeds.update_one(
+                        {"sentinel_id": sid, "subscriber": sub_name},
+                        {"$set": update_fields},
+                    )
+                    updated += 1
+        except Exception as e:
+            logger.warning(f"[NOTIFIED_AEDS] Error refreshing {sub_name}: {e}")
+
+    # Record refresh timestamp
+    await _db.system_meta.update_one(
+        {"key": "notified_aeds_last_refresh"},
+        {"$set": {"key": "notified_aeds_last_refresh", "value": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    logger.info(f"[NOTIFIED_AEDS] Refresh complete: {updated} updated, {resolved} resolved")
+
+
+async def _notified_aeds_daily_loop():
+    """Run the notified AEDs refresh once daily (checks every hour)."""
+    while True:
+        try:
+            await asyncio.sleep(3600)  # Check every hour
+            # Only run if last refresh was >20 hours ago
+            last = await _get_last_notified_aeds_refresh()
+            should_run = True
+            if last:
+                try:
+                    last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
+                    if (datetime.now(timezone.utc) - last_dt).total_seconds() < 72000:  # 20 hours
+                        should_run = False
+                except:
+                    pass
+            if should_run:
+                await _refresh_notified_aeds_statuses()
+        except Exception as e:
+            logger.error(f"[NOTIFIED_AEDS] Daily loop error: {e}")
+
+
+@api_router.post("/support/notified-aeds/refresh")
+async def trigger_notified_aeds_refresh(current_user: dict = Depends(get_current_user)):
+    """Manually trigger a refresh of notified AED statuses."""
+    asyncio.create_task(_refresh_notified_aeds_statuses())
+    return {"success": True, "message": "Refresh started in background"}
+
 
 
 @api_router.post("/support/device-feedback")

@@ -4,7 +4,8 @@ import {
   ArrowLeft, Send, X, Trash2, Loader2, Settings,
   AlertTriangle, Clock, ChevronDown, ChevronUp, Mail,
   Users, Activity, Shield, History, Battery, Wifi,
-  StickyNote, ZoomIn, ChevronLeft, Edit3,
+  StickyNote, ZoomIn, ChevronLeft, Edit3, RefreshCw,
+  CheckCircle2, AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import API_BASE from "@/apiBase";
@@ -509,6 +510,18 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
     setSending(true);
     try {
       const token = localStorage.getItem("token");
+      // Collect devices that will be included in the email
+      const emailDevices = [];
+      for (const [, devs] of Object.entries(filteredGrouped)) {
+        for (const d of devs) {
+          emailDevices.push({
+            sentinel_id: d.sentinel_id,
+            detailed_status: d.detailed_status || "UNKNOWN",
+            location: [d.site, d.building, d.placement].filter(Boolean).join(" / ") || d.location || "",
+            model: d.model || "",
+          });
+        }
+      }
       const res = await fetch(`${API}/support/send-notification`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -519,6 +532,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
           bcc_emails: bccEmails,
           subject,
           html_body: buildEmailHtml(),
+          devices: emailDevices,
         }),
       });
       const data = await res.json();
@@ -1056,6 +1070,9 @@ export default function SupportDashboard({ user, onLogout }) {
   const [sortDir, setSortDir] = useState("desc");
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
+  const [notifiedAeds, setNotifiedAeds] = useState(null);
+  const [notifiedExpanded, setNotifiedExpanded] = useState(false);
+  const [refreshingAeds, setRefreshingAeds] = useState(false);
 
   const token = localStorage.getItem("token") || "";
 
@@ -1069,7 +1086,31 @@ export default function SupportDashboard({ user, onLogout }) {
     setLoading(false);
   }, [token]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const fetchNotifiedAeds = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/support/notified-aeds/summary`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setNotifiedAeds(await res.json());
+    } catch {}
+  }, [token]);
+
+  useEffect(() => { fetchData(); fetchNotifiedAeds(); }, [fetchData, fetchNotifiedAeds]);
+
+  const handleRefreshAeds = async () => {
+    setRefreshingAeds(true);
+    try {
+      await fetch(`${API}/support/notified-aeds/refresh`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success("Status refresh started — may take a minute");
+      setTimeout(() => { fetchNotifiedAeds(); setRefreshingAeds(false); }, 10000);
+    } catch {
+      toast.error("Failed to start refresh");
+      setRefreshingAeds(false);
+    }
+  };
 
   const subscribers = data?.subscribers || [];
   const totals = data?.fleet_totals || {};
@@ -1155,6 +1196,107 @@ export default function SupportDashboard({ user, onLogout }) {
               <StatCard value={totals.reposition || 0} label="REPOSITION" color="#a855f7" icon={Shield} onClick={() => setActiveFilter("reposition")} active={activeFilter === "reposition"} notified={nc.reposition || 0} />
               <StatCard value={totals.unknown || 0} label="UNKNOWN" color="#64748b" icon={Shield} onClick={() => setActiveFilter("unknown")} active={activeFilter === "unknown"} notified={nc.unknown || 0} />
             </div>
+
+            {/* Notified AEDs Readiness Tracker */}
+            {(() => {
+              const r = data?.readiness || {};
+              const na = notifiedAeds;
+              const hasData = r.total_monitored > 0 || (na && na.total_tracked > 0);
+              if (!hasData) return null;
+              return (
+                <div className="mb-6 border border-cyan-500/20 rounded-sm bg-[rgba(10,15,28,0.9)] overflow-hidden" data-testid="notified-aeds-card">
+                  <div
+                    className="px-5 py-3 flex items-center justify-between cursor-pointer hover:bg-cyan-500/5 transition-colors"
+                    onClick={() => setNotifiedExpanded(e => !e)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Shield className="w-4 h-4 text-cyan-400" />
+                      <div>
+                        <div className="font-orbitron text-[10px] tracking-wider text-cyan-400">NOTIFIED AEDs READINESS TRACKER</div>
+                        <div className="text-[8px] text-slate-500 font-orbitron mt-0.5">
+                          {na?.total_tracked || 0} AEDs TRACKED - {na?.unresolved || 0} PENDING - {na?.resolved || 0} RESOLVED
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {/* Readiness gauges */}
+                      <div className="flex items-center gap-6">
+                        <div className="text-center">
+                          <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mb-1">ACTUAL READY</div>
+                          <div className="font-orbitron text-lg font-black" style={{ color: (r.pct_ready || 0) >= 90 ? "#22c55e" : (r.pct_ready || 0) >= 70 ? "#f59e0b" : "#ef4444" }}>
+                            {r.pct_ready || 0}%
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="font-orbitron text-[7px] text-green-400 tracking-wider mb-1">ADJUSTED READY</div>
+                          <div className="font-orbitron text-lg font-black text-green-400">
+                            {r.pct_ready_adjusted || 0}%
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mb-1">SUBSCRIBER PENDING</div>
+                          <div className="font-orbitron text-lg font-black text-amber-400">
+                            {na?.unresolved || 0}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); handleRefreshAeds(); }}
+                        disabled={refreshingAeds}
+                        className="font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 disabled:opacity-50"
+                        data-testid="refresh-aeds-btn"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${refreshingAeds ? "animate-spin" : ""}`} />
+                      </button>
+                      {notifiedExpanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+                    </div>
+                  </div>
+                  {notifiedExpanded && na && (
+                    <div className="border-t border-cyan-500/15 px-5 py-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        {/* Unresolved by Issue Type */}
+                        <div>
+                          <div className="font-orbitron text-[8px] text-slate-400 tracking-wider mb-2">UNRESOLVED BY ISSUE TYPE</div>
+                          {Object.keys(na.unresolved_by_issue_type || {}).length === 0 ? (
+                            <div className="text-[9px] text-slate-600 font-orbitron">No unresolved AEDs tracked yet</div>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {Object.entries(na.unresolved_by_issue_type).sort(([,a],[,b]) => b - a).map(([type, count]) => (
+                                <div key={type} className="flex justify-between items-center">
+                                  <span className="text-[9px] text-slate-300 font-orbitron">{type}</span>
+                                  <span className="text-[10px] font-bold text-amber-400 font-orbitron">{count}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {/* Unresolved by Subscriber (top 10) */}
+                        <div>
+                          <div className="font-orbitron text-[8px] text-slate-400 tracking-wider mb-2">UNRESOLVED BY SUBSCRIBER</div>
+                          {(na.unresolved_by_subscriber || []).length === 0 ? (
+                            <div className="text-[9px] text-slate-600 font-orbitron">No unresolved AEDs tracked yet</div>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {(na.unresolved_by_subscriber || []).slice(0, 10).map(s => (
+                                <div key={s.subscriber} className="flex justify-between items-center">
+                                  <span className="text-[9px] text-slate-300 font-orbitron truncate max-w-[200px]">{s.subscriber}</span>
+                                  <span className="text-[10px] font-bold text-amber-400 font-orbitron">{s.count}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {na.last_refresh && (
+                        <div className="mt-3 text-[8px] text-slate-600 font-orbitron">
+                          Last auto-refresh: {new Date(na.last_refresh).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Search + Sort controls */}
             <div className="mb-4 flex items-center gap-4">

@@ -31,11 +31,14 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - [x] Service Console with parallel API loading, ticket CRUD, dispatch, tech response
 
 ## Key API Endpoints
-- `GET /api/support/dashboard-data` — aggregated subscriber issues
+- `GET /api/support/dashboard-data` — aggregated subscriber issues + readiness stats (actual & adjusted %)
 - `GET /api/support/subscriber/{name}/devices` — all devices for subscriber
 - `GET /api/support/aed-image/{sentinel_id}` — camera image metadata
-- `POST /api/support/send-notification` — send email via Mailgun
+- `POST /api/support/send-notification` — send email via Mailgun + track notified AEDs in DB
 - `GET /api/support/notification-history` — sent email history with optional subscriber filter
+- `GET /api/support/notified-aeds` — list all tracked notified AEDs
+- `GET /api/support/notified-aeds/summary` — summary stats (total, unresolved, resolved, breakdowns)
+- `POST /api/support/notified-aeds/refresh` — manually trigger status refresh from Readisys
 - `GET/PUT /api/support/device-notes/{sentinel_id}` — device notes CRUD
 
 ## Tech Stack
@@ -62,6 +65,7 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - Refactor large frontend components
 
 ## Changelog
+- 2026-04-16: Built Notified AEDs Readiness Tracker — tracks each AED in sent notification emails, shows Actual vs Adjusted readiness %, daily auto-refresh of statuses, expandable card with issue type & subscriber breakdowns
 - 2026-04-15: Switched Map Module to use new `GET /api/map/readiness/subscribers/summary` API — single call replaces N+1 subscriber calls, pins color-coded by readiness %, instant popups
 - 2026-04-15: Added editable DETAILS field per AED device in notification email modal (preview + Mailgun HTML)
 - 2026-04-14: Added Map Module (Google Maps), stat card filters, progress bars, notification history sorting, clickable issue counts, status correction feedback, auto CC
