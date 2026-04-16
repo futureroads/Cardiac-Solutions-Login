@@ -664,6 +664,8 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                                 value={customDetails[d.sentinel_id] !== undefined ? customDetails[d.sentinel_id] : (d.days_summary || d.detailed_status || "—")}
                                 onChange={e => { e.stopPropagation(); setCustomDetails(prev => ({ ...prev, [d.sentinel_id]: e.target.value })); }}
                                 onClick={e => e.stopPropagation()}
+                                onMouseDown={e => e.stopPropagation()}
+                                onFocus={e => e.stopPropagation()}
                                 className="w-full min-w-[120px] px-1.5 py-1 rounded border border-blue-300 bg-blue-50 text-slate-800 text-[11px] resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
                                 rows={2}
                                 data-testid={`edit-details-${d.sentinel_id}`}
