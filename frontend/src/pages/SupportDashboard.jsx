@@ -1058,6 +1058,202 @@ function ContactsModal({ subscribers, onClose }) {
   );
 }
 
+function NotifiedAedsModal({ onClose, onRefresh }) {
+  const [aeds, setAeds] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all"); // all, unresolved, resolved
+  const [sortBy, setSortBy] = useState("days"); // days, alpha, notifications
+
+  const fetchAeds = useCallback(async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const params = new URLSearchParams();
+      if (filter) params.set("subscriber", filter);
+      if (statusFilter !== "all") params.set("status_filter", statusFilter);
+      const res = await fetch(`${API}/support/notified-aeds?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAeds(data.notified_aeds || []);
+      }
+    } catch {}
+    setLoading(false);
+  }, [filter, statusFilter]);
+
+  useEffect(() => { fetchAeds(); }, [fetchAeds]);
+
+  const sorted = [...aeds].sort((a, b) => {
+    if (sortBy === "alpha") return (a.subscriber || "").localeCompare(b.subscriber || "");
+    if (sortBy === "notifications") return (b.notification_count || 0) - (a.notification_count || 0);
+    return (b.days_since_notified || 0) - (a.days_since_notified || 0);
+  });
+
+  const statusColor = (s) => {
+    if (s === "READY") return "#22c55e";
+    if (s === "EXPIRED B/P" || s === "EXPIRING BATT/PADS") return "#ef4444";
+    if (s === "REPOSITION") return "#a855f7";
+    if (s === "NOT PRESENT") return "#f97316";
+    return "#f59e0b";
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[1100px] max-w-[95vw] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="notified-aeds-modal">
+        {/* Header */}
+        <div className="p-5 border-b border-cyan-500/15 flex-shrink-0">
+          <div className="flex justify-between items-center">
+            <div>
+              <div className="font-orbitron text-sm text-cyan-400 tracking-wider">NOTIFIED AEDs DETAIL VIEW</div>
+              <div className="text-[9px] text-slate-500 mt-0.5 font-orbitron">{aeds.length} tracked devices</div>
+            </div>
+            <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-5 h-5" /></button>
+          </div>
+          {/* Filters */}
+          <div className="mt-3 flex gap-3 items-center flex-wrap">
+            <input
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              placeholder="Filter by subscriber..."
+              className="flex-1 min-w-[200px] px-3 py-2 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-600 font-orbitron"
+              data-testid="notified-filter"
+            />
+            <div className="flex gap-1 flex-shrink-0">
+              {[
+                { v: "all", l: "ALL" },
+                { v: "unresolved", l: "PENDING" },
+                { v: "resolved", l: "RESOLVED" },
+              ].map(opt => (
+                <button
+                  key={opt.v}
+                  onClick={() => setStatusFilter(opt.v)}
+                  className={`font-orbitron text-[7px] px-2.5 py-1.5 rounded-sm border transition-colors ${statusFilter === opt.v ? "border-cyan-500/50 text-cyan-400 bg-cyan-500/10" : "border-slate-700 text-slate-500 hover:text-slate-300"}`}
+                  data-testid={`filter-${opt.v}`}
+                >{opt.l}</button>
+              ))}
+            </div>
+            <div className="flex gap-1 flex-shrink-0">
+              {[
+                { v: "days", l: "OLDEST" },
+                { v: "notifications", l: "MOST NOTIFIED" },
+                { v: "alpha", l: "A-Z" },
+              ].map(opt => (
+                <button
+                  key={opt.v}
+                  onClick={() => setSortBy(opt.v)}
+                  className={`font-orbitron text-[7px] px-2.5 py-1.5 rounded-sm border transition-colors ${sortBy === opt.v ? "border-amber-500/50 text-amber-400 bg-amber-500/10" : "border-slate-700 text-slate-500 hover:text-slate-300"}`}
+                  data-testid={`sort-${opt.v}`}
+                >{opt.l}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
+          ) : sorted.length === 0 ? (
+            <div className="text-center text-slate-500 py-12 font-orbitron text-[10px]">NO TRACKED AEDs FOUND</div>
+          ) : (
+            <div className="space-y-3">
+              {sorted.map(aed => {
+                const isResolved = aed.resolved;
+                const daysText = aed.days_since_notified != null ? `${aed.days_since_notified}d ago` : "—";
+                const firstDate = aed.first_notified_at ? new Date(aed.first_notified_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+                const lastDate = aed.last_notified_at ? new Date(aed.last_notified_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+                const resolvedDate = aed.resolved_at ? new Date(aed.resolved_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
+
+                return (
+                  <div
+                    key={`${aed.sentinel_id}-${aed.subscriber}`}
+                    className={`border rounded-sm overflow-hidden ${isResolved ? "border-green-500/30 bg-[rgba(34,197,94,0.04)]" : "border-slate-700/50 bg-slate-900/30"}`}
+                    data-testid={`notified-aed-${aed.sentinel_id}`}
+                  >
+                    <div className="flex items-start gap-4 p-4">
+                      {/* Left: Status + ID */}
+                      <div className="flex-shrink-0 w-[160px]">
+                        <div className="font-orbitron text-xs text-white font-bold">{aed.sentinel_id}</div>
+                        <div className="text-[9px] text-slate-400 font-orbitron mt-0.5">{aed.model || "—"}</div>
+                        <div className="text-[9px] text-slate-500 mt-1 truncate" title={aed.location}>{aed.location || "—"}</div>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          {isResolved ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+                          ) : (
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                          )}
+                          <span
+                            className="text-[8px] font-orbitron font-bold px-1.5 py-0.5 rounded-sm"
+                            style={{ color: statusColor(aed.current_status), background: `${statusColor(aed.current_status)}15` }}
+                          >
+                            {aed.current_status}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Center: Subscriber + Dates */}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-orbitron text-[10px] text-cyan-400 tracking-wider">{aed.subscriber}</div>
+                        <div className="mt-2 grid grid-cols-3 gap-x-4 gap-y-1.5">
+                          <div>
+                            <div className="font-orbitron text-[7px] text-slate-500 tracking-wider">ORIGINAL ISSUE</div>
+                            <div className="text-[9px] text-slate-300" style={{ color: statusColor(aed.issue_type) }}>{aed.issue_type}</div>
+                          </div>
+                          <div>
+                            <div className="font-orbitron text-[7px] text-slate-500 tracking-wider">FIRST NOTIFIED</div>
+                            <div className="text-[9px] text-slate-300">{firstDate}</div>
+                          </div>
+                          <div>
+                            <div className="font-orbitron text-[7px] text-slate-500 tracking-wider">LAST NOTIFIED</div>
+                            <div className="text-[9px] text-slate-300">{lastDate}</div>
+                          </div>
+                          <div>
+                            <div className="font-orbitron text-[7px] text-slate-500 tracking-wider">NOTIFICATIONS SENT</div>
+                            <div className="text-[9px] text-white font-bold">{aed.notification_count || 0}</div>
+                          </div>
+                          <div>
+                            <div className="font-orbitron text-[7px] text-slate-500 tracking-wider">DAYS SINCE NOTIFIED</div>
+                            <div className={`text-[9px] font-bold ${(aed.days_since_notified || 0) > 14 ? "text-red-400" : (aed.days_since_notified || 0) > 7 ? "text-amber-400" : "text-slate-300"}`}>{daysText}</div>
+                          </div>
+                          {isResolved && resolvedDate && (
+                            <div>
+                              <div className="font-orbitron text-[7px] text-slate-500 tracking-wider">RESOLVED ON</div>
+                              <div className="text-[9px] text-green-400 font-bold">{resolvedDate}</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: Notification Timeline */}
+                      <div className="flex-shrink-0 w-[200px]">
+                        <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mb-2">NOTIFICATION TIMELINE</div>
+                        <div className="space-y-1 max-h-[80px] overflow-y-auto">
+                          {(aed.notification_dates || []).map((nd, idx) => {
+                            const d = nd.date ? new Date(nd.date).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+                            return (
+                              <div key={idx} className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 flex-shrink-0" />
+                                <span className="text-[8px] text-slate-400">{d}</span>
+                                <span className="text-[7px] text-slate-600">by {nd.sent_by || "—"}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SupportDashboard({ user, onLogout }) {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
@@ -1073,6 +1269,7 @@ export default function SupportDashboard({ user, onLogout }) {
   const [notifiedAeds, setNotifiedAeds] = useState(null);
   const [notifiedExpanded, setNotifiedExpanded] = useState(false);
   const [refreshingAeds, setRefreshingAeds] = useState(false);
+  const [showNotifiedAeds, setShowNotifiedAeds] = useState(false);
 
   const token = localStorage.getItem("token") || "";
 
@@ -1247,6 +1444,13 @@ export default function SupportDashboard({ user, onLogout }) {
                         data-testid="refresh-aeds-btn"
                       >
                         <RefreshCw className={`w-3 h-3 ${refreshingAeds ? "animate-spin" : ""}`} />
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); setShowNotifiedAeds(true); }}
+                        className="font-orbitron text-[7px] px-3 py-1 border border-amber-500/30 text-amber-400 rounded-sm hover:bg-amber-500/10"
+                        data-testid="view-notified-aeds-btn"
+                      >
+                        VIEW ALL
                       </button>
                       {notifiedExpanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
                     </div>
@@ -1451,6 +1655,7 @@ export default function SupportDashboard({ user, onLogout }) {
       {showContacts && <ContactsModal subscribers={subscribers} onClose={() => { setShowContacts(false); fetchData(); }} />}
       {showHistory && <NotificationHistoryModal onClose={() => setShowHistory(false)} />}
       {deviceList && <DeviceListModal subscriber={deviceList.subscriber} issueType={deviceList.issueType} onClose={() => setDeviceList(null)} />}
+      {showNotifiedAeds && <NotifiedAedsModal onClose={() => setShowNotifiedAeds(false)} onRefresh={() => { fetchNotifiedAeds(); fetchData(); }} />}
     </div>
   );
 }
