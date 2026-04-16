@@ -31,9 +31,9 @@ function StatCard({ value, label, color, icon: Icon, onClick, active, notified }
           <div className="h-[3px] rounded-full bg-slate-800 overflow-hidden">
             <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${pct}%` }} />
           </div>
-          <div className="font-orbitron text-[7px] tracking-wider mt-1">
-            <span className="text-green-400">{notified}</span>
-            <span className="text-slate-600">/{value} NOTIFIED</span>
+          <div className="font-orbitron text-[10px] tracking-wider mt-1">
+            <span className="text-green-400 font-bold">{notified}</span>
+            <span className="text-slate-500">/{value} NOTIFIED</span>
           </div>
         </div>
       )}
