@@ -533,7 +533,7 @@ export default function LoginPage({ onLogin }) {
                 transition={{ duration: 0.6 }}
               >
                 <img 
-                  src="https://customer-assets.emergentagent.com/job_pulse-ops/artifacts/wftdw2pr_Gemini_Generated_Image_3dl4mo3dl4mo3dl4.png" 
+                  src="/cardiac-logo.png" 
                   alt="Cardiac Solutions Logo" 
                   className="w-20 h-20 object-contain mx-auto mb-4"
                   style={{ filter: 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.4))' }}
@@ -629,7 +629,7 @@ export default function LoginPage({ onLogin }) {
                 transition={{ duration: 0.6 }}
               >
                 <img 
-                  src="https://customer-assets.emergentagent.com/job_pulse-ops/artifacts/wftdw2pr_Gemini_Generated_Image_3dl4mo3dl4mo3dl4.png" 
+                  src="/cardiac-logo.png" 
                   alt="Cardiac Solutions Logo" 
                   className="w-20 h-20 object-contain mx-auto mb-4"
                   style={{ filter: 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.4))' }}
