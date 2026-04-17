@@ -183,7 +183,7 @@ export default function StarkDashboard({ user, onLogout }) {
   // DI Recommendations — overview mode
   const diPerms = freshUser?.di_permissions || { expired_bp: "overview", expiring_bp: "overview", camera_battery: "overview", camera_cellular: "overview" };
   const aiRecs = (() => {
-    if (!liveStats && !bpData) return [{ type: "SYS", msg: "Connecting to Readisys API... Stand by." }];
+    if (!liveStats && !bpData) return [{ type: "SYS", msg: "Loading your Decision Intelligence Overview Messages..." }];
     const items = [];
     const bd = totals.telemetry_distribution?.battery || {};
     const cd = totals.telemetry_distribution?.cellular || {};
@@ -374,7 +374,7 @@ export default function StarkDashboard({ user, onLogout }) {
             {mapLoading || !isLoaded ? (
               <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
             ) : (
-              <GoogleMap mapContainerStyle={{ width: "100%", height: "100%" }} center={mapCenter} zoom={7} options={mapOptions} onLoad={(m) => { mapRef.current = m; }} onClick={() => { setSelectedId(null); setHoveredId(null); }}>
+              <GoogleMap mapContainerStyle={{ width: "100%", height: "100%" }} center={mapCenter} zoom={7} options={mapOptions} onLoad={(m) => { mapRef.current = m; setTimeout(() => fitAll(), 500); }} onClick={() => { setSelectedId(null); setHoveredId(null); }}>
                 {geoSubs.map((sub, i) => {
                   const lat = parseFloat(sub.geocode_lat); const lng = parseFloat(sub.geocode_lng);
                   if (isNaN(lat) || isNaN(lng)) return null;
