@@ -65,6 +65,7 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - Refactor large frontend components
 
 ## Changelog
+- 2026-04-17: Created "Stark" dashboard type — MAP as hero center card, DI panel compact below with overview mode, assigned to user Stark. Skip-to-dashboard login when only "dashboard" module enabled.
 - 2026-04-16: Backfill logic for notified AEDs from historical notification_history records; percent format fixed to XX.X%; uses /devices API for accurate device list
 - 2026-04-16: Added Notified AEDs Detail View modal — drill into each tracked device with full notification timeline, days since notified, current vs original status, filter/sort by subscriber/status/age
 - 2026-04-16: Built Notified AEDs Readiness Tracker — tracks each AED in sent notification emails, shows Actual vs Adjusted readiness %, daily auto-refresh of statuses, expandable card with issue type & subscriber breakdowns

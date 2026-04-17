@@ -13,6 +13,7 @@ import CustomerPortal from "./pages/CustomerPortal";
 import ServiceTickets from "./pages/ServiceTickets";
 import TechResponse from "./pages/TechResponse";
 import MapPage from "./pages/MapPage";
+import StarkDashboard from "./pages/StarkDashboard";
 import { Toaster } from "./components/ui/sonner";
 
 function App() {
@@ -64,8 +65,13 @@ function App() {
     localStorage.setItem("user", JSON.stringify(userData));
     setIsAuthenticated(true);
     setUser(userData);
-    // Hard navigate to hub — bypasses all React Router state issues
-    window.location.href = "/hub";
+    // If dashboard is the only module, go directly to dashboard
+    const mods = userData?.allowed_modules || [];
+    if (mods.length === 1 && mods[0] === "dashboard") {
+      window.location.href = "/dashboard";
+    } else {
+      window.location.href = "/hub";
+    }
   };
 
   const handleLogout = () => {
@@ -110,6 +116,8 @@ function App() {
               isAuthenticated ? 
                 (user?.dashboard_type === "support" ? 
                   <SupportDashboard user={user} onLogout={handleLogout} /> :
+                  user?.dashboard_type === "stark" ?
+                  <StarkDashboard user={user} onLogout={handleLogout} /> :
                   <Dashboard user={user} onLogout={handleLogout} />
                 ) : 
                 <Navigate to="/" replace />

@@ -310,6 +310,8 @@ SEED_USERS = [
         "role": "Director",
         "department": "Service",
         "allowed_modules": ALL_MODULE_IDS,
+        "dashboard_type": "stark",
+        "di_permissions": {"expired_bp": "overview", "expiring_bp": "overview", "camera_battery": "overview", "camera_cellular": "overview"},
         "plain_password": "Stark123",
         "created_at": "2024-01-01T00:00:00Z"
     },
@@ -408,6 +410,11 @@ async def seed_users():
                 for field in ["department", "phone", "email", "name"]:
                     if field not in existing or existing[field] is None:
                         update_fields[field] = seed.get(field, "")
+                # Always sync dashboard_type and di_permissions from seed
+                if "dashboard_type" in seed and existing.get("dashboard_type") != seed["dashboard_type"]:
+                    update_fields["dashboard_type"] = seed["dashboard_type"]
+                if "di_permissions" in seed and existing.get("di_permissions") != seed["di_permissions"]:
+                    update_fields["di_permissions"] = seed["di_permissions"]
                 if update_fields:
                     await _db.users.update_one({"username": seed["username"]}, {"$set": update_fields})
                     logger.info(f"Seed: updated {seed['username']} fields: {list(update_fields.keys())}")

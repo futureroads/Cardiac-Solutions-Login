@@ -495,6 +495,7 @@ export default function UserAccess({ onLogout }) {
                 >
                   <option value="standard" style={{ background: "#0f172a" }}>STANDARD</option>
                   <option value="support" style={{ background: "#0f172a" }}>SUPPORT</option>
+                  <option value="stark" style={{ background: "#0f172a" }}>STARK</option>
                 </select>
               </div>
             </div>
