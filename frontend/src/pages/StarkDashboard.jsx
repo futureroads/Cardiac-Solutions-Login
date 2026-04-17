@@ -267,7 +267,7 @@ export default function StarkDashboard({ user, onLogout }) {
             ); })()}
           </div>
           <div className="flex gap-[18px] items-center text-[9px] tracking-wider">
-            <span>{stats.total.toLocaleString()} DEVICES</span><span>|</span>
+            <span>{stats.total.toLocaleString()} AEDs</span><span>|</span>
             <span className="flex items-center gap-1"><span className="w-[5px] h-[5px] rounded-full bg-yellow-400 animate-blink-fast" />{stats.alerts} ALERTS</span>
           </div>
           <div className="flex items-center gap-4">
