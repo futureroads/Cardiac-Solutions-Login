@@ -79,7 +79,7 @@ export default function StarkDashboard({ user, onLogout }) {
       try {
         const hour = new Date().getHours();
         const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-        const text = `${greeting}. My name is Aida. How can I help you?`;
+        const text = `${greeting}. My name is Ayda. How can I help you?`;
         const res = await fetch(`${API_URL}/api/tts/speak`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ text, voice: "nova" }) });
         if (res.ok) { const d = await res.json(); cachedAudioRef.current = `data:audio/mp3;base64,${d.audio}`; }
       } catch {}
