@@ -3067,10 +3067,11 @@ async def tts_speak(request: Request):
             raise HTTPException(status_code=500, detail="TTS key not configured")
 
         tts = OpenAITextToSpeech(api_key=api_key)
+        voice = body.get("voice", "nova")
         audio_base64 = await tts.generate_speech_base64(
             text=text,
             model="tts-1",
-            voice="nova",
+            voice=voice,
             speed=0.92,
             response_format="mp3"
         )

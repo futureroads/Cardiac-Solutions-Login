@@ -79,13 +79,12 @@ export default function StarkDashboard({ user, onLogout }) {
       try {
         const hour = new Date().getHours();
         const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-        const name = freshUser?.name || user?.name || "hon";
-        const text = `Well ${greeting}, ${name}. All systems are runnin' smooth as butter. What can I do for you, darlin'?`;
-        const res = await fetch(`${API_URL}/api/tts/speak`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ text }) });
+        const text = `${greeting}. My name is AEDA. How can I help you?`;
+        const res = await fetch(`${API_URL}/api/tts/speak`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ text, voice: "nova" }) });
         if (res.ok) { const d = await res.json(); cachedAudioRef.current = `data:audio/mp3;base64,${d.audio}`; }
       } catch {}
     })();
-  }, [freshUser?.name, user?.name, token]);
+  }, [token]);
 
   const jarvisGreet = async () => {
     if (isSpeaking) return;
@@ -98,10 +97,9 @@ export default function StarkDashboard({ user, onLogout }) {
     }
     const hour = new Date().getHours();
     const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-    const name = freshUser?.name || user?.name || "hon";
-    const text = `Well ${greeting}, ${name}. All systems are runnin' smooth as butter.`;
+    const text = `${greeting}. My name is AEDA. How can I help you?`;
     try {
-      const res = await fetch(`${API_URL}/api/tts/speak`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ text }) });
+      const res = await fetch(`${API_URL}/api/tts/speak`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ text, voice: "nova" }) });
       if (!res.ok) throw new Error();
       const d = await res.json();
       const audio = new Audio(`data:audio/mp3;base64,${d.audio}`);
