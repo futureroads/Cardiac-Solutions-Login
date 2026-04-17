@@ -397,7 +397,7 @@ export default function StarkDashboard({ user, onLogout }) {
                       )}
                       {selectedId === i && (
                         <OverlayView position={{ lat, lng }} mapPaneName={OverlayView.FLOAT_PANE} getPixelPositionOffset={(w, h) => ({ x: -(w/2), y: -h-36 })}>
-                          <div style={{ background: "rgba(6,10,20,0.95)", border: "1px solid rgba(6,182,212,0.5)", borderRadius: 4, padding: "10px 16px", fontFamily: "Orbitron, monospace", whiteSpace: "nowrap", minWidth: 200 }}>
+                          <div style={{ background: "rgba(6,10,20,0.95)", border: "1px solid rgba(6,182,212,0.5)", borderRadius: 4, padding: "10px 16px", fontFamily: "Orbitron, monospace", minWidth: 200, maxWidth: 280 }}>
                             <div style={{ fontWeight: 700, fontSize: 13, color: "#06b6d4", letterSpacing: 1, marginBottom: 6 }}>{sub.display_name || sub.subscriber}</div>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
                               <span style={{ fontSize: 15, fontWeight: 700, color: "#22c55e" }}>{total} AEDs</span>

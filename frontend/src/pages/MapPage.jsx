@@ -199,8 +199,9 @@ export default function MapPage({ user }) {
                         borderRadius: 4,
                         padding: "10px 16px",
                         fontFamily: "Orbitron, monospace",
-                        whiteSpace: "nowrap",
+                        whiteSpace: "normal",
                         minWidth: 200,
+                        maxWidth: 280,
                       }}>
                         <div style={{ fontWeight: 700, fontSize: 13, color: "#06b6d4", letterSpacing: 1, marginBottom: 6 }}>{sub.display_name || sub.subscriber}</div>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
