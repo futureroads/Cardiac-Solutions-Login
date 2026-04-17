@@ -59,6 +59,8 @@ export default function StarkDashboard({ user, onLogout }) {
 
   // Service tickets (from service-tickets API or static)
   const [ticketCounts, setTicketCounts] = useState(null);
+  // Readiness data (actual + adjusted from support dashboard-data)
+  const [readiness, setReadiness] = useState(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -132,6 +134,16 @@ export default function StarkDashboard({ user, onLogout }) {
 
   useEffect(() => { fetchStats(); const i = setInterval(fetchStats, 300000); return () => clearInterval(i); }, [fetchStats]);
 
+  // Fetch readiness (actual + adjusted) from support dashboard-data
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API}/support/dashboard-data`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) { const d = await res.json(); setReadiness(d.readiness || null); }
+      } catch {}
+    })();
+  }, [token]);
+
   // Fetch service ticket counts
   useEffect(() => {
     (async () => {
@@ -161,9 +173,14 @@ export default function StarkDashboard({ user, onLogout }) {
     pendingNotifs: 48, sentToday: 0, devicesAffected: totals.total || 0,
   };
   const pctReady = totals.percent_ready != null ? Number(totals.percent_ready).toFixed(1) : "—";
+  const pctAdjusted = readiness?.pct_ready_adjusted != null ? Number(readiness.pct_ready_adjusted).toFixed(1) : pctReady;
+  const pctActual = readiness?.pct_ready != null ? Number(readiness.pct_ready).toFixed(1) : pctReady;
 
-  // Gauge angle: 0% = -90deg (left), 100% = 90deg (right)
-  const gaugeAngle = totals.percent_ready != null ? -90 + (totals.percent_ready / 100) * 180 : 0;
+  // Gauge angles: 0% = -90deg (left), 100% = 90deg (right)
+  const adjustedVal = readiness?.pct_ready_adjusted ?? totals.percent_ready ?? 0;
+  const actualVal = readiness?.pct_ready ?? totals.percent_ready ?? 0;
+  const gaugeAngleAdjusted = -90 + (adjustedVal / 100) * 180;
+  const gaugeAngleActual = -90 + (actualVal / 100) * 180;
 
   // Last updated
   const lastUpdated = (() => {
@@ -302,17 +319,27 @@ export default function StarkDashboard({ user, onLogout }) {
                 <div className="flex flex-col items-center gap-2 py-4"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
               ) : (
                 <>
-                  <svg width="140" height="80" viewBox="0 0 140 80" className="mb-1">
-                    <path d="M15 75 A55 55 0 0 1 125 75" fill="none" stroke="#ef4444" strokeWidth="10" strokeLinecap="round" opacity="0.6" />
-                    <path d="M35 35 A55 55 0 0 1 70 20" fill="none" stroke="#f59e0b" strokeWidth="10" strokeLinecap="round" opacity="0.6" />
-                    <path d="M70 20 A55 55 0 0 1 125 75" fill="none" stroke="#22c55e" strokeWidth="10" strokeLinecap="round" opacity="0.6" />
-                    <line x1="70" y1="75" x2="70" y2="30" stroke="white" strokeWidth="3" strokeLinecap="round"
-                      transform={`rotate(${gaugeAngle}, 70, 75)`} />
-                    <circle cx="70" cy="75" r="4" fill="white" />
+                  <svg width="160" height="90" viewBox="0 0 160 90" className="mb-1">
+                    {/* Background arc: red -> yellow -> green */}
+                    <path d="M15 80 A65 65 0 0 1 145 80" fill="none" stroke="#ef4444" strokeWidth="10" strokeLinecap="round" opacity="0.5" />
+                    <path d="M35 35 A65 65 0 0 1 80 18" fill="none" stroke="#f59e0b" strokeWidth="10" strokeLinecap="round" opacity="0.5" />
+                    <path d="M80 18 A65 65 0 0 1 145 80" fill="none" stroke="#22c55e" strokeWidth="10" strokeLinecap="round" opacity="0.5" />
+                    {/* Actual needle (thinner, dimmer) */}
+                    <line x1="80" y1="80" x2="80" y2="30" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" opacity="0.6"
+                      transform={`rotate(${gaugeAngleActual}, 80, 80)`} />
+                    {/* Adjusted needle (thicker, bright green) */}
+                    <line x1="80" y1="80" x2="80" y2="25" stroke="#22c55e" strokeWidth="3.5" strokeLinecap="round"
+                      transform={`rotate(${gaugeAngleAdjusted}, 80, 80)`} />
+                    <circle cx="80" cy="80" r="5" fill="#22c55e" />
+                    <circle cx="80" cy="80" r="2.5" fill="white" />
                   </svg>
-                  <div className="font-orbitron text-[28px] font-black text-green-400" style={{ textShadow: "0 0 18px rgba(57,255,20,0.5)" }}>{pctReady}%</div>
-                  <div className="font-orbitron text-[9px] font-bold text-green-400 tracking-wider">{stats.ready.toLocaleString()} READY</div>
-                  <div className="font-orbitron text-[9px] text-cyan-400/70 tracking-wider">{stats.total.toLocaleString()} TOTAL AEDs</div>
+                  {/* Adjusted (prominent) */}
+                  <div className="font-orbitron text-[28px] font-black text-green-400" style={{ textShadow: "0 0 18px rgba(57,255,20,0.5)" }}>{pctAdjusted}%</div>
+                  <div className="font-orbitron text-[7px] font-bold text-green-400 tracking-[0.2em]">ADJUSTED READY</div>
+                  {/* Actual (smaller, subdued) */}
+                  <div className="font-orbitron text-[13px] font-bold text-slate-400 mt-1">{pctActual}%</div>
+                  <div className="font-orbitron text-[7px] text-slate-500 tracking-[0.2em]">ACTUAL READY</div>
+                  <div className="font-orbitron text-[9px] text-cyan-400/70 tracking-wider mt-2">{stats.total.toLocaleString()} TOTAL AEDs</div>
                   {lastUpdated && <div className="font-orbitron text-[8px] text-cyan-500/50 tracking-wider mt-1">Last Updated: {lastUpdated}</div>}
                 </>
               )}
