@@ -374,7 +374,7 @@ export default function StarkDashboard({ user, onLogout }) {
             {mapLoading || !isLoaded ? (
               <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
             ) : (
-              <GoogleMap mapContainerStyle={{ width: "100%", height: "100%" }} center={mapCenter} zoom={7} options={mapOptions} onLoad={(m) => { mapRef.current = m; }}>
+              <GoogleMap mapContainerStyle={{ width: "100%", height: "100%" }} center={mapCenter} zoom={7} options={mapOptions} onLoad={(m) => { mapRef.current = m; }} onClick={() => { setSelectedId(null); setHoveredId(null); }}>
                 {geoSubs.map((sub, i) => {
                   const lat = parseFloat(sub.geocode_lat); const lng = parseFloat(sub.geocode_lng);
                   if (isNaN(lat) || isNaN(lng)) return null;
@@ -488,6 +488,9 @@ export default function StarkDashboard({ user, onLogout }) {
 
       <style>{`
         @keyframes diScroll { 0% { transform: translateY(0); } 100% { transform: translateY(-50%); } }
+        @keyframes led-flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .animate-led-flash { animation: led-flash 1.4s ease-in-out infinite; }
+        .animate-led-flash-alt { animation: led-flash 1.4s ease-in-out infinite 0.7s; }
       `}</style>
     </div>
   );

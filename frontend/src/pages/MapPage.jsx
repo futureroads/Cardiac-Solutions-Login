@@ -135,6 +135,7 @@ export default function MapPage({ user }) {
             zoom={7}
             options={mapOptions}
             onLoad={onLoad}
+            onClick={() => { setSelectedId(null); setHoveredId(null); }}
           >
             {geoSubs.map((sub, i) => {
               const lat = parseFloat(sub.geocode_lat);
