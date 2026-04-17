@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoogleMap, useJsApiLoader, Marker, OverlayView } from "@react-google-maps/api";
-import { ArrowLeft, Loader2, Play, Pause, Maximize2, MapPin, LogOut, Mic, AlertTriangle, RefreshCw } from "lucide-react";
+import { Loader2, Play, Pause, Maximize2, MapPin, LogOut, Mic, AlertTriangle, RefreshCw } from "lucide-react";
 import { getLedColor, LED_STYLES, useServiceStatuses } from "@/data/serviceStatuses";
 import API_BASE from "@/apiBase";
 
@@ -247,10 +247,6 @@ export default function StarkDashboard({ user, onLogout }) {
         {/* TOP BAR */}
         <div className="col-span-3 flex items-center justify-between px-[18px] py-[7px] border border-cyan-500/30 bg-[rgba(0,18,32,0.93)]" style={{ clipPath: "polygon(0 0, 100% 0, 98.5% 100%, 1.5% 100%)" }}>
           <div className="flex items-center gap-4">
-            <button onClick={() => navigate("/hub")} className="flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 transition-colors" data-testid="stark-back-btn">
-              <ArrowLeft className="w-4 h-4" /><span className="font-orbitron text-[9px] font-bold tracking-wider">HUB</span>
-            </button>
-            <div className="w-[1px] h-[20px] bg-cyan-500/30" />
             <div className="flex flex-col">
               <div className="font-orbitron text-[13px] font-black tracking-[0.25em] text-red-500 animate-logo-pulse">CARDIAC SOLUTIONS</div>
               <div className="font-orbitron text-[9px] font-bold tracking-[0.2em] text-cyan-400">COMMAND CENTER</div>
@@ -346,13 +342,6 @@ export default function StarkDashboard({ user, onLogout }) {
                 <div className="text-[7px] text-orange-500/50 tracking-wider uppercase">Resolved</div>
               </div>
             </div>
-          </div>
-
-          {/* Send Overview */}
-          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1" data-testid="stark-send-overview">
-            <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
-            <div className="panel-glow" />
-            <div className="plabel">Send Overview</div>
           </div>
         </div>
 
