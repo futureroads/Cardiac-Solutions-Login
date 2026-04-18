@@ -1611,11 +1611,80 @@ async def aed_image_proxy(sentinel_id: str, current_user: dict = Depends(get_cur
                 s3 = img.get("s3_url", "")
                 if s3:
                     import urllib.parse
-                    data["image"]["proxy_url"] = f"https://readisys.survivalpath.ai/api/aed-images/download?url={urllib.parse.quote(s3)}"
+                    proxy_url = f"https://readisys.survivalpath.ai/api/aed-images/download?url={urllib.parse.quote(s3)}"
+                    data["image"]["proxy_url"] = proxy_url
+                    # Store in history if new
+                    job_id = img.get("job_id", "")
+                    if job_id:
+                        existing = await _db.aed_image_history.find_one({"sentinel_id": sentinel_id, "job_id": job_id})
+                        if not existing:
+                            await _db.aed_image_history.insert_one({
+                                "sentinel_id": sentinel_id,
+                                "subscriber": data.get("subscriber", ""),
+                                "job_id": job_id,
+                                "captured_at": img.get("captured_at", ""),
+                                "s3_url": s3,
+                                "proxy_url": proxy_url,
+                                "status": data.get("status", ""),
+                                "stored_at": datetime.now(timezone.utc).isoformat(),
+                            })
                 return data
             return {"_error": f"API returned {resp.status_code}"}
     except Exception as e:
         return {"_error": str(e)}
+
+
+@api_router.get("/support/aed-image-history/{sentinel_id}")
+async def get_aed_image_history(sentinel_id: str, limit: int = 25, current_user: dict = Depends(get_current_user)):
+    """Get stored image history for a device, most recent first."""
+    images = []
+    async for doc in _db.aed_image_history.find(
+        {"sentinel_id": sentinel_id}, {"_id": 0}
+    ).sort("captured_at", -1).limit(limit):
+        images.append(doc)
+    total = await _db.aed_image_history.count_documents({"sentinel_id": sentinel_id})
+    # Also fetch current live image and store if new
+    import httpx
+    headers = _readisys_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"https://readisys.survivalpath.ai/api/voice/aed/{sentinel_id}/last-image",
+                headers=headers,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                img = data.get("image", {})
+                job_id = img.get("job_id", "")
+                captured_at = img.get("captured_at", "")
+                s3_url = img.get("s3_url", "")
+                if job_id and s3_url:
+                    import urllib.parse
+                    proxy_url = f"https://readisys.survivalpath.ai/api/aed-images/download?url={urllib.parse.quote(s3_url)}"
+                    existing = await _db.aed_image_history.find_one({"sentinel_id": sentinel_id, "job_id": job_id})
+                    if not existing:
+                        await _db.aed_image_history.insert_one({
+                            "sentinel_id": sentinel_id,
+                            "subscriber": data.get("subscriber", ""),
+                            "job_id": job_id,
+                            "captured_at": captured_at,
+                            "s3_url": s3_url,
+                            "proxy_url": proxy_url,
+                            "status": data.get("status", ""),
+                            "stored_at": datetime.now(timezone.utc).isoformat(),
+                        })
+                        # Refresh the list
+                        images = []
+                        async for doc in _db.aed_image_history.find(
+                            {"sentinel_id": sentinel_id}, {"_id": 0}
+                        ).sort("captured_at", -1).limit(limit):
+                            images.append(doc)
+                        total = await _db.aed_image_history.count_documents({"sentinel_id": sentinel_id})
+    except Exception as e:
+        logger.warning(f"Failed to fetch live image for {sentinel_id}: {e}")
+    return {"images": images, "total": total, "sentinel_id": sentinel_id}
+
+
 
 
 @api_router.get("/support/map-locations")

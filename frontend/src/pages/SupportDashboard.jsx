@@ -808,10 +808,100 @@ function StatusFeedbackModal({ device, subscriber, onClose }) {
   );
 }
 
+function ImageHistoryModal({ sentinelId, onClose }) {
+  const [images, setImages] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [limit, setLimit] = useState(5);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API}/support/aed-image-history/${encodeURIComponent(sentinelId)}?limit=${limit}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setImages(data.images || []);
+          setTotal(data.total || 0);
+        }
+      } catch {}
+      setLoading(false);
+    })();
+  }, [sentinelId, limit]);
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center" onClick={onClose}>
+      <div className="bg-[#0f1729] border border-cyan-500/30 rounded-sm w-[500px] max-w-[90vw] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="image-history-modal">
+        <div className="p-4 border-b border-cyan-500/15 flex justify-between items-center flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4 text-red-400" />
+            <div>
+              <span className="font-orbitron text-sm text-white tracking-wider">Image history</span>
+              <span className="text-slate-400 text-sm ml-2">— {sentinelId}</span>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-cyan-400 animate-spin" /></div>
+          ) : images.length === 0 ? (
+            <div className="text-center text-slate-500 py-8 font-orbitron text-[10px]">No image history available yet. Images are stored as they are captured.</div>
+          ) : (
+            <>
+              <div className="text-[10px] text-slate-400 mb-3 font-orbitron">
+                Showing {images.length} of {total} images (most recent first).
+              </div>
+              <div className="space-y-3">
+                {images.map((img, i) => {
+                  const date = img.captured_at ? new Date(img.captured_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+                  return (
+                    <div key={img.job_id || i} className="flex gap-3 bg-slate-800/50 border border-slate-700/30 rounded-sm overflow-hidden">
+                      <div className="flex-shrink-0 w-24 h-20 bg-slate-900">
+                        <img
+                          src={img.proxy_url}
+                          alt={`${sentinelId} - ${date}`}
+                          className="w-24 h-20 object-cover"
+                          loading="lazy"
+                          onError={(e) => { e.target.style.display = "none"; }}
+                        />
+                      </div>
+                      <div className="flex items-center py-2">
+                        <div>
+                          <div className="text-[11px] text-slate-200 font-mono">{date}</div>
+                          {img.status && <div className="text-[9px] text-slate-500 mt-0.5">{img.status}</div>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {images.length < total && (
+                <div className="mt-3 text-center">
+                  <button
+                    onClick={() => setLimit(prev => prev + 20)}
+                    className="font-orbitron text-[8px] px-4 py-1.5 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10"
+                  >
+                    Load {Math.min(20, total - images.length)} more
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DeviceListModal({ subscriber, issueType, onClose }) {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [feedbackDevice, setFeedbackDevice] = useState(null);
+  const [imageHistoryId, setImageHistoryId] = useState(null);
 
   const issueLabels = { expired_bp: "EXPIRED B/P", expiring_bp: "EXPIRING BATT/PADS", not_ready: "NOT READY", reposition: "REPOSITION", not_present: "NOT PRESENT", unknown: "UNKNOWN" };
   const issueStatuses = {
@@ -873,6 +963,14 @@ function DeviceListModal({ subscriber, issueType, onClose }) {
                           <div className="w-28 h-20 bg-slate-800 border border-slate-700 rounded-sm flex items-center justify-center text-slate-600 text-[8px]">No image</div>
                         )}
                         <div className="text-[8px] text-slate-500 mt-1 text-center">{capturedAt}</div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setImageHistoryId(d.sentinel_id); }}
+                          className="mt-1 w-full flex items-center justify-center gap-1 px-1.5 py-1 bg-red-600 hover:bg-red-500 text-white rounded-sm transition-colors"
+                          data-testid={`img-history-btn-${d.sentinel_id}`}
+                        >
+                          <History className="w-3 h-3" />
+                          <span className="font-orbitron text-[6px] tracking-wider">HISTORY</span>
+                        </button>
                       </div>
                       {/* Details */}
                       <div className="flex-1 min-w-0">
@@ -907,6 +1005,7 @@ function DeviceListModal({ subscriber, issueType, onClose }) {
           )}
         </div>
         {feedbackDevice && <StatusFeedbackModal device={feedbackDevice} subscriber={subscriber} onClose={() => setFeedbackDevice(null)} />}
+        {imageHistoryId && <ImageHistoryModal sentinelId={imageHistoryId} onClose={() => setImageHistoryId(null)} />}
       </div>
     </div>
   );
