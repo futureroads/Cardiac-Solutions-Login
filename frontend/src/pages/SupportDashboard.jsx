@@ -747,12 +747,24 @@ function StatusFeedbackModal({ device, subscriber, onClose }) {
     setSaving(true);
     try {
       const token = localStorage.getItem("token");
+      // Call local feedback endpoint
       await fetch(`${API}/support/device-feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ sentinel_id: device.sentinel_id, subscriber, current_status: device.detailed_status, correct_status: correctStatus, comments }),
       });
-      toast.success("Feedback submitted");
+      // Also call external Readisys integration API
+      const extRes = await fetch(`${API}/support/aed-status-feedback-external`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ subscriber, sentinel_id: device.sentinel_id, reported_status: correctStatus, comment: comments }),
+      });
+      if (extRes.ok) {
+        const extData = await extRes.json();
+        toast.success(extData.message || "Feedback submitted and email sent");
+      } else {
+        toast.success("Feedback saved locally (external sync pending)");
+      }
       onClose();
     } catch { toast.error("Failed to submit"); }
     setSaving(false);

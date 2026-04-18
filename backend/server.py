@@ -1544,6 +1544,37 @@ async def submit_device_feedback(data: dict, current_user: dict = Depends(get_cu
     return {"success": True}
 
 
+@api_router.post("/support/aed-status-feedback-external")
+async def aed_status_feedback_external(data: dict, current_user: dict = Depends(get_current_user)):
+    """Proxy status feedback to the external Readisys integration API."""
+    import httpx
+    headers = _readisys_auth_headers()
+    headers["Content-Type"] = "application/json"
+    payload = {
+        "subscriber": data.get("subscriber", ""),
+        "sentinel_id": data.get("sentinel_id", ""),
+        "reported_status": data.get("reported_status", ""),
+        "comment": data.get("comment", ""),
+        "submitted_by": current_user.get("username", "unknown"),
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://readisys.survivalpath.ai/api/integrations/support-dashboard/aed-status-feedback",
+                json=payload,
+                headers=headers,
+            )
+            if resp.status_code == 200:
+                return resp.json()
+            logger.warning(f"External feedback API returned {resp.status_code}: {resp.text[:200]}")
+            return {"ok": False, "message": f"External API returned {resp.status_code}"}
+    except Exception as e:
+        logger.error(f"External feedback API error: {e}")
+        return {"ok": False, "message": str(e)}
+
+
+
+
 @api_router.get("/support/device-notes/{sentinel_id}")
 async def get_device_notes(sentinel_id: str, current_user: dict = Depends(get_current_user)):
     """Get notes for a specific device."""
