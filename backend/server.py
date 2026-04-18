@@ -1576,6 +1576,36 @@ async def aed_status_feedback_external(data: dict, current_user: dict = Depends(
 
 
 @api_router.get("/support/device-notes/{sentinel_id}")
+
+@api_router.get("/support/device-detail/{subscriber}/{sentinel_id}")
+async def get_device_detail(subscriber: str, sentinel_id: str, current_user: dict = Depends(get_current_user)):
+    """Fetch detailed device info from Readisys including AI explanation."""
+    import httpx, urllib.parse
+    headers = _readisys_auth_headers()
+    try:
+        enc_sub = urllib.parse.quote(subscriber)
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc_sub}/device/{sentinel_id}",
+                headers=headers,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                dev = data.get("device") or {}
+                return {
+                    "sentinel_id": sentinel_id,
+                    "subscriber": subscriber,
+                    "detailed_status": dev.get("detailed_status", ""),
+                    "status_source": dev.get("status_source", ""),
+                    "original_readiness": dev.get("status", ""),
+                    "detailed_status_explanation": dev.get("detailed_status_explanation", ""),
+                    "confidence": dev.get("detailed_status_confidence"),
+                }
+            return {"sentinel_id": sentinel_id, "_error": resp.status_code}
+    except Exception as e:
+        return {"sentinel_id": sentinel_id, "_error": str(e)}
+
+
 async def get_device_notes(sentinel_id: str, current_user: dict = Depends(get_current_user)):
     """Get notes for a specific device."""
     doc = await _db.device_notes.find_one({"sentinel_id": sentinel_id}, {"_id": 0})

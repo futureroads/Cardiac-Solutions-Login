@@ -914,6 +914,9 @@ function DeviceListModal({ subscriber, issueType, onClose }) {
   const [loading, setLoading] = useState(true);
   const [feedbackDevice, setFeedbackDevice] = useState(null);
   const [imageHistoryId, setImageHistoryId] = useState(null);
+  const [deviceDetails, setDeviceDetails] = useState({});
+  const [deviceNotes, setDeviceNotes] = useState({});
+  const [savingNote, setSavingNote] = useState(null);
 
   const issueLabels = { expired_bp: "EXPIRED B/P", expiring_bp: "EXPIRING BATT/PADS", not_ready: "NOT READY", reposition: "REPOSITION", not_present: "NOT PRESENT", unknown: "UNKNOWN" };
   const issueStatuses = {
@@ -936,78 +939,184 @@ function DeviceListModal({ subscriber, issueType, onClose }) {
           const data = await res.json();
           const all = data.devices || [];
           const statuses = issueStatuses[issueType] || [];
-          setDevices(all.filter(d => statuses.includes(d.detailed_status)));
+          const filtered = all.filter(d => statuses.includes(d.detailed_status));
+          setDevices(filtered);
+          // Fetch AI details for each device
+          filtered.forEach(async (d) => {
+            try {
+              const detRes = await fetch(`${API}/support/device-detail/${encodeURIComponent(subscriber)}/${d.sentinel_id}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              if (detRes.ok) {
+                const det = await detRes.json();
+                setDeviceDetails(prev => ({ ...prev, [d.sentinel_id]: det }));
+              }
+            } catch {}
+            // Fetch notes
+            try {
+              const notesRes = await fetch(`${API}/support/device-notes/${d.sentinel_id}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              if (notesRes.ok) {
+                const n = await notesRes.json();
+                setDeviceNotes(prev => ({ ...prev, [d.sentinel_id]: n.notes || "" }));
+              }
+            } catch {}
+          });
         }
       } catch {}
       setLoading(false);
     })();
-  }, [subscriber, issueType]);
+  }, [subscriber, issueType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveNote = async (sentinelId) => {
+    setSavingNote(sentinelId);
+    try {
+      const token = localStorage.getItem("token");
+      await fetch(`${API}/support/device-notes/${sentinelId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ notes: deviceNotes[sentinelId] || "" }),
+      });
+      toast.success("Comment saved");
+    } catch { toast.error("Failed to save"); }
+    setSavingNote(null);
+  };
+
+  const statusBadge = (status) => {
+    const colors = {
+      "READY": "bg-green-500/20 text-green-400 border-green-500/30",
+      "NOT READY": "bg-red-500/20 text-red-400 border-red-500/30",
+      "EXPIRED B/P": "bg-red-500/20 text-red-400 border-red-500/30",
+      "EXPIRING BATT/PADS": "bg-amber-500/20 text-amber-400 border-amber-500/30",
+      "REPOSITION": "bg-purple-500/20 text-purple-400 border-purple-500/30",
+      "NOT PRESENT": "bg-orange-500/20 text-orange-400 border-orange-500/30",
+      "UNKNOWN": "bg-slate-500/20 text-slate-400 border-slate-500/30",
+    };
+    return colors[status] || "bg-slate-500/20 text-slate-400 border-slate-500/30";
+  };
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[1100px] max-w-[95vw] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="device-list-modal">
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[800px] max-w-[95vw] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="device-list-modal">
         <div className="p-5 border-b border-cyan-500/15 flex justify-between items-center flex-shrink-0">
           <div>
-            <div className="font-orbitron text-sm text-cyan-400 tracking-wider">{subscriber}</div>
-            <div className="text-[9px] text-slate-500 font-orbitron mt-0.5">{issueLabels[issueType] || issueType} — {devices.length} devices</div>
+            <div className="text-white text-lg font-bold">{subscriber} — {issueLabels[issueType] || issueType} Devices</div>
+            <div className="text-slate-400 text-xs mt-0.5">Showing {devices.length} of {devices.length} device{devices.length !== 1 ? "s" : ""}</div>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
             <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
           ) : devices.length === 0 ? (
             <div className="text-center text-slate-500 py-12 font-orbitron text-[10px]">NO DEVICES FOUND</div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-5">
               {devices.map(d => {
-                const loc = [d.site, d.building, d.placement].filter(Boolean).join(" / ") || "—";
-                const capturedAt = d.captured_at ? new Date(d.captured_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+                const loc = [d.site, d.building, d.placement].filter(Boolean).join(" · ") || "—";
+                const capturedAt = d.captured_at ? new Date(d.captured_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
                 const battColor = (d.battery_level_pct ?? 0) > 50 ? "#22c55e" : (d.battery_level_pct ?? 0) > 20 ? "#f59e0b" : "#ef4444";
+                const cellColor = d.cellular_signal_quality === "HIGH" ? "#22c55e" : d.cellular_signal_quality === "MEDIUM" ? "#f59e0b" : "#ef4444";
+                const det = deviceDetails[d.sentinel_id] || {};
+                const note = deviceNotes[d.sentinel_id] ?? "";
+
                 return (
-                  <div key={d.sentinel_id} className="border border-slate-700/50 bg-slate-900/30 rounded-sm overflow-hidden">
-                    <div className="flex gap-3 p-3">
-                      {/* Image */}
-                      <div className="flex-shrink-0 w-28">
+                  <div key={d.sentinel_id} className="border border-slate-700/50 bg-[#0d1525] rounded-sm p-5" data-testid={`device-card-${d.sentinel_id}`}>
+                    {/* Top row: Image + Info */}
+                    <div className="flex gap-4">
+                      <div className="flex-shrink-0 w-20 h-20">
                         {d.image_url ? (
-                          <img src={d.image_url} alt={d.sentinel_id} className="w-28 h-20 object-cover rounded-sm border border-slate-700" loading="lazy" />
+                          <img src={d.image_url} alt={d.sentinel_id} className="w-20 h-20 object-cover rounded-sm border border-slate-700" loading="lazy" />
                         ) : (
-                          <div className="w-28 h-20 bg-slate-800 border border-slate-700 rounded-sm flex items-center justify-center text-slate-600 text-[8px]">No image</div>
+                          <div className="w-20 h-20 bg-slate-800 border border-slate-700 rounded-sm flex items-center justify-center text-slate-600 text-[8px]">No image</div>
                         )}
-                        <div className="text-[8px] text-slate-500 mt-1 text-center">{capturedAt}</div>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setImageHistoryId(d.sentinel_id); }}
-                          className="mt-1 w-full flex items-center justify-center gap-1 px-1.5 py-1 bg-red-600 hover:bg-red-500 text-white rounded-sm transition-colors"
-                          data-testid={`img-history-btn-${d.sentinel_id}`}
-                        >
-                          <History className="w-3 h-3" />
-                          <span className="font-orbitron text-[6px] tracking-wider">HISTORY</span>
-                        </button>
                       </div>
-                      {/* Details */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between">
-                          <div className="font-orbitron text-xs text-white font-bold">{d.sentinel_id}</div>
-                          <span className="text-[7px] px-1.5 py-0.5 bg-red-500/15 text-red-400 rounded-sm font-orbitron flex-shrink-0">{d.detailed_status}</span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-white font-bold text-sm">{d.sentinel_id}</span>
+                          <span className="text-red-400 text-xs">Last updated <span className="font-bold">{capturedAt}</span></span>
                         </div>
-                        <div className="text-[9px] text-slate-400 mt-1">{d.model || "—"}</div>
-                        <div className="text-[9px] text-slate-500 mt-0.5 truncate">{loc}</div>
-                        <div className="flex items-center gap-3 mt-2">
-                          <div className="flex items-center gap-1">
-                            <Battery className="w-3 h-3" style={{ color: battColor }} />
-                            <span className="text-[9px] font-bold" style={{ color: battColor }}>{d.battery_level_pct != null ? `${d.battery_level_pct}%` : "—"}</span>
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          <span className="text-xs text-slate-400">Assigned status:</span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded border font-bold ${statusBadge(d.detailed_status)}`}>{d.detailed_status}</span>
+                          {det.status_source && (
+                            <span className="text-[10px] px-2 py-0.5 rounded border border-slate-600 bg-slate-800 text-slate-300">SOURCE: <span className="font-bold uppercase">{det.status_source}</span></span>
+                          )}
+                        </div>
+                        {det.original_readiness && (
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-slate-400">Original readiness:</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-400">{det.original_readiness}</span>
                           </div>
-                          <div className="text-[9px] text-slate-500">Batt: {d.battery_expiration || "—"}</div>
-                          <div className="text-[9px] text-slate-500">Pads: {d.pad_expiration || "—"}</div>
+                        )}
+                        <div className="flex items-center gap-4 mt-2">
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-slate-500 uppercase tracking-wider">Battery</span>
+                            <Battery className="w-3.5 h-3.5" style={{ color: battColor }} />
+                            <span className="text-[11px] font-bold" style={{ color: battColor }}>{d.battery_level_pct != null ? `${d.battery_level_pct}%` : "—"}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-slate-500 uppercase tracking-wider">Cellular</span>
+                            <Wifi className="w-3.5 h-3.5" style={{ color: cellColor }} />
+                            <span className="text-[11px] font-bold" style={{ color: cellColor }}>{d.cellular_signal_label || d.cellular_signal_quality || "—"}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                    {/* Action bar */}
-                    <div className="border-t border-slate-700/30 px-3 py-1.5 flex justify-end gap-2">
-                      <button onClick={() => setFeedbackDevice(d)}
-                        className="font-orbitron text-[7px] px-2 py-1 border border-amber-500/30 text-amber-400 rounded-sm hover:bg-amber-500/10 inline-flex items-center gap-1"
-                        data-testid={`feedback-btn-${d.sentinel_id}`}>
-                        <Edit3 className="w-2.5 h-2.5" /> CORRECT STATUS
+
+                    {/* Action buttons row */}
+                    <div className="flex items-center gap-2 mt-3">
+                      <button
+                        onClick={() => setImageHistoryId(d.sentinel_id)}
+                        className="w-8 h-8 flex items-center justify-center bg-red-600 hover:bg-red-500 text-white rounded-sm transition-colors"
+                        data-testid={`img-history-btn-${d.sentinel_id}`}
+                        title="Image History"
+                      >
+                        <History className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setFeedbackDevice(d)}
+                        className="w-8 h-8 flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-white rounded-sm transition-colors"
+                        data-testid={`feedback-btn-${d.sentinel_id}`}
+                        title="Correct Status"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Location + Model + Expiry */}
+                    <div className="mt-3 text-slate-400 text-xs">{loc}</div>
+                    <div className="text-slate-400 text-xs mt-0.5">
+                      <span className="text-[10px] text-slate-500 uppercase tracking-wider mr-1">AED Model</span>
+                      <span className="text-white">{d.model || "—"}</span>
+                    </div>
+                    <div className="text-slate-500 text-xs mt-0.5">B: {d.battery_expiration || "—"} P: {d.pad_expiration || "—"}</div>
+
+                    {/* AI Explanation */}
+                    {det.detailed_status_explanation && (
+                      <div className="mt-4">
+                        <div className="font-orbitron text-[9px] text-slate-400 tracking-wider mb-1.5 uppercase">AI Explanation</div>
+                        <div className="text-slate-300 text-xs leading-relaxed">{det.detailed_status_explanation}</div>
+                      </div>
+                    )}
+
+                    {/* Internal Comments */}
+                    <div className="mt-4">
+                      <div className="font-orbitron text-[9px] text-slate-400 tracking-wider mb-1.5 uppercase">Internal Comments</div>
+                      <textarea
+                        value={note}
+                        onChange={e => setDeviceNotes(prev => ({ ...prev, [d.sentinel_id]: e.target.value }))}
+                        placeholder="Add internal comment (visible to anyone who opens this device)"
+                        className="w-full px-3 py-2 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-600 resize-none h-20"
+                        data-testid={`device-notes-${d.sentinel_id}`}
+                      />
+                      <button
+                        onClick={() => saveNote(d.sentinel_id)}
+                        disabled={savingNote === d.sentinel_id}
+                        className="text-[10px] text-slate-400 hover:text-cyan-400 mt-1 transition-colors disabled:opacity-50"
+                      >
+                        {savingNote === d.sentinel_id ? "Saving..." : "Add comment"}
                       </button>
                     </div>
                   </div>
