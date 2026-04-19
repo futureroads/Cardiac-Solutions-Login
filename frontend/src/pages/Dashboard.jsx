@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { LogOut, Mic, Mail, Loader2, Play, Pause, ArrowLeft, AlertTriangle, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { getLedColor, LED_STYLES, useServiceStatuses } from "@/data/serviceStatuses";
+import { ReadinessBreakdownModal } from "@/components/ReadinessBreakdownModal";
 
 import API_BASE from "@/apiBase";
 const API_URL = API_BASE;
@@ -158,6 +159,7 @@ export default function Dashboard({ user, onLogout }) {
   });
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState(null);
+  const [showReadinessBreakdown, setShowReadinessBreakdown] = useState(false);
 
   const token = localStorage.getItem("token") || "";
 
@@ -626,7 +628,7 @@ export default function Dashboard({ user, onLogout }) {
         {/* LEFT COLUMN */}
         <div className="flex flex-col gap-[7px]">
           {/* System Status */}
-          <div onClick={() => ssoRedirect("report")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors" data-testid="system-status-panel">
+          <div onClick={() => setShowReadinessBreakdown(true)} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors" data-testid="system-status-panel">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">System Status</div>
@@ -999,7 +1001,7 @@ export default function Dashboard({ user, onLogout }) {
         {/* SIMPLE - LEFT COLUMN */}
         <div className="flex flex-col gap-[7px]">
           {/* System Status */}
-          <div onClick={() => ssoRedirect("report")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors">
+          <div onClick={() => setShowReadinessBreakdown(true)} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">System Status</div>
@@ -1498,6 +1500,8 @@ export default function Dashboard({ user, onLogout }) {
         .scrollbar-thin::-webkit-scrollbar { width: 2px; }
         .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(0, 212, 255, 0.3); }
       `}</style>
+
+      {showReadinessBreakdown && <ReadinessBreakdownModal onClose={() => setShowReadinessBreakdown(false)} />}
     </div>
   );
 }

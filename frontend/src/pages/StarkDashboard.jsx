@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { GoogleMap, useJsApiLoader, Marker, OverlayView } from "@react-google-maps/api";
 import { Loader2, Play, Pause, Maximize2, MapPin, LogOut, Mic, AlertTriangle, RefreshCw } from "lucide-react";
 import { getLedColor, LED_STYLES, useServiceStatuses } from "@/data/serviceStatuses";
+import { ReadinessBreakdownModal } from "@/components/ReadinessBreakdownModal";
 import API_BASE from "@/apiBase";
 
 const API = API_BASE + "/api";
@@ -56,6 +57,7 @@ export default function StarkDashboard({ user, onLogout }) {
 
   // DI state
   const [diPaused, setDiPaused] = useState(false);
+  const [showReadinessBreakdown, setShowReadinessBreakdown] = useState(false);
 
   // Service tickets (from service-tickets API or static)
   const [ticketCounts, setTicketCounts] = useState(null);
@@ -299,7 +301,7 @@ export default function StarkDashboard({ user, onLogout }) {
         {/* LEFT COLUMN */}
         <div className="flex flex-col gap-[7px]">
           {/* System Status with Gauge */}
-          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden" data-testid="stark-system-status">
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors" onClick={() => setShowReadinessBreakdown(true)} data-testid="stark-system-status">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
             <div className="plabel">System Status</div>
@@ -506,6 +508,8 @@ export default function StarkDashboard({ user, onLogout }) {
         .animate-led-flash { animation: led-flash 1.4s ease-in-out infinite; }
         .animate-led-flash-alt { animation: led-flash 1.4s ease-in-out infinite 0.7s; }
       `}</style>
+
+      {showReadinessBreakdown && <ReadinessBreakdownModal onClose={() => setShowReadinessBreakdown(false)} />}
     </div>
   );
 }
