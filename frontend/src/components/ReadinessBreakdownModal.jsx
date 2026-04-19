@@ -112,7 +112,7 @@ export function ReadinessBreakdownModal({ onClose }) {
                 )}
 
                 <div className="flex justify-between items-center py-1.5 border-b border-green-500/10">
-                  <span className="text-xs text-green-400 font-bold">Adjusted Issues (our responsibility)</span>
+                  <span className="text-xs text-green-400 font-bold">Adjusted Issues</span>
                   <span className="font-orbitron text-sm text-green-400 font-bold">{adjustedIssues.toLocaleString()}</span>
                 </div>
 
