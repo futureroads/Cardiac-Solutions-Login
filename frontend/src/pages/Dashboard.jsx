@@ -107,6 +107,17 @@ export default function Dashboard({ user, onLogout }) {
       })
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch readiness (actual + adjusted) for dual gauge
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    fetch(`${API_URL}/api/support/dashboard-data`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.readiness) setReadiness(d.readiness); })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [diScrollPct, setDiScrollPct] = useState(0);
   const diRef = useRef(null);
   const diTouchTimer = useRef(null);
@@ -160,6 +171,7 @@ export default function Dashboard({ user, onLogout }) {
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState(null);
   const [showReadinessBreakdown, setShowReadinessBreakdown] = useState(false);
+  const [readiness, setReadiness] = useState(null);
 
   const token = localStorage.getItem("token") || "";
 
@@ -291,6 +303,10 @@ export default function Dashboard({ user, onLogout }) {
   };
 
   const pctReady = stats.pctReady.toFixed(1);
+  const pctAdjusted = readiness?.pct_ready_adjusted != null ? Number(readiness.pct_ready_adjusted).toFixed(1) : pctReady;
+  const pctActual = readiness?.pct_ready != null ? Number(readiness.pct_ready).toFixed(1) : pctReady;
+  const gaugeAngleAdjusted = -90 + ((readiness?.pct_ready_adjusted ?? stats.pctReady) / 100) * 180;
+  const gaugeAngleActual = -90 + ((readiness?.pct_ready ?? stats.pctReady) / 100) * 180;
 
   // Retry handler for manual refresh
   const retryStatus = () => {
@@ -652,16 +668,24 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
               ) : (
               <>
-              <div className="relative w-[105px] h-[105px]">
-                <div className="absolute inset-0 rounded-full border border-cyan-500/30 animate-spin-slow" />
-                <div className="absolute inset-[9px] rounded-full border border-cyan-500/45 border-t-cyan-400 animate-spin-reverse" />
-                <div className="absolute inset-[19px] rounded-full border border-cyan-500/20 border-l-cyan-400 border-r-cyan-400 animate-spin-medium" />
-                <div className="absolute inset-[34px] rounded-full bg-[rgba(0,35,70,0.95)] border border-cyan-500/65 flex items-center justify-center animate-core-glow">
-                  <span className="font-orbitron text-[15px] font-black text-green-400">{Math.round(parseFloat(pctReady))}%</span>
-                </div>
-              </div>
-              <div className="font-orbitron text-[9px] font-bold text-green-400 mt-[6px] tracking-wider">{stats.ready.toLocaleString()} READY</div>
-              {lastUpdated && <div className="font-orbitron text-[9px] text-cyan-300/80 tracking-wider mt-[5px]">Last Updated: {lastUpdated}</div>}
+              {/* Dual Gauge */}
+              <svg width="160" height="90" viewBox="0 0 160 90" className="mb-1">
+                <path d="M15 80 A65 65 0 0 1 145 80" fill="none" stroke="#ef4444" strokeWidth="10" strokeLinecap="round" opacity="0.5" />
+                <path d="M35 35 A65 65 0 0 1 80 18" fill="none" stroke="#f59e0b" strokeWidth="10" strokeLinecap="round" opacity="0.5" />
+                <path d="M80 18 A65 65 0 0 1 145 80" fill="none" stroke="#22c55e" strokeWidth="10" strokeLinecap="round" opacity="0.5" />
+                <line x1="80" y1="80" x2="80" y2="30" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" opacity="0.6"
+                  transform={`rotate(${gaugeAngleActual}, 80, 80)`} />
+                <line x1="80" y1="80" x2="80" y2="25" stroke="#22c55e" strokeWidth="3.5" strokeLinecap="round"
+                  transform={`rotate(${gaugeAngleAdjusted}, 80, 80)`} />
+                <circle cx="80" cy="80" r="5" fill="#22c55e" />
+                <circle cx="80" cy="80" r="2.5" fill="white" />
+              </svg>
+              <div className="font-orbitron text-[28px] font-black text-green-400" style={{ textShadow: "0 0 18px rgba(57,255,20,0.5)" }}>{pctAdjusted}%</div>
+              <div className="font-orbitron text-[7px] font-bold text-green-400 tracking-[0.2em]">ADJUSTED READY</div>
+              <div className="font-orbitron text-[13px] font-bold text-slate-400 mt-1">{pctActual}%</div>
+              <div className="font-orbitron text-[7px] text-slate-500 tracking-[0.2em]">ACTUAL READY</div>
+              <div className="font-orbitron text-[9px] text-cyan-400/70 tracking-wider mt-2">{stats.total.toLocaleString()} TOTAL AEDs</div>
+              {lastUpdated && <div className="font-orbitron text-[8px] text-cyan-500/50 tracking-wider mt-1">Last Updated: {lastUpdated}</div>}
               </>
               )}
             </div>
@@ -1025,88 +1049,24 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
               ) : (
               <>
-              <div className="relative w-[120px] h-[75px] flex items-end justify-center overflow-hidden">
-                <svg className="absolute top-0 left-0 w-full" viewBox="0 0 120 70" style={{ height: '70px' }}>
-                  {/* Colored zone arcs */}
-                  {[
-                    { start: 0, end: 40, color: '#ff2244' },
-                    { start: 40, end: 60, color: '#ffff00' },
-                    { start: 60, end: 70, color: '#ffff00' },
-                    { start: 70, end: 80, color: '#22b814' },
-                    { start: 80, end: 90, color: '#22b814' },
-                    { start: 90, end: 100, color: '#22b814' },
-                  ].map((zone, i) => {
-                    const startAngle = Math.PI + (zone.start / 100) * Math.PI;
-                    const endAngle = Math.PI + (zone.end / 100) * Math.PI;
-                    const x1 = 60 + 50 * Math.cos(startAngle);
-                    const y1 = 65 + 50 * Math.sin(startAngle);
-                    const x2 = 60 + 50 * Math.cos(endAngle);
-                    const y2 = 65 + 50 * Math.sin(endAngle);
-                    return <path key={i} d={`M ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2}`} fill="none" stroke={zone.color} strokeWidth="8" strokeLinecap="butt" opacity="0.5" />;
-                  })}
-                  {/* Active arc up to current value */}
-                  {(() => {
-                    const pct = Math.round(parseFloat(pctReady));
-                    const zones = [
-                      { start: 0, end: 40, color: '#ff2244' },
-                      { start: 40, end: 60, color: '#ffff00' },
-                      { start: 60, end: 70, color: '#ffff00' },
-                      { start: 70, end: 80, color: '#22b814' },
-                      { start: 80, end: 90, color: '#22b814' },
-                      { start: 90, end: 100, color: '#22b814' },
-                    ];
-                    return zones.map((zone, i) => {
-                      if (pct <= zone.start) return null;
-                      const fillEnd = Math.min(pct, zone.end);
-                      const startAngle = Math.PI + (zone.start / 100) * Math.PI;
-                      const endAngle = Math.PI + (fillEnd / 100) * Math.PI;
-                      const x1 = 60 + 50 * Math.cos(startAngle);
-                      const y1 = 65 + 50 * Math.sin(startAngle);
-                      const x2 = 60 + 50 * Math.cos(endAngle);
-                      const y2 = 65 + 50 * Math.sin(endAngle);
-                      return <path key={`active-${i}`} d={`M ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2}`} fill="none" stroke={zone.color} strokeWidth="8" strokeLinecap="butt" />;
-                    });
-                  })()}
-                  {/* Tick marks */}
-                  {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => {
-                    const angle = Math.PI + (tick / 100) * Math.PI;
-                    const x1 = 60 + 44 * Math.cos(angle);
-                    const y1 = 65 + 44 * Math.sin(angle);
-                    const x2 = 60 + 56 * Math.cos(angle);
-                    const y2 = 65 + 56 * Math.sin(angle);
-                    return <line key={tick} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(0,212,255,0.3)" strokeWidth="1" />;
-                  })}
-                  {/* Needle */}
-                  {(() => {
-                    const pct = Math.round(parseFloat(pctReady));
-                    const visualPct = pct * 0.88;
-                    const angle = Math.PI + (visualPct / 100) * Math.PI;
-                    const nx = 60 + 38 * Math.cos(angle);
-                    const ny = 65 + 38 * Math.sin(angle);
-                    return <line x1="60" y1="65" x2={nx} y2={ny} stroke="#ffffff" strokeWidth="2" strokeLinecap="round" style={{ filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.6))' }} />;
-                  })()}
-                  {/* Center dot */}
-                  <circle cx="60" cy="65" r="3" fill="#ffffff" style={{ filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.5))' }} />
-                </svg>
-              </div>
-              {(() => {
-                const pct = parseFloat(pctReady);
-                const color = pct < 40 ? '#ff2244' : pct < 70 ? '#ffff00' : '#22b814';
-                return (
-                  <span className="font-orbitron text-[22px] font-black mt-[4px]" style={{ color, textShadow: `0 0 12px ${color}80` }}>
-                    {pctReady}%
-                  </span>
-                );
-              })()}
-              {(() => {
-                const pct = Math.round(parseFloat(pctReady));
-                const color = pct < 40 ? '#ff2244' : pct < 70 ? '#ffff00' : '#22b814';
-                return (
-                  <div className="font-orbitron text-[9px] font-bold mt-[4px] tracking-wider" style={{ color }}>{stats.ready.toLocaleString()} READY</div>
-                );
-              })()}
-              <div className="font-orbitron text-[9px] font-bold mt-[2px] tracking-wider text-cyan-400">{stats.total.toLocaleString()} TOTAL AEDs</div>
-              {lastUpdated && <div className="font-orbitron text-[9px] text-cyan-300/80 tracking-wider mt-[5px]">Last Updated: {lastUpdated}</div>}
+              {/* Dual Gauge */}
+              <svg width="160" height="90" viewBox="0 0 160 90" className="mb-1">
+                <path d="M15 80 A65 65 0 0 1 145 80" fill="none" stroke="#ef4444" strokeWidth="10" strokeLinecap="round" opacity="0.5" />
+                <path d="M35 35 A65 65 0 0 1 80 18" fill="none" stroke="#f59e0b" strokeWidth="10" strokeLinecap="round" opacity="0.5" />
+                <path d="M80 18 A65 65 0 0 1 145 80" fill="none" stroke="#22c55e" strokeWidth="10" strokeLinecap="round" opacity="0.5" />
+                <line x1="80" y1="80" x2="80" y2="30" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" opacity="0.6"
+                  transform={`rotate(${gaugeAngleActual}, 80, 80)`} />
+                <line x1="80" y1="80" x2="80" y2="25" stroke="#22c55e" strokeWidth="3.5" strokeLinecap="round"
+                  transform={`rotate(${gaugeAngleAdjusted}, 80, 80)`} />
+                <circle cx="80" cy="80" r="5" fill="#22c55e" />
+                <circle cx="80" cy="80" r="2.5" fill="white" />
+              </svg>
+              <div className="font-orbitron text-[28px] font-black text-green-400" style={{ textShadow: "0 0 18px rgba(57,255,20,0.5)" }}>{pctAdjusted}%</div>
+              <div className="font-orbitron text-[7px] font-bold text-green-400 tracking-[0.2em]">ADJUSTED READY</div>
+              <div className="font-orbitron text-[13px] font-bold text-slate-400 mt-1">{pctActual}%</div>
+              <div className="font-orbitron text-[7px] text-slate-500 tracking-[0.2em]">ACTUAL READY</div>
+              <div className="font-orbitron text-[9px] text-cyan-400/70 tracking-wider mt-2">{stats.total.toLocaleString()} TOTAL AEDs</div>
+              {lastUpdated && <div className="font-orbitron text-[8px] text-cyan-500/50 tracking-wider mt-1">Last Updated: {lastUpdated}</div>}
               </>
               )}
             </div>

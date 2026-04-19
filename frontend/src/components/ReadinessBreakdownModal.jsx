@@ -69,49 +69,7 @@ export function ReadinessBreakdownModal({ onClose }) {
           <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
         ) : (
           <div className="p-5 space-y-6">
-            {/* ACTUAL READY */}
-            <div className="border border-slate-700/50 bg-slate-900/30 rounded-sm p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="font-orbitron text-[10px] text-slate-400 tracking-wider">ACTUAL SYSTEM READY</div>
-                <div className="font-orbitron text-2xl font-black" style={{ color: parseFloat(pctActual) >= 90 ? "#22c55e" : parseFloat(pctActual) >= 70 ? "#f59e0b" : "#ef4444" }}>
-                  {pctActual}%
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between items-center py-1.5 border-b border-slate-800">
-                  <span className="text-xs text-slate-300">Total AEDs Monitored</span>
-                  <span className="font-orbitron text-sm text-white font-bold">{totalMon.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-center py-1.5 border-b border-slate-800">
-                  <span className="text-xs text-green-400">AEDs Ready</span>
-                  <span className="font-orbitron text-sm text-green-400 font-bold">{totalReady.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-center py-1.5 border-b border-slate-800">
-                  <span className="text-xs text-red-400">AEDs With Issues</span>
-                  <span className="font-orbitron text-sm text-red-400 font-bold">{totalIssues.toLocaleString()}</span>
-                </div>
-
-                {/* Issue breakdown */}
-                <div className="pl-4 space-y-1 pt-1">
-                  {issueRows.map(row => (
-                    <div key={row.label} className="flex justify-between items-center py-0.5">
-                      <span className="text-[11px]" style={{ color: row.color }}>{row.label}</span>
-                      <span className="text-[11px] font-bold" style={{ color: row.color }}>{row.count.toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Calculation */}
-                <div className="mt-3 pt-3 border-t border-slate-700/50">
-                  <div className="text-[10px] text-slate-500 font-mono">
-                    {totalReady.toLocaleString()} ready ÷ {totalMon.toLocaleString()} total = <span className="text-white font-bold">{pctActual}%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ADJUSTED READY */}
+            {/* ADJUSTED READY (first, more prominent) */}
             <div className="border border-green-500/30 bg-green-500/5 rounded-sm p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="font-orbitron text-[10px] text-green-400 tracking-wider">ADJUSTED SYSTEM READY</div>
@@ -122,7 +80,7 @@ export function ReadinessBreakdownModal({ onClose }) {
 
               <div className="space-y-2">
                 <div className="flex justify-between items-center py-1.5 border-b border-green-500/10">
-                  <span className="text-xs text-slate-300">Total Issues (from above)</span>
+                  <span className="text-xs text-slate-300">Total Issues</span>
                   <span className="font-orbitron text-sm text-red-400 font-bold">{totalIssues.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center py-1.5 border-b border-green-500/10">
@@ -164,6 +122,48 @@ export function ReadinessBreakdownModal({ onClose }) {
                     <div>Issues: {totalIssues.toLocaleString()} − {notifiedUnresolved.toLocaleString()} notified = <span className="text-green-400 font-bold">{adjustedIssues.toLocaleString()}</span> adjusted issues</div>
                     <div>Ready: {totalMon.toLocaleString()} − {adjustedIssues.toLocaleString()} = <span className="text-green-400 font-bold">{(totalMon - adjustedIssues).toLocaleString()}</span> adjusted ready</div>
                     <div>{(totalMon - adjustedIssues).toLocaleString()} ÷ {totalMon.toLocaleString()} = <span className="text-green-400 font-bold">{pctAdjusted}%</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ACTUAL READY (second, subdued) */}
+            <div className="border border-slate-700/50 bg-slate-900/30 rounded-sm p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-orbitron text-[10px] text-slate-400 tracking-wider">ACTUAL SYSTEM READY</div>
+                <div className="font-orbitron text-2xl font-black" style={{ color: parseFloat(pctActual) >= 90 ? "#22c55e" : parseFloat(pctActual) >= 70 ? "#f59e0b" : "#ef4444" }}>
+                  {pctActual}%
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-800">
+                  <span className="text-xs text-slate-300">Total AEDs Monitored</span>
+                  <span className="font-orbitron text-sm text-white font-bold">{totalMon.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-800">
+                  <span className="text-xs text-green-400">AEDs Ready</span>
+                  <span className="font-orbitron text-sm text-green-400 font-bold">{totalReady.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-800">
+                  <span className="text-xs text-red-400">AEDs With Issues</span>
+                  <span className="font-orbitron text-sm text-red-400 font-bold">{totalIssues.toLocaleString()}</span>
+                </div>
+
+                {/* Issue breakdown */}
+                <div className="pl-4 space-y-1 pt-1">
+                  {issueRows.map(row => (
+                    <div key={row.label} className="flex justify-between items-center py-0.5">
+                      <span className="text-[11px]" style={{ color: row.color }}>{row.label}</span>
+                      <span className="text-[11px] font-bold" style={{ color: row.color }}>{row.count.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Calculation */}
+                <div className="mt-3 pt-3 border-t border-slate-700/50">
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    {totalReady.toLocaleString()} ready ÷ {totalMon.toLocaleString()} total = <span className="text-white font-bold">{pctActual}%</span>
                   </div>
                 </div>
               </div>
