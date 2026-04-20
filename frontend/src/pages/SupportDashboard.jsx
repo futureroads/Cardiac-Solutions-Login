@@ -1573,6 +1573,27 @@ export default function SupportDashboard({ user, onLogout }) {
         </div>
         <div className="flex items-center gap-3">
           <button
+            onClick={async () => {
+              const email = prompt("Send test email to:");
+              if (!email) return;
+              try {
+                const token = localStorage.getItem("token");
+                const res = await fetch(`${API}/support/test-email`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                  body: JSON.stringify({ to_email: email }),
+                });
+                const d = await res.json();
+                if (d.success) toast.success(d.message);
+                else toast.error(d.message || "Failed to send test email");
+              } catch { toast.error("Failed to send test email"); }
+            }}
+            className="font-orbitron text-[8px] px-3 py-1.5 border border-green-500/30 text-green-400 rounded-sm hover:bg-green-500/10 flex items-center gap-1.5"
+            data-testid="test-email-btn"
+          >
+            <Mail className="w-3 h-3" /> TEST EMAIL
+          </button>
+          <button
             onClick={() => setShowHistory(true)}
             className="font-orbitron text-[8px] px-3 py-1.5 border border-amber-500/30 text-amber-400 rounded-sm hover:bg-amber-500/10 flex items-center gap-1.5"
             data-testid="history-btn"

@@ -1127,6 +1127,45 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
         },
     }
 
+
+@api_router.post("/support/test-email")
+async def send_test_email(data: dict, current_user: dict = Depends(get_current_user)):
+    """Send a test email to verify SendGrid is working."""
+    to_email = data.get("to_email", "")
+    if not to_email:
+        raise HTTPException(status_code=400, detail="to_email is required")
+
+    sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
+    sender = os.environ.get("DISPATCH_SENDER", "no-reply@cardiac-solutions.ai")
+    if not sendgrid_key:
+        raise HTTPException(status_code=500, detail="SendGrid not configured")
+
+    html = """<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#0d1526;border:1px solid rgba(6,182,212,0.3);border-radius:4px;padding:32px;">
+      <div style="color:#06b6d4;font-size:14px;letter-spacing:2px;font-weight:bold;margin-bottom:8px;">CARDIAC SOLUTIONS</div>
+      <div style="color:#22c55e;font-size:18px;font-weight:bold;margin-bottom:16px;">Email Test Successful</div>
+      <div style="color:#94a3b8;font-size:13px;">This is a test email from the Support Dashboard to confirm SendGrid email delivery is working correctly.</div>
+      <div style="color:#475569;font-size:11px;margin-top:24px;padding-top:12px;border-top:1px solid rgba(100,116,139,0.2);">Sent by: {sent_by}</div>
+    </div>""".replace("{sent_by}", current_user.get("username", "unknown"))
+
+    try:
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail
+        message = Mail(
+            from_email=f"Cardiac Solutions <{sender}>",
+            to_emails=[to_email],
+            subject="Cardiac Solutions - Email Test",
+            html_content=html,
+        )
+        sg = SendGridAPIClient(sendgrid_key)
+        resp = sg.send(message)
+        success = resp.status_code in (200, 201, 202)
+        logger.info(f"Test email to {to_email}: SendGrid {resp.status_code}")
+        return {"success": success, "status_code": resp.status_code, "message": f"Test email sent to {to_email}" if success else f"SendGrid returned {resp.status_code}"}
+    except Exception as e:
+        logger.error(f"Test email error: {e}")
+        return {"success": False, "message": str(e)}
+
+
 @api_router.post("/support/send-notification")
 async def send_support_notification(data: dict, current_user: dict = Depends(get_current_user)):
     """Send a notification email to a subscriber about their AED issues."""
