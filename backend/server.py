@@ -1140,34 +1140,37 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
     if not to_email or not subject or not html_body:
         raise HTTPException(status_code=400, detail="Missing required fields: to_email, subject, html_body")
 
-    mailgun_key = os.environ.get("MAILGUN_API_KEY", "")
-    mailgun_domain = os.environ.get("MAILGUN_DOMAIN", "cardiac-solutions.ai")
+    sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
     sender = os.environ.get("DISPATCH_SENDER", "no-reply@cardiac-solutions.ai")
 
-    if not mailgun_key:
-        raise HTTPException(status_code=500, detail="Mailgun not configured")
+    if not sendgrid_key:
+        raise HTTPException(status_code=500, detail="SendGrid not configured")
 
     try:
-        import httpx
-        mg_data = {
-            "from": f"Cardiac Solutions <{sender}>",
-            "to": [to_email],
-            "subject": subject,
-            "html": html_body,
-        }
-        if cc_email:
-            mg_data["cc"] = [e.strip() for e in cc_email.split(",") if e.strip()]
-        if bcc_emails:
-            mg_data["bcc"] = [e.strip() for e in bcc_emails.split(",") if e.strip()]
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail, To, Cc, Bcc
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"https://api.mailgun.net/v3/{mailgun_domain}/messages",
-                auth=("api", mailgun_key),
-                data=mg_data,
-            )
-        success = resp.status_code == 200
-        logger.info(f"Support notification to {to_email} for {subscriber}: {resp.status_code} {resp.text[:200]}")
+        to_list = [To(to_email)]
+        cc_list = [Cc(e.strip()) for e in (cc_email or "").split(",") if e.strip()]
+        bcc_list = [Bcc(e.strip()) for e in (bcc_emails or "").split(",") if e.strip()]
+
+        message = Mail(
+            from_email=f"Cardiac Solutions <{sender}>",
+            to_emails=to_list,
+            subject=subject,
+            html_content=html_body,
+        )
+        if cc_list:
+            for cc in cc_list:
+                message.add_cc(cc)
+        if bcc_list:
+            for bcc in bcc_list:
+                message.add_bcc(bcc)
+
+        sg = SendGridAPIClient(sendgrid_key)
+        resp = sg.send(message)
+        success = resp.status_code in (200, 201, 202)
+        logger.info(f"Support notification to {to_email} for {subscriber}: SendGrid {resp.status_code}")
 
         # Log to DB
         await _db.notification_history.insert_one({
@@ -1179,7 +1182,7 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
             "sent_by": current_user.get("username", ""),
             "sent_at": datetime.now(timezone.utc).isoformat(),
             "success": success,
-            "mailgun_response": resp.text[:500],
+            "email_response": f"SendGrid {resp.status_code}",
         })
 
         # Track each notified AED device in notified_aeds collection
@@ -2860,7 +2863,7 @@ async def dispatch_ticket(ticket_id: str, data: dict, current_user: dict = Depen
     )
     ticket = await _db.service_tickets.find_one({"id": ticket_id}, {"_id": 0})
 
-    # Send dispatch email via Mailgun
+    # Send dispatch email via SendGrid
     email_sent = False
     if tech_email and ticket:
         try:
@@ -2872,14 +2875,14 @@ async def dispatch_ticket(ticket_id: str, data: dict, current_user: dict = Depen
 
 
 async def _send_dispatch_email(ticket: dict, tech_name: str, tech_email: str, dispatch_token: str):
-    """Send styled dispatch email via Mailgun."""
-    import requests as req
+    """Send styled dispatch email via SendGrid."""
+    from sendgrid import SendGridAPIClient
+    from sendgrid.helpers.mail import Mail
 
-    mg_key = os.environ.get("MAILGUN_API_KEY")
-    mg_domain = os.environ.get("MAILGUN_DOMAIN")
-    sender = os.environ.get("DISPATCH_SENDER", f"dispatch@{mg_domain}")
-    if not mg_key or not mg_domain:
-        logger.warning("Mailgun not configured — skipping email")
+    sg_key = os.environ.get("SENDGRID_API_KEY")
+    sender = os.environ.get("DISPATCH_SENDER", "no-reply@cardiac-solutions.ai")
+    if not sg_key:
+        logger.warning("SendGrid not configured — skipping email")
         return False
 
     # Build the tech response URL
@@ -2929,19 +2932,20 @@ async def _send_dispatch_email(ticket: dict, tech_name: str, tech_email: str, di
 </body>
 </html>"""
 
-    resp = req.post(
-        f"https://api.mailgun.net/v3/{mg_domain}/messages",
-        auth=("api", mg_key),
-        data={
-            "from": f"Cardiac Dispatch <{sender}>",
-            "to": [tech_email],
-            "subject": subject,
-            "html": html,
-        },
-        timeout=10,
-    )
-    logger.info(f"Mailgun dispatch email: {resp.status_code} {resp.text[:200]}")
-    return resp.status_code == 200
+    try:
+        message = Mail(
+            from_email=f"Cardiac Dispatch <{sender}>",
+            to_emails=[tech_email],
+            subject=subject,
+            html_content=html,
+        )
+        sg = SendGridAPIClient(sg_key)
+        resp = sg.send(message)
+        logger.info(f"SendGrid dispatch email: {resp.status_code}")
+        return resp.status_code in (200, 201, 202)
+    except Exception as e:
+        logger.error(f"SendGrid dispatch email error: {e}")
+        return False
 
 
 # ---- Public Tech Response Endpoints (no auth required) ----
