@@ -1567,7 +1567,7 @@ export default function SupportDashboard({ user, onLogout }) {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <div className="font-orbitron text-sm tracking-wider text-cyan-400">SUPPORT DASHBOARD</div>
+            <div className="font-orbitron text-sm tracking-wider text-cyan-400">SUPPORT DASHBOARD <span className="text-[9px] text-slate-500 ml-2">v2.4.0</span></div>
             <div className="text-[9px] text-slate-500 font-orbitron tracking-wider">SUBSCRIBER NOTIFICATION CENTER</div>
           </div>
         </div>
