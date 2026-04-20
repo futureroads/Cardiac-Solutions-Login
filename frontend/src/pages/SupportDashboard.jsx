@@ -652,16 +652,17 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {sec.devices.map(d => {
+                      {sec.devices.map((d, idx) => {
                         const loc = [d.site, d.building, d.placement].filter(Boolean).join(" / ") || d.location || "—";
                         const capturedAt = d.captured_at ? new Date(d.captured_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+                        const currentVal = customDetails[d.sentinel_id] !== undefined ? customDetails[d.sentinel_id] : (d.days_summary || d.detailed_status || "—");
                         return (
                           <tr key={d.sentinel_id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setDrawerDevice(d)}>
                             <td className="p-2 border border-slate-200 font-bold text-blue-700 hover:underline">{d.sentinel_id}</td>
                             <td className="p-2 border border-slate-200 text-[11px]">{loc}</td>
                             <td className="p-2 border border-slate-200 text-[11px]">
                               <textarea
-                                value={customDetails[d.sentinel_id] !== undefined ? customDetails[d.sentinel_id] : (d.days_summary || d.detailed_status || "—")}
+                                value={currentVal}
                                 onChange={e => { e.stopPropagation(); setCustomDetails(prev => ({ ...prev, [d.sentinel_id]: e.target.value })); }}
                                 onClick={e => e.stopPropagation()}
                                 onMouseDown={e => e.stopPropagation()}
@@ -670,6 +671,21 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                                 rows={2}
                                 data-testid={`edit-details-${d.sentinel_id}`}
                               />
+                              {idx === 0 && sec.devices.length > 1 && (
+                                <button
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    const val = customDetails[d.sentinel_id] !== undefined ? customDetails[d.sentinel_id] : (d.days_summary || d.detailed_status || "—");
+                                    const updates = {};
+                                    sec.devices.forEach(dev => { updates[dev.sentinel_id] = val; });
+                                    setCustomDetails(prev => ({ ...prev, ...updates }));
+                                  }}
+                                  className="mt-1 text-[9px] px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold"
+                                  data-testid="apply-to-all-btn"
+                                >
+                                  Apply to All ({sec.devices.length})
+                                </button>
+                              )}
                             </td>
                             <td className="p-2 border border-slate-200 text-[10px] text-center">
                               <div>Batt: {d.battery_expiration || "—"}</div>
