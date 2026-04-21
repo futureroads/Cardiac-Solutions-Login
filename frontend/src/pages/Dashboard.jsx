@@ -364,13 +364,14 @@ export default function Dashboard({ user, onLogout }) {
     const cd = liveStats?.totals?.telemetry_distribution?.cellular || {};
 
     // Percent Ready daily trend event
-    const trend = liveStats?._pct_trend;
-    if (trend === 'up') {
-      items.push({ type: 'INFO', msg: 'GOOD JOB! The percent ready has improved since yesterday!' });
-    } else if (trend === 'down') {
-      items.push({ type: 'INFO', msg: 'The percent ready has slipped today. You might want to review the statuses.' });
-    } else if (trend === 'stable') {
-      items.push({ type: 'INFO', msg: 'Percent ready is stable.' });
+    const todayPct = totals.percent_ready;
+    const prevPct = totals.prev_percent_ready;
+    if (todayPct != null && prevPct != null) {
+      const diff = (todayPct - prevPct).toFixed(1);
+      const absDiff = Math.abs(diff);
+      if (todayPct > prevPct) items.push({ type: 'INFO', msg: `GOOD JOB! Percent ready improved from ${prevPct}% yesterday to ${todayPct}% today (+${absDiff}%).` });
+      else if (todayPct < prevPct) items.push({ type: 'INFO', msg: `Percent ready slipped from ${prevPct}% yesterday to ${todayPct}% today (-${absDiff}%). You might want to review the statuses.` });
+      else items.push({ type: 'INFO', msg: `Percent ready is stable at ${todayPct}% (same as yesterday).` });
     }
 
     // Camera Battery events

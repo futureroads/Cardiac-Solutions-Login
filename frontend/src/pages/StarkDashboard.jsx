@@ -204,10 +204,15 @@ export default function StarkDashboard({ user, onLogout }) {
     const items = [];
     const bd = totals.telemetry_distribution?.battery || {};
     const cd = totals.telemetry_distribution?.cellular || {};
-    const trend = liveStats?._pct_trend;
-    if (trend === "up") items.push({ type: "INFO", msg: "GOOD JOB! The percent ready has improved since yesterday!" });
-    else if (trend === "down") items.push({ type: "INFO", msg: "The percent ready has slipped today. You might want to review the statuses." });
-    else if (trend === "stable") items.push({ type: "INFO", msg: "Percent ready is stable." });
+    const todayPct = totals.percent_ready;
+    const prevPct = totals.prev_percent_ready;
+    if (todayPct != null && prevPct != null) {
+      const diff = (todayPct - prevPct).toFixed(1);
+      const absDiff = Math.abs(diff);
+      if (todayPct > prevPct) items.push({ type: "INFO", msg: `GOOD JOB! Percent ready improved from ${prevPct}% yesterday to ${todayPct}% today (+${absDiff}%).` });
+      else if (todayPct < prevPct) items.push({ type: "INFO", msg: `Percent ready slipped from ${prevPct}% yesterday to ${todayPct}% today (-${absDiff}%). You might want to review the statuses.` });
+      else items.push({ type: "INFO", msg: `Percent ready is stable at ${todayPct}% (same as yesterday).` });
+    }
     if (diPerms.camera_battery === "overview") {
       const t = (bd.p0_24 || 0) + (bd.p25_49 || 0) + (bd.p50_74 || 0) + (bd.p75_100 || 0);
       items.push({ type: "SYS", msg: `CAMERA BATTERY OVERVIEW: ${t} total - P0-24: ${bd.p0_24 || 0}, P25-49: ${bd.p25_49 || 0}, P50-74: ${bd.p50_74 || 0}, P75-100: ${bd.p75_100 || 0}` });
