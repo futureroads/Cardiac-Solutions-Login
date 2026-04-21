@@ -836,29 +836,34 @@ function StatusFeedbackModal({ device, subscriber, onClose }) {
   );
 }
 
-function ImageHistoryModal({ sentinelId, onClose }) {
+function ImageHistoryModal({ sentinelId, subscriber, onClose }) {
   const [images, setImages] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [limit, setLimit] = useState(5);
+  const [skip, setSkip] = useState(0);
+  const limit = 10;
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
         const token = localStorage.getItem("token");
-        const res = await fetch(`${API}/support/aed-image-history/${encodeURIComponent(sentinelId)}?limit=${limit}`, {
+        const res = await fetch(`${API}/support/aed-image-history/${encodeURIComponent(subscriber || "unknown")}/${encodeURIComponent(sentinelId)}?limit=${limit}&skip=${skip}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
           const data = await res.json();
-          setImages(data.images || []);
+          if (skip === 0) {
+            setImages(data.images || []);
+          } else {
+            setImages(prev => [...prev, ...(data.images || [])]);
+          }
           setTotal(data.total || 0);
         }
       } catch {}
       setLoading(false);
     })();
-  }, [sentinelId, limit]);
+  }, [sentinelId, subscriber, skip]);
 
   return (
     <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center" onClick={onClose}>
@@ -900,7 +905,8 @@ function ImageHistoryModal({ sentinelId, onClose }) {
                       <div className="flex items-center py-2">
                         <div>
                           <div className="text-[11px] text-slate-200 font-mono">{date}</div>
-                          {img.status && <div className="text-[9px] text-slate-500 mt-0.5">{img.status}</div>}
+                          {img.status && <div className="text-[9px] text-amber-400 font-bold mt-0.5">{img.status}</div>}
+                          {img.confidence != null && <div className="text-[8px] text-slate-500 mt-0.5">Confidence: {(img.confidence * 100).toFixed(0)}%</div>}
                         </div>
                       </div>
                     </div>
@@ -910,10 +916,10 @@ function ImageHistoryModal({ sentinelId, onClose }) {
               {images.length < total && (
                 <div className="mt-3 text-center">
                   <button
-                    onClick={() => setLimit(prev => prev + 20)}
+                    onClick={() => setSkip(images.length)}
                     className="font-orbitron text-[8px] px-4 py-1.5 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10"
                   >
-                    Load {Math.min(20, total - images.length)} more
+                    Load more ({total - images.length} remaining)
                   </button>
                 </div>
               )}
@@ -1142,7 +1148,7 @@ function DeviceListModal({ subscriber, issueType, onClose }) {
           )}
         </div>
         {feedbackDevice && <StatusFeedbackModal device={feedbackDevice} subscriber={subscriber} onClose={() => setFeedbackDevice(null)} />}
-        {imageHistoryId && <ImageHistoryModal sentinelId={imageHistoryId} onClose={() => setImageHistoryId(null)} />}
+        {imageHistoryId && <ImageHistoryModal sentinelId={imageHistoryId} subscriber={subscriber} onClose={() => setImageHistoryId(null)} />}
       </div>
     </div>
   );

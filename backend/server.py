@@ -1737,55 +1737,36 @@ async def aed_image_proxy(sentinel_id: str, current_user: dict = Depends(get_cur
         return {"_error": str(e)}
 
 
-@api_router.get("/support/aed-image-history/{sentinel_id}")
-async def get_aed_image_history(sentinel_id: str, limit: int = 25, current_user: dict = Depends(get_current_user)):
-    """Get stored image history for a device, most recent first."""
-    images = []
-    async for doc in _db.aed_image_history.find(
-        {"sentinel_id": sentinel_id}, {"_id": 0}
-    ).sort("captured_at", -1).limit(limit):
-        images.append(doc)
-    total = await _db.aed_image_history.count_documents({"sentinel_id": sentinel_id})
-    # Also fetch current live image and store if new
-    import httpx
+@api_router.get("/support/aed-image-history/{subscriber}/{sentinel_id}")
+async def get_aed_image_history(subscriber: str, sentinel_id: str, limit: int = 20, skip: int = 0, days: int = 90, current_user: dict = Depends(get_current_user)):
+    """Proxy image history from Readisys review API."""
+    import httpx, urllib.parse
     headers = _readisys_auth_headers()
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        enc_sub = urllib.parse.quote(subscriber)
+        async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.get(
-                f"https://readisys.survivalpath.ai/api/voice/aed/{sentinel_id}/last-image",
+                f"https://readisys.survivalpath.ai/api/review/devices/{enc_sub}/{sentinel_id}/image-history?limit={limit}&skip={skip}&days={days}",
                 headers=headers,
             )
             if resp.status_code == 200:
                 data = resp.json()
-                img = data.get("image", {})
-                job_id = img.get("job_id", "")
-                captured_at = img.get("captured_at", "")
-                s3_url = img.get("s3_url", "")
-                if job_id and s3_url:
-                    import urllib.parse
-                    proxy_url = f"https://readisys.survivalpath.ai/api/aed-images/download?url={urllib.parse.quote(s3_url)}"
-                    existing = await _db.aed_image_history.find_one({"sentinel_id": sentinel_id, "job_id": job_id})
-                    if not existing:
-                        await _db.aed_image_history.insert_one({
-                            "sentinel_id": sentinel_id,
-                            "subscriber": data.get("subscriber", ""),
-                            "job_id": job_id,
-                            "captured_at": captured_at,
-                            "s3_url": s3_url,
-                            "proxy_url": proxy_url,
-                            "status": data.get("status", ""),
-                            "stored_at": datetime.now(timezone.utc).isoformat(),
-                        })
-                        # Refresh the list
-                        images = []
-                        async for doc in _db.aed_image_history.find(
-                            {"sentinel_id": sentinel_id}, {"_id": 0}
-                        ).sort("captured_at", -1).limit(limit):
-                            images.append(doc)
-                        total = await _db.aed_image_history.count_documents({"sentinel_id": sentinel_id})
+                images = data.get("images", [])
+                for img in images:
+                    s3 = img.get("s3_url", "")
+                    if s3:
+                        img["proxy_url"] = f"https://readisys.survivalpath.ai/api/aed-images/download?url={urllib.parse.quote(s3)}"
+                return {
+                    "images": images,
+                    "total": data.get("total_count", len(images)),
+                    "sentinel_id": sentinel_id,
+                    "subscriber": subscriber,
+                    "days": data.get("days", days),
+                }
+            return {"images": [], "total": 0, "sentinel_id": sentinel_id, "_error": resp.status_code}
     except Exception as e:
-        logger.warning(f"Failed to fetch live image for {sentinel_id}: {e}")
-    return {"images": images, "total": total, "sentinel_id": sentinel_id}
+        logger.warning(f"Image history error for {sentinel_id}: {e}")
+        return {"images": [], "total": 0, "sentinel_id": sentinel_id, "_error": str(e)}
 
 
 
