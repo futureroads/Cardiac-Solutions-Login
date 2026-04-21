@@ -1656,17 +1656,43 @@ async def get_device_notes(sentinel_id: str, current_user: dict = Depends(get_cu
 
 @api_router.put("/support/device-notes/{sentinel_id}")
 async def save_device_notes(sentinel_id: str, data: dict, current_user: dict = Depends(get_current_user)):
-    """Save or update notes for a device."""
+    """Save or update notes for a device. Also forwards to Readisys internal-comments API."""
+    subscriber = data.get("subscriber", "")
+    comment = data.get("notes", "")
+    username = current_user.get("username", "")
+
+    # Save locally
     await _db.device_notes.update_one(
         {"sentinel_id": sentinel_id},
         {"$set": {
             "sentinel_id": sentinel_id,
-            "notes": data.get("notes", ""),
-            "updated_by": current_user.get("username", ""),
+            "notes": comment,
+            "updated_by": username,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }},
         upsert=True,
     )
+
+    # Forward to Readisys internal-comments API
+    if subscriber and comment:
+        import httpx, urllib.parse
+        headers = _readisys_auth_headers()
+        headers["Content-Type"] = "application/json"
+        enc_sub = urllib.parse.quote(subscriber)
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(
+                    f"https://readisys.survivalpath.ai/api/aed-devices/by-subscriber/{enc_sub}/{sentinel_id}/internal-comments",
+                    json={"comment": comment, "author": username},
+                    headers=headers,
+                )
+                if resp.status_code in (200, 201):
+                    logger.info(f"Internal comment synced to Readisys for {sentinel_id}: {resp.status_code}")
+                else:
+                    logger.warning(f"Readisys internal-comments returned {resp.status_code} for {sentinel_id}")
+        except Exception as e:
+            logger.warning(f"Failed to sync internal comment for {sentinel_id}: {e}")
+
     return {"success": True}
 
 

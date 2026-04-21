@@ -998,7 +998,7 @@ function DeviceListModal({ subscriber, issueType, onClose }) {
       await fetch(`${API}/support/device-notes/${sentinelId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ notes: deviceNotes[sentinelId] || "" }),
+        body: JSON.stringify({ notes: deviceNotes[sentinelId] || "", subscriber }),
       });
       toast.success("Comment saved");
     } catch { toast.error("Failed to save"); }
