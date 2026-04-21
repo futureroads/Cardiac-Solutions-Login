@@ -63,6 +63,8 @@ export default function StarkDashboard({ user, onLogout }) {
   const [ticketCounts, setTicketCounts] = useState(null);
   // Readiness data (actual + adjusted from support dashboard-data)
   const [readiness, setReadiness] = useState(null);
+  // Notifications sent today
+  const [notifToday, setNotifToday] = useState(0);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -156,6 +158,19 @@ export default function StarkDashboard({ user, onLogout }) {
     })();
   }, [token]);
 
+  // Fetch notifications sent today (refresh every 60s)
+  useEffect(() => {
+    const fetchNotifCount = async () => {
+      try {
+        const res = await fetch(`${API}/support/notifications-today-count`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) { const d = await res.json(); setNotifToday(d.count || 0); }
+      } catch {}
+    };
+    fetchNotifCount();
+    const i = setInterval(fetchNotifCount, 60000);
+    return () => clearInterval(i);
+  }, [token]);
+
   // Map helpers
   const geoSubs = mapSubs;
   const fitAll = useCallback(() => {
@@ -213,6 +228,7 @@ export default function StarkDashboard({ user, onLogout }) {
       else if (todayPct < prevPct) items.push({ type: "INFO", msg: `Percent ready slipped from ${prevPct}% yesterday to ${todayPct}% today (-${absDiff}%). You might want to review the statuses.` });
       else items.push({ type: "INFO", msg: `Percent ready is stable at ${todayPct}% (same as yesterday).` });
     }
+    items.push({ type: "SYS", msg: `SUBSCRIBER NOTIFICATIONS: ${notifToday} email${notifToday !== 1 ? "s" : ""} sent today.` });
     if (diPerms.camera_battery === "overview") {
       const t = (bd.p0_24 || 0) + (bd.p25_49 || 0) + (bd.p50_74 || 0) + (bd.p75_100 || 0);
       items.push({ type: "SYS", msg: `CAMERA BATTERY OVERVIEW: ${t} total - P0-24: ${bd.p0_24 || 0}, P25-49: ${bd.p25_49 || 0}, P50-74: ${bd.p50_74 || 0}, P75-100: ${bd.p75_100 || 0}` });

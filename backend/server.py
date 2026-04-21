@@ -1266,6 +1266,15 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
 
 
 @api_router.get("/support/notification-history")
+
+@api_router.get("/support/notifications-today-count")
+async def notifications_today_count(current_user: dict = Depends(get_current_user)):
+    """Count notification emails sent today."""
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    count = await _db.notification_history.count_documents({"sent_at": {"$gte": today_start}})
+    return {"count": count, "date": today_start[:10]}
+
+
 async def get_notification_history(subscriber: str = None, current_user: dict = Depends(get_current_user)):
     """Get notification history, optionally filtered by subscriber."""
     query = {}

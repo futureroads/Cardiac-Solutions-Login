@@ -119,6 +119,21 @@ export default function Dashboard({ user, onLogout }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [diScrollPct, setDiScrollPct] = useState(0);
+
+  // Fetch notifications sent today (refresh every 60s)
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    const fetchNotifCount = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/support/notifications-today-count`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) { const d = await res.json(); setNotifToday(d.count || 0); }
+      } catch {}
+    };
+    fetchNotifCount();
+    const i = setInterval(fetchNotifCount, 60000);
+    return () => clearInterval(i);
+  }, []);
   const diRef = useRef(null);
   const diTouchTimer = useRef(null);
   const diTrackRef = useRef(null);
@@ -172,6 +187,7 @@ export default function Dashboard({ user, onLogout }) {
   const [statusError, setStatusError] = useState(null);
   const [showReadinessBreakdown, setShowReadinessBreakdown] = useState(false);
   const [readiness, setReadiness] = useState(null);
+  const [notifToday, setNotifToday] = useState(0);
 
   const token = localStorage.getItem("token") || "";
 
@@ -373,6 +389,7 @@ export default function Dashboard({ user, onLogout }) {
       else if (todayPct < prevPct) items.push({ type: 'INFO', msg: `Percent ready slipped from ${prevPct}% yesterday to ${todayPct}% today (-${absDiff}%). You might want to review the statuses.` });
       else items.push({ type: 'INFO', msg: `Percent ready is stable at ${todayPct}% (same as yesterday).` });
     }
+    items.push({ type: 'SYS', msg: `SUBSCRIBER NOTIFICATIONS: ${notifToday} email${notifToday !== 1 ? 's' : ''} sent today.` });
 
     // Camera Battery events
     if (diPerms.camera_battery === 'overview') {
