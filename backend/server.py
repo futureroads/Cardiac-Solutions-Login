@@ -1227,6 +1227,7 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
             "cc_email": cc_email,
             "bcc_emails": bcc_emails,
             "subject": subject,
+            "html_body": html_body,
             "sent_by": current_user.get("username", ""),
             "sent_at": datetime.now(timezone.utc).isoformat(),
             "success": success,
@@ -1293,6 +1294,42 @@ async def notifications_today_count(current_user: dict = Depends(get_current_use
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     count = await _db.notification_history.count_documents({"sent_at": {"$gte": today_start}})
     return {"count": count, "date": today_start[:10]}
+
+
+
+@api_router.get("/support/notification-history/{history_id}")
+async def get_single_notification(history_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a single notification including HTML body."""
+    from bson import ObjectId
+    try:
+        doc = await _db.notification_history.find_one({"_id": ObjectId(history_id)})
+        if not doc:
+            raise HTTPException(status_code=404, detail="Not found")
+        doc["id"] = str(doc.pop("_id"))
+        return doc
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@api_router.get("/support/device-notification-history/{sentinel_id}")
+async def get_device_notification_history(sentinel_id: str, current_user: dict = Depends(get_current_user)):
+    """Get notification history for a specific AED device from notified_aeds collection."""
+    doc = await _db.notified_aeds.find_one({"sentinel_id": sentinel_id}, {"_id": 0})
+    if not doc:
+        return {"sentinel_id": sentinel_id, "notified": False, "notification_dates": []}
+    return {
+        "sentinel_id": sentinel_id,
+        "notified": True,
+        "subscriber": doc.get("subscriber", ""),
+        "issue_type": doc.get("issue_type", ""),
+        "first_notified_at": doc.get("first_notified_at", ""),
+        "last_notified_at": doc.get("last_notified_at", ""),
+        "notification_dates": doc.get("notification_dates", []),
+        "notification_count": len(doc.get("notification_dates", [])),
+        "current_status": doc.get("current_status", ""),
+        "resolved": doc.get("resolved", False),
+        "resolved_at": doc.get("resolved_at"),
+    }
 
 
 @api_router.put("/support/notification-history/{history_id}/status")

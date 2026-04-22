@@ -190,11 +190,13 @@ function NotificationHistoryModal({ onClose }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
-  const [sortBy, setSortBy] = useState("date"); // "date" or "alpha"
+  const [sortBy, setSortBy] = useState("date");
   const [editingId, setEditingId] = useState(null);
   const [editStatus, setEditStatus] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [viewEmail, setViewEmail] = useState(null);
+  const [loadingEmail, setLoadingEmail] = useState(false);
 
   const statusOptions = [
     { value: "SENT", label: "SENT", bg: "bg-green-500/15", text: "text-green-400" },
@@ -247,6 +249,19 @@ function NotificationHistoryModal({ onClose }) {
     return statusOptions.find(s => s.value === status) || statusOptions[0];
   };
 
+  const openEmail = async (id) => {
+    setLoadingEmail(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API}/support/notification-history/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setViewEmail(await res.json());
+      else toast.error("Could not load email");
+    } catch { toast.error("Failed to load email"); }
+    setLoadingEmail(false);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
       <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[900px] max-w-[95vw] max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="history-modal">
@@ -296,6 +311,7 @@ function NotificationHistoryModal({ onClose }) {
                   <th className="text-left p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider">SENT BY</th>
                   <th className="text-left p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider">DATE</th>
                   <th className="text-center p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider">STATUS</th>
+                  <th className="text-center p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider w-16">VIEW</th>
                 </tr>
               </thead>
               <tbody>
@@ -308,7 +324,7 @@ function NotificationHistoryModal({ onClose }) {
                   const isEditing = editingId === h.id;
                   return (
                     <tr key={h.id || i} className={`border-b border-slate-800/50 ${i % 2 === 0 ? "bg-transparent" : "bg-slate-900/20"}`}>
-                      <td className="p-2 font-orbitron text-[10px] text-white">{h.subscriber || "—"}</td>
+                      <td className="p-2 font-orbitron text-[10px] text-cyan-400 cursor-pointer hover:underline" onClick={() => openEmail(h.id)}>{h.subscriber || "—"}</td>
                       <td className="p-2 text-slate-300 text-[10px]">{h.to_email || "—"}</td>
                       <td className="p-2 text-slate-300 text-[10px] max-w-[200px] truncate">{h.subject || "—"}</td>
                       <td className="p-2 text-slate-400 text-[10px]">{h.sent_by || "—"}</td>
@@ -362,6 +378,15 @@ function NotificationHistoryModal({ onClose }) {
                           <div className="text-[8px] text-slate-500 mt-0.5 italic truncate max-w-[120px] mx-auto" title={h.status_notes}>{h.status_notes}</div>
                         )}
                       </td>
+                      <td className="p-2 text-center">
+                        <button
+                          onClick={() => openEmail(h.id)}
+                          className="font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10"
+                          data-testid={`view-email-${i}`}
+                        >
+                          {loadingEmail ? <Loader2 className="w-3 h-3 animate-spin" /> : "VIEW"}
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -369,6 +394,38 @@ function NotificationHistoryModal({ onClose }) {
             </table>
           )}
         </div>
+
+        {/* Email Viewer */}
+        {viewEmail && (
+          <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center" onClick={() => setViewEmail(null)}>
+            <div className="bg-white rounded-sm w-[800px] max-w-[95vw] max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="email-viewer">
+              <div className="p-4 border-b border-slate-200 flex justify-between items-center flex-shrink-0 bg-slate-50">
+                <div>
+                  <div className="text-sm font-bold text-slate-800">{viewEmail.subject || "Email"}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    To: {viewEmail.to_email} {viewEmail.cc_email && <span>| CC: {viewEmail.cc_email}</span>}
+                  </div>
+                  <div className="text-xs text-slate-400 mt-0.5">
+                    Sent {viewEmail.sent_at ? new Date(viewEmail.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—"} by {viewEmail.sent_by || "—"}
+                  </div>
+                </div>
+                <button onClick={() => setViewEmail(null)} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {viewEmail.html_body ? (
+                  <iframe
+                    srcDoc={viewEmail.html_body}
+                    title="Email Preview"
+                    className="w-full h-full min-h-[500px] border-0"
+                    sandbox="allow-same-origin"
+                  />
+                ) : (
+                  <div className="p-8 text-center text-slate-400 text-sm">Email body not available. This email was sent before email content storage was enabled.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -953,6 +1010,7 @@ function DeviceListModal({ subscriber, issueType, onClose }) {
   const [imageHistoryId, setImageHistoryId] = useState(null);
   const [deviceDetails, setDeviceDetails] = useState({});
   const [deviceNotes, setDeviceNotes] = useState({});
+  const [deviceNotifHistory, setDeviceNotifHistory] = useState({});
   const [savingNote, setSavingNote] = useState(null);
 
   const issueLabels = { expired_bp: "EXPIRED B/P", expiring_bp: "EXPIRING BATT/PADS", not_ready: "NOT READY", reposition: "REPOSITION", not_present: "NOT PRESENT", unknown: "UNKNOWN" };
@@ -997,6 +1055,16 @@ function DeviceListModal({ subscriber, issueType, onClose }) {
               if (notesRes.ok) {
                 const n = await notesRes.json();
                 setDeviceNotes(prev => ({ ...prev, [d.sentinel_id]: n.notes || "" }));
+              }
+            } catch {}
+            // Fetch notification history for this device
+            try {
+              const nhRes = await fetch(`${API}/support/device-notification-history/${d.sentinel_id}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              if (nhRes.ok) {
+                const nh = await nhRes.json();
+                setDeviceNotifHistory(prev => ({ ...prev, [d.sentinel_id]: nh }));
               }
             } catch {}
           });
@@ -1137,6 +1205,36 @@ function DeviceListModal({ subscriber, issueType, onClose }) {
                         <div className="text-slate-300 text-xs leading-relaxed">{det.detailed_status_explanation}</div>
                       </div>
                     )}
+
+                    {/* Notification History for this AED */}
+                    {(() => {
+                      const nh = deviceNotifHistory[d.sentinel_id];
+                      if (!nh || !nh.notified) return null;
+                      return (
+                        <div className="mt-4">
+                          <div className="font-orbitron text-[9px] text-amber-400 tracking-wider mb-1.5 uppercase">Notification History ({nh.notification_count} sent)</div>
+                          <div className="space-y-1.5">
+                            {(nh.notification_dates || []).map((nd, idx) => {
+                              const d2 = nd.date ? new Date(nd.date).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+                              return (
+                                <div key={idx} className="flex items-center gap-2 text-xs">
+                                  <div className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                                  <span className="text-slate-300">{d2}</span>
+                                  <span className="text-slate-500">by {nd.sent_by || "—"}</span>
+                                </div>
+                              );
+                            })}
+                            {nh.resolved && (
+                              <div className="flex items-center gap-2 text-xs mt-1">
+                                <div className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
+                                <span className="text-green-400 font-bold">Resolved</span>
+                                {nh.resolved_at && <span className="text-slate-500">{new Date(nh.resolved_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Internal Comments */}
                     <div className="mt-4">
