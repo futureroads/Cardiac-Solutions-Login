@@ -228,21 +228,20 @@ export default function StarkDashboard({ user, onLogout }) {
     if (todayPct != null && prevPct != null) {
       const diff = (todayPct - prevPct).toFixed(1);
       const absDiff = Math.abs(diff);
-      if (todayPct > prevPct) items.push({ type: "INFO", msg: `GOOD JOB! Percent ready improved from ${prevPct}% yesterday to ${todayPct}% today (+${absDiff}%).` });
-      else if (todayPct < prevPct) items.push({ type: "INFO", msg: `Percent ready slipped from ${prevPct}% yesterday to ${todayPct}% today (-${absDiff}%). You might want to review the statuses.` });
-      else items.push({ type: "INFO", msg: `Percent ready is stable at ${todayPct}% (same as yesterday).` });
+      if (todayPct > prevPct) items.push({ type: "INFO", msg: `GOOD JOB! Percent ready improved from ${Number(prevPct).toFixed(1)}% yesterday to ${Number(todayPct).toFixed(1)}% today (+${absDiff}%).` });
+      else if (todayPct < prevPct) items.push({ type: "INFO", msg: `Percent ready slipped from ${Number(prevPct).toFixed(1)}% yesterday to ${Number(todayPct).toFixed(1)}% today (-${absDiff}%). You might want to review the statuses.` });
+      else items.push({ type: "INFO", msg: `Percent ready is stable at ${Number(todayPct).toFixed(1)}% (same as yesterday).` });
     }
     items.push({ type: "SYS", msg: `SUBSCRIBER NOTIFICATIONS: ${notifToday} email${notifToday !== 1 ? "s" : ""} sent today.` });
     if (diPerms.camera_battery === "overview") {
-      const t = (bd.p0_24 || 0) + (bd.p25_49 || 0) + (bd.p50_74 || 0) + (bd.p75_100 || 0);
-      items.push({ type: "SYS", msg: `CAMERA BATTERY OVERVIEW: ${t} total - P0-24: ${bd.p0_24 || 0}, P25-49: ${bd.p25_49 || 0}, P50-74: ${bd.p50_74 || 0}, P75-100: ${bd.p75_100 || 0}` });
+      items.push({ type: "SYS", msg: `POTENTIAL CAMERA BATTERY ISSUES: P0-24: ${bd.p0_24 || 0}, P25-49: ${bd.p25_49 || 0}` });
     } else if (diPerms.camera_battery === "details") {
       if (bd.p0_24 > 0) items.push({ type: "ACT", msg: `CAMERA BATTERY P0-P24: ${bd.p0_24} devices at critical battery level.` });
       if (bd.p25_49 > 0) items.push({ type: "WARN", msg: `CAMERA BATTERY P25-P49: ${bd.p25_49} devices at low battery level.` });
     }
     if (diPerms.camera_cellular === "overview") {
       const cc = bpData?.totals?.camera_cellular || cd;
-      items.push({ type: "SYS", msg: `CAMERA CELLULAR OVERVIEW: HIGH: ${cc.HIGH || 0}, MEDIUM: ${cc.MEDIUM || 0}, LOW: ${cc.LOW || 0}, BAD: ${cc.BAD || 0}` });
+      items.push({ type: "SYS", msg: `POTENTIAL CAMERA CELLULAR ISSUES: LOW: ${cc.LOW || 0}, BAD: ${cc.BAD || 0}` });
     } else if (diPerms.camera_cellular === "details") {
       const cc = bpData?.totals?.camera_cellular || cd;
       if ((cc.BAD || 0) > 0) items.push({ type: "ACT", msg: `CAMERA CELLULAR BAD: ${cc.BAD} devices with no signal.` });
