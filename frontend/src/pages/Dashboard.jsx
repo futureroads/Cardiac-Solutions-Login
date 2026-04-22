@@ -474,7 +474,7 @@ export default function Dashboard({ user, onLogout }) {
     aiRecommendations.forEach((rec, i) => {
       items.push({ ...rec, _key: `a-${i}` });
     });
-    items.push({ type: '_DIVIDER', msg: '', _key: 'divider' });
+    items.push({ type: '_DIVIDER', msg: 'Latest Decision Intelligence Messages', _key: 'divider' });
     aiRecommendations.forEach((rec, i) => {
       items.push({ ...rec, _key: `b-${i}` });
     });
@@ -845,7 +845,7 @@ export default function Dashboard({ user, onLogout }) {
                     rec.type === '_DIVIDER' ? (
                       <div key={rec._key} className="flex items-center gap-3 py-[16px] my-[6px]">
                         <div className="flex-1 h-[3px]" style={{ background: 'linear-gradient(to right, transparent 5%, #f59e0b 30%, #f59e0b 70%, transparent 95%)' }} />
-                        <span className="font-orbitron text-[11px] text-yellow-400 tracking-[0.3em] flex-shrink-0 font-bold" style={{ textShadow: '0 0 10px rgba(245,158,11,0.6)' }}>EVENTS REPEAT</span>
+                        <span className="font-orbitron text-[11px] text-yellow-400 tracking-[0.3em] flex-shrink-0 font-bold" style={{ textShadow: '0 0 10px rgba(245,158,11,0.6)' }}>Latest Decision Intelligence Messages</span>
                         <div className="flex-1 h-[3px]" style={{ background: 'linear-gradient(to right, transparent 5%, #f59e0b 30%, #f59e0b 70%, transparent 95%)' }} />
                       </div>
                     ) : (
@@ -1187,7 +1187,7 @@ export default function Dashboard({ user, onLogout }) {
                     rec.type === '_DIVIDER' ? (
                       <div key={rec._key} className="flex items-center gap-3 py-[16px] my-[6px]">
                         <div className="flex-1 h-[3px]" style={{ background: 'linear-gradient(to right, transparent 5%, #f59e0b 30%, #f59e0b 70%, transparent 95%)' }} />
-                        <span className="font-orbitron text-[11px] text-yellow-400 tracking-[0.3em] flex-shrink-0 font-bold" style={{ textShadow: '0 0 10px rgba(245,158,11,0.6)' }}>EVENTS REPEAT</span>
+                        <span className="font-orbitron text-[11px] text-yellow-400 tracking-[0.3em] flex-shrink-0 font-bold" style={{ textShadow: '0 0 10px rgba(245,158,11,0.6)' }}>Latest Decision Intelligence Messages</span>
                         <div className="flex-1 h-[3px]" style={{ background: 'linear-gradient(to right, transparent 5%, #f59e0b 30%, #f59e0b 70%, transparent 95%)' }} />
                       </div>
                     ) : (

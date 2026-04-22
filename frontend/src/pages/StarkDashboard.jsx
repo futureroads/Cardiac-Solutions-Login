@@ -288,7 +288,7 @@ export default function StarkDashboard({ user, onLogout }) {
     return items.length > 0 ? items : [{ type: "SYS", msg: "No device alerts at this time." }];
   })();
   const isLoadingDi = !liveStats && !bpData;
-  const diList = isLoadingDi ? aiRecs.map((r, i) => ({ ...r, _key: `a-${i}` })) : [...aiRecs.map((r, i) => ({ ...r, _key: `a-${i}` })), { type: "_DIVIDER", msg: "", _key: "div" }, ...aiRecs.map((r, i) => ({ ...r, _key: `b-${i}` }))];
+  const diList = isLoadingDi ? aiRecs.map((r, i) => ({ ...r, _key: `a-${i}` })) : [...aiRecs.map((r, i) => ({ ...r, _key: `a-${i}` })), { type: "_DIVIDER", msg: "Latest Decision Intelligence Messages", _key: "div" }, ...aiRecs.map((r, i) => ({ ...r, _key: `b-${i}` }))];
   const scrollDur = Math.max(60, diList.length * 3);
   const typeColor = (t) => t === "ACT" ? "text-red-400" : t === "WARN" ? "text-yellow-400" : t === "INFO" ? "text-green-400" : t === "ERR" ? "text-red-500" : "text-cyan-400/80";
 
@@ -506,7 +506,11 @@ export default function StarkDashboard({ user, onLogout }) {
             <div className="overflow-hidden" style={{ height: 150 }}>
               <div className="space-y-[4px]" style={{ animation: diPaused ? "none" : `diScroll ${scrollDur}s linear infinite` }}>
                 {diList.map((rec) => rec.type === "_DIVIDER" ? (
-                  <div key={rec._key} className="border-t border-cyan-500/10 my-1" />
+                  <div key={rec._key} className="flex items-center gap-2 my-3">
+                    <div className="flex-1 border-t border-cyan-500/20" />
+                    <span className="font-orbitron text-[7px] text-cyan-500/40 tracking-wider whitespace-nowrap">{rec.msg}</span>
+                    <div className="flex-1 border-t border-cyan-500/20" />
+                  </div>
                 ) : (
                   <div key={rec._key} className="flex gap-2 items-start py-[3px]">
                     <span className={`font-orbitron text-[8px] font-bold tracking-wider flex-shrink-0 mt-[1px] px-[4px] py-[1px] rounded-sm ${rec.type === "ACT" ? "bg-orange-500/20 text-orange-400" : rec.type === "WARN" ? "bg-yellow-500/20 text-yellow-400" : rec.type === "INFO" ? "bg-green-500/20 text-green-400" : "bg-cyan-500/20 text-cyan-400"}`}>{rec.type}</span>
