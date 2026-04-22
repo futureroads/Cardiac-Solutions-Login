@@ -234,7 +234,7 @@ export default function StarkDashboard({ user, onLogout }) {
     }
     items.push({ type: "SYS", msg: `SUBSCRIBER NOTIFICATIONS: ${notifToday} email${notifToday !== 1 ? "s" : ""} sent today.` });
     if (diPerms.camera_battery === "overview") {
-      items.push({ type: "SYS", msg: `POTENTIAL CAMERA BATTERY ISSUES: P0-24: ${bd.p0_24 || 0}, P25-49: ${bd.p25_49 || 0}` });
+      items.push({ type: "SYS", msg: `POTENTIAL CAMERA BATTERY ISSUES: Less than 25%: ${bd.p0_24 || 0}, Between 25% and 50%: ${bd.p25_49 || 0}` });
     } else if (diPerms.camera_battery === "details") {
       if (bd.p0_24 > 0) items.push({ type: "ACT", msg: `CAMERA BATTERY P0-P24: ${bd.p0_24} devices at critical battery level.` });
       if (bd.p25_49 > 0) items.push({ type: "WARN", msg: `CAMERA BATTERY P25-P49: ${bd.p25_49} devices at low battery level.` });
