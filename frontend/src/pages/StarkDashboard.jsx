@@ -267,7 +267,8 @@ export default function StarkDashboard({ user, onLogout }) {
     }
     // Expired B/P trend
     const prevDsc = totals.prev_detailed_status_counts || {};
-    const expToday = dsc.expired_bp || 0;
+    const todayDsc = totals.detailed_status_counts || {};
+    const expToday = todayDsc.expired_bp || 0;
     const expPrev = prevDsc.expired_bp;
     if (expPrev != null) {
       const expDiff = expToday - expPrev;
@@ -276,7 +277,7 @@ export default function StarkDashboard({ user, onLogout }) {
       else items.push({ type: "INFO", msg: `Expired B/P is static at ${expToday} (same as yesterday).` });
     }
     // Expiring B/P trend
-    const expgToday = dsc.expiring_batt_pads || 0;
+    const expgToday = todayDsc.expiring_batt_pads || 0;
     const expgPrev = prevDsc.expiring_batt_pads;
     if (expgPrev != null) {
       const expgDiff = expgToday - expgPrev;
