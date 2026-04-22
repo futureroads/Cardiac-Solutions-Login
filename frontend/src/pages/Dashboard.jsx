@@ -390,6 +390,16 @@ export default function Dashboard({ user, onLogout }) {
       else if (todayPct < prevPct) items.push({ type: 'INFO', msg: `Percent ready slipped from ${Number(prevPct).toFixed(1)}% yesterday to ${Number(todayPct).toFixed(1)}% today (-${absDiff}%). You might want to review the statuses.` });
       else items.push({ type: 'INFO', msg: `Percent ready is stable at ${Number(todayPct).toFixed(1)}% (same as yesterday).` });
     }
+    // Adjusted ready trend
+    const adjToday = readiness?.pct_ready_adjusted;
+    const adjPrev = readiness?.prev_pct_ready_adjusted;
+    if (adjToday != null && adjPrev != null) {
+      const adjDiff = (adjToday - adjPrev).toFixed(1);
+      const adjAbsDiff = Math.abs(adjDiff);
+      if (adjToday > adjPrev) items.push({ type: 'INFO', msg: `Adjusted percent ready improved from ${Number(adjPrev).toFixed(1)}% yesterday to ${Number(adjToday).toFixed(1)}% today (+${adjAbsDiff}%).` });
+      else if (adjToday < adjPrev) items.push({ type: 'INFO', msg: `Adjusted percent ready slipped from ${Number(adjPrev).toFixed(1)}% yesterday to ${Number(adjToday).toFixed(1)}% today (-${adjAbsDiff}%).` });
+      else items.push({ type: 'INFO', msg: `Adjusted percent ready is stable at ${Number(adjToday).toFixed(1)}% (same as yesterday).` });
+    }
     items.push({ type: 'SYS', msg: `SUBSCRIBER NOTIFICATIONS: ${notifToday} email${notifToday !== 1 ? 's' : ''} sent today.` });
 
     // Camera Battery events

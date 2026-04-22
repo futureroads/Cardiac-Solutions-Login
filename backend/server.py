@@ -1103,6 +1103,14 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
     adjusted_ready_count = total_monitored - adjusted_issues if total_monitored > adjusted_issues else total_monitored
     pct_ready_adjusted = round((adjusted_ready_count / total_monitored) * 100, 1) if total_monitored else 0
 
+    # Compute yesterday's adjusted ready using prev counts
+    prev_ready = totals.get("prev_ready", 0)
+    prev_total = totals.get("total", 0)  # same fleet size assumption
+    prev_issues = prev_total - prev_ready if prev_total > prev_ready else 0
+    prev_adjusted_issues = max(0, prev_issues - notified_aed_unresolved)
+    prev_adjusted_ready = prev_total - prev_adjusted_issues if prev_total > prev_adjusted_issues else prev_total
+    prev_pct_ready_adjusted = round((prev_adjusted_ready / prev_total) * 100, 1) if prev_total and prev_ready else None
+
     return {
         "subscribers": subscribers,
         "total_subscribers": len(subscribers),
@@ -1124,6 +1132,7 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
             "notified_aed_unresolved": notified_aed_unresolved,
             "adjusted_issues": adjusted_issues,
             "pct_ready_adjusted": pct_ready_adjusted,
+            "prev_pct_ready_adjusted": prev_pct_ready_adjusted,
         },
     }
 
