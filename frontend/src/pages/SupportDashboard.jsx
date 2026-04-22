@@ -701,7 +701,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                                   <img src={d.image_url} alt={d.sentinel_id} className="max-w-[100px] max-h-[60px] rounded-sm" loading="lazy" />
                                   {capturedAt && <div className="text-[9px] text-slate-400 mt-0.5">{capturedAt}</div>}
                                   <button
-                                    onClick={e => { e.stopPropagation(); e.preventDefault(); setImageHistoryId(d.sentinel_id); }}
+                                    onClick={e => { e.stopPropagation(); setImageHistoryId(d.sentinel_id); }}
                                     onMouseDown={e => e.stopPropagation()}
                                     type="button"
                                     className="mt-1 w-full flex items-center justify-center gap-1 px-1.5 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded-sm transition-colors"
@@ -881,7 +881,7 @@ function ImageHistoryModal({ sentinelId, subscriber, onClose }) {
   }, [sentinelId, subscriber, skip]);
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center" onClick={onClose}>
       <div className="bg-[#0f1729] border border-cyan-500/30 rounded-sm w-[500px] max-w-[90vw] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="image-history-modal">
         <div className="p-4 border-b border-cyan-500/15 flex justify-between items-center flex-shrink-0">
           <div className="flex items-center gap-2">
