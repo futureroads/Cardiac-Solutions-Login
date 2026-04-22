@@ -228,8 +228,19 @@ export default function StarkDashboard({ user, onLogout }) {
     if (todayPct != null && prevPct != null) {
       const diff = (todayPct - prevPct).toFixed(1);
       const absDiff = Math.abs(diff);
-      if (todayPct > prevPct) items.push({ type: "INFO", msg: `GOOD JOB! Percent ready improved from ${Number(prevPct).toFixed(1)}% yesterday to ${Number(todayPct).toFixed(1)}% today (+${absDiff}%).` });
-      else if (todayPct < prevPct) items.push({ type: "INFO", msg: `Percent ready slipped from ${Number(prevPct).toFixed(1)}% yesterday to ${Number(todayPct).toFixed(1)}% today (-${absDiff}%). You might want to review the statuses.` });
+      // Build explanation of what changed
+      const todayDsc = totals.detailed_status_counts || {};
+      const prevDsc = totals.prev_detailed_status_counts || {};
+      const statusLabels = { expired_bp: "Expired B/P", expiring_batt_pads: "Expiring B/P", not_ready: "Not Ready", reposition: "Reposition", not_present: "Not Present", unknown: "Unknown", lost_contact: "Lost Contact" };
+      const changes = [];
+      for (const [key, label] of Object.entries(statusLabels)) {
+        const t = todayDsc[key] || 0;
+        const p = prevDsc[key] || 0;
+        if (t !== p) changes.push(`${label}: ${p}→${t} (${t > p ? "+" : ""}${t - p})`);
+      }
+      const reason = changes.length > 0 ? " Breakdown: " + changes.join(", ") + "." : "";
+      if (todayPct > prevPct) items.push({ type: "INFO", msg: `GOOD JOB! Percent ready improved from ${Number(prevPct).toFixed(1)}% yesterday to ${Number(todayPct).toFixed(1)}% today (+${absDiff}%).${reason}` });
+      else if (todayPct < prevPct) items.push({ type: "INFO", msg: `Percent ready slipped from ${Number(prevPct).toFixed(1)}% yesterday to ${Number(todayPct).toFixed(1)}% today (-${absDiff}%).${reason}` });
       else items.push({ type: "INFO", msg: `Percent ready is stable at ${Number(todayPct).toFixed(1)}% (same as yesterday).` });
     }
     // Adjusted ready trend
@@ -238,8 +249,12 @@ export default function StarkDashboard({ user, onLogout }) {
     if (adjToday != null && adjPrev != null) {
       const adjDiff = (adjToday - adjPrev).toFixed(1);
       const adjAbsDiff = Math.abs(adjDiff);
-      if (adjToday > adjPrev) items.push({ type: "INFO", msg: `Adjusted percent ready improved from ${Number(adjPrev).toFixed(1)}% yesterday to ${Number(adjToday).toFixed(1)}% today (+${adjAbsDiff}%).` });
-      else if (adjToday < adjPrev) items.push({ type: "INFO", msg: `Adjusted percent ready slipped from ${Number(adjPrev).toFixed(1)}% yesterday to ${Number(adjToday).toFixed(1)}% today (-${adjAbsDiff}%).` });
+      // Explain adjusted change: could be from issue changes or notified count changes
+      const actualIssues = readiness?.total_issues || 0;
+      const notified = readiness?.notified_aed_unresolved || 0;
+      const adjExplain = `Currently ${actualIssues} total issues minus ${notified} subscriber-notified = ${readiness?.adjusted_issues || 0} adjusted issues.`;
+      if (adjToday > adjPrev) items.push({ type: "INFO", msg: `Adjusted percent ready improved from ${Number(adjPrev).toFixed(1)}% yesterday to ${Number(adjToday).toFixed(1)}% today (+${adjAbsDiff}%). ${adjExplain}` });
+      else if (adjToday < adjPrev) items.push({ type: "INFO", msg: `Adjusted percent ready slipped from ${Number(adjPrev).toFixed(1)}% yesterday to ${Number(adjToday).toFixed(1)}% today (-${adjAbsDiff}%). ${adjExplain}` });
       else items.push({ type: "INFO", msg: `Adjusted percent ready is stable at ${Number(adjToday).toFixed(1)}% (same as yesterday).` });
     }
     items.push({ type: "SYS", msg: `SUBSCRIBER NOTIFICATIONS: ${notifToday} email${notifToday !== 1 ? "s" : ""} sent today.` });
