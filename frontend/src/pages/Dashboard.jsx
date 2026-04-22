@@ -394,8 +394,8 @@ export default function Dashboard({ user, onLogout }) {
       for (const [key, label] of Object.entries(statusLabels)) {
         const t = todayDsc2[key] || 0;
         const p = prevDsc2[key] || 0;
-        if (t > p) increases.push(label);
-        else if (t < p) decreases.push(label);
+        if (t > p) increases.push(`${label} (${t})`);
+        else if (t < p) decreases.push(`${label} (${t})`);
       }
       let reason = "";
       if (todayPct > prevPct) {
