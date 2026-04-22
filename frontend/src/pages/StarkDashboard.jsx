@@ -520,12 +520,13 @@ export default function StarkDashboard({ user, onLogout }) {
           <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden" style={{ height: 180 }} data-testid="stark-di-panel">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
+            <div className="plabel">AI Overwatch</div>
             <div className="absolute top-[6px] right-[8px] z-20">
               <button onClick={() => setDiPaused(!diPaused)} className="w-[24px] h-[24px] flex items-center justify-center rounded-sm border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20" data-testid="stark-di-toggle">
                 {diPaused ? <Play className="w-3 h-3 text-cyan-400" /> : <Pause className="w-3 h-3 text-cyan-400" />}
               </button>
             </div>
-            <div className="overflow-hidden" style={{ height: 150 }}>
+            <div className="overflow-hidden" style={{ height: 140 }}>
               <div className="space-y-[4px]" style={{ animation: diPaused ? "none" : `diScroll ${scrollDur}s linear infinite` }}>
                 {diList.map((rec) => rec.type === "_DIVIDER" ? (
                   <div key={rec._key} className="flex items-center gap-2 my-3">
