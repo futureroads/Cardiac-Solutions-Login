@@ -675,11 +675,14 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                                 <button
                                   onClick={e => {
                                     e.stopPropagation();
+                                    e.preventDefault();
                                     const val = customDetails[d.sentinel_id] !== undefined ? customDetails[d.sentinel_id] : (d.days_summary || d.detailed_status || "—");
                                     const updates = {};
                                     sec.devices.forEach(dev => { updates[dev.sentinel_id] = val; });
                                     setCustomDetails(prev => ({ ...prev, ...updates }));
                                   }}
+                                  onMouseDown={e => e.stopPropagation()}
+                                  type="button"
                                   className="mt-1 text-[9px] px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold"
                                   data-testid="apply-to-all-btn"
                                 >
