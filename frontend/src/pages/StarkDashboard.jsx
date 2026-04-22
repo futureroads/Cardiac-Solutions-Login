@@ -286,7 +286,8 @@ export default function StarkDashboard({ user, onLogout }) {
     }
     return items.length > 0 ? items : [{ type: "SYS", msg: "No device alerts at this time." }];
   })();
-  const diList = [...aiRecs.map((r, i) => ({ ...r, _key: `a-${i}` })), { type: "_DIVIDER", msg: "", _key: "div" }, ...aiRecs.map((r, i) => ({ ...r, _key: `b-${i}` }))];
+  const isLoadingDi = !liveStats && !bpData;
+  const diList = isLoadingDi ? aiRecs.map((r, i) => ({ ...r, _key: `a-${i}` })) : [...aiRecs.map((r, i) => ({ ...r, _key: `a-${i}` })), { type: "_DIVIDER", msg: "", _key: "div" }, ...aiRecs.map((r, i) => ({ ...r, _key: `b-${i}` }))];
   const scrollDur = Math.max(60, diList.length * 3);
   const typeColor = (t) => t === "ACT" ? "text-red-400" : t === "WARN" ? "text-yellow-400" : t === "INFO" ? "text-green-400" : t === "ERR" ? "text-red-500" : "text-cyan-400/80";
 
