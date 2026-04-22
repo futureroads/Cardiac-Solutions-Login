@@ -660,7 +660,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                           <tr key={d.sentinel_id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setDrawerDevice(d)}>
                             <td className="p-2 border border-slate-200 font-bold text-blue-700 hover:underline">{d.sentinel_id}</td>
                             <td className="p-2 border border-slate-200 text-[11px]">{loc}</td>
-                            <td className="p-2 border border-slate-200 text-[11px]">
+                            <td className="p-2 border border-slate-200 text-[11px]" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                               <textarea
                                 value={currentVal}
                                 onChange={e => { e.stopPropagation(); setCustomDetails(prev => ({ ...prev, [d.sentinel_id]: e.target.value })); }}
