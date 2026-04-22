@@ -241,7 +241,7 @@ export default function StarkDashboard({ user, onLogout }) {
     }
     if (diPerms.camera_cellular === "overview") {
       const cc = bpData?.totals?.camera_cellular || cd;
-      items.push({ type: "SYS", msg: `POTENTIAL CAMERA CELLULAR ISSUES: LOW: ${cc.LOW || 0}, BAD: ${cc.BAD || 0}` });
+      items.push({ type: "SYS", msg: `POTENTIAL CAMERA CELLULAR ISSUES: Low Signal: ${cc.LOW || 0}, Poor Signal: ${cc.BAD || 0}` });
     } else if (diPerms.camera_cellular === "details") {
       const cc = bpData?.totals?.camera_cellular || cd;
       if ((cc.BAD || 0) > 0) items.push({ type: "ACT", msg: `CAMERA CELLULAR BAD: ${cc.BAD} devices with no signal.` });
