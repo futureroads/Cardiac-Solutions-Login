@@ -530,7 +530,7 @@ export default function StarkDashboard({ user, onLogout }) {
         .animate-led-flash-alt { animation: led-flash 1.4s ease-in-out infinite 0.7s; }
       `}</style>
 
-      {showReadinessBreakdown && <ReadinessBreakdownModal onClose={() => setShowReadinessBreakdown(false)} />}
+      {showReadinessBreakdown && <ReadinessBreakdownModal onClose={() => setShowReadinessBreakdown(false)} onDataLoaded={(r) => setReadiness(r)} />}
     </div>
   );
 }

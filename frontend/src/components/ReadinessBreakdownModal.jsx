@@ -4,7 +4,7 @@ import API_BASE from "@/apiBase";
 
 const API = API_BASE + "/api";
 
-export function ReadinessBreakdownModal({ onClose }) {
+export function ReadinessBreakdownModal({ onClose, onDataLoaded }) {
   const [readiness, setReadiness] = useState(null);
   const [fleetTotals, setFleetTotals] = useState(null);
   const [notifiedSummary, setNotifiedSummary] = useState(null);
@@ -23,6 +23,7 @@ export function ReadinessBreakdownModal({ onClose }) {
           const d = await dashRes.json();
           setReadiness(d.readiness || {});
           setFleetTotals(d.fleet_totals || {});
+          if (onDataLoaded && d.readiness) onDataLoaded(d.readiness);
         }
         if (notifRes.ok) setNotifiedSummary(await notifRes.json());
       } catch {}
