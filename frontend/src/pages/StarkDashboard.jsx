@@ -63,6 +63,7 @@ export default function StarkDashboard({ user, onLogout }) {
   const [ticketCounts, setTicketCounts] = useState(null);
   // Readiness data (actual + adjusted from support dashboard-data)
   const [readiness, setReadiness] = useState(null);
+  const [supportData, setSupportData] = useState(null);
   // Notifications sent today
   const [notifToday, setNotifToday] = useState(0);
 
@@ -138,14 +139,17 @@ export default function StarkDashboard({ user, onLogout }) {
 
   useEffect(() => { fetchStats(); const i = setInterval(fetchStats, 300000); return () => clearInterval(i); }, [fetchStats]);
 
-  // Fetch readiness (actual + adjusted) from support dashboard-data
+  // Fetch readiness + support data from support dashboard-data
   useEffect(() => {
-    (async () => {
+    const fetchSupportData = async () => {
       try {
         const res = await fetch(`${API}/support/dashboard-data`, { headers: { Authorization: `Bearer ${token}` } });
-        if (res.ok) { const d = await res.json(); setReadiness(d.readiness || null); }
+        if (res.ok) { const d = await res.json(); setReadiness(d.readiness || null); setSupportData(d); }
       } catch {}
-    })();
+    };
+    fetchSupportData();
+    const i = setInterval(fetchSupportData, 300000);
+    return () => clearInterval(i);
   }, [token]);
 
   // Fetch service ticket counts
@@ -369,27 +373,27 @@ export default function StarkDashboard({ user, onLogout }) {
             </div>
           </div>
 
-          {/* Customer Notifications */}
+          {/* Subscriber Notifications */}
           <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden" data-testid="stark-notifications">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
-            <div className="plabel">Customer Notifications <span className="ml-2 text-[7px] px-[5px] py-[1px] bg-yellow-500/20 text-yellow-400 rounded-sm font-bold tracking-wider">IN DEV</span></div>
+            <div className="plabel">Subscriber Notifications</div>
             <div className="grid grid-cols-2 gap-[6px] mt-2">
               <div className="border border-cyan-500/20 bg-cyan-500/5 rounded-sm p-2 text-center">
-                <div className="font-orbitron text-[18px] font-black text-white">{mapSubs.length || 48}</div>
-                <div className="text-[7px] text-cyan-500/50 tracking-wider uppercase">Total Subscribers</div>
+                <div className="font-orbitron text-[18px] font-black text-white">{supportData?.total_subscribers || 0}</div>
+                <div className="text-[7px] text-cyan-500/50 tracking-wider uppercase">Subscribers w/ Issues</div>
               </div>
               <div className="border border-cyan-500/20 bg-cyan-500/5 rounded-sm p-2 text-center">
-                <div className="font-orbitron text-[18px] font-black text-white">{stats.total.toLocaleString()}</div>
-                <div className="text-[7px] text-cyan-500/50 tracking-wider uppercase">Total AEDs</div>
+                <div className="font-orbitron text-[18px] font-black text-white">{readiness?.total_issues || 0}</div>
+                <div className="text-[7px] text-cyan-500/50 tracking-wider uppercase">Total Issues</div>
               </div>
-              <div className="border border-orange-500/20 bg-orange-500/5 rounded-sm p-2 text-center">
-                <div className="font-orbitron text-[18px] font-black text-white">{actionIssues.toLocaleString()}</div>
-                <div className="text-[7px] text-orange-500/50 tracking-wider uppercase">Action Issues</div>
+              <div className="border border-green-500/20 bg-green-500/5 rounded-sm p-2 text-center">
+                <div className="font-orbitron text-[18px] font-black text-green-400">{readiness?.notified_aed_unresolved || 0}</div>
+                <div className="text-[7px] text-green-500/50 tracking-wider uppercase">Notified Pending</div>
               </div>
-              <div className="border border-orange-500/20 bg-orange-500/5 rounded-sm p-2 text-center">
-                <div className="font-orbitron text-[18px] font-black text-white">12</div>
-                <div className="text-[7px] text-orange-500/50 tracking-wider uppercase">Resolved</div>
+              <div className="border border-amber-500/20 bg-amber-500/5 rounded-sm p-2 text-center">
+                <div className="font-orbitron text-[18px] font-black text-amber-400">{notifToday}</div>
+                <div className="text-[7px] text-amber-500/50 tracking-wider uppercase">Emails Sent Today</div>
               </div>
             </div>
           </div>
