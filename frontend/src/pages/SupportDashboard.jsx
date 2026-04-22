@@ -388,6 +388,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
   const [loadingDevices, setLoadingDevices] = useState(true);
   const [drawerDevice, setDrawerDevice] = useState(null);
   const [customDetails, setCustomDetails] = useState({});
+  const [imageHistoryId, setImageHistoryId] = useState(null);
 
   // Fetch subscriber devices with full detail
   useEffect(() => {
@@ -694,11 +695,21 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
                               <div>Batt: {d.battery_expiration || "—"}</div>
                               <div>Pads: {d.pad_expiration || "—"}</div>
                             </td>
-                            <td className="p-2 border border-slate-200">
+                            <td className="p-2 border border-slate-200" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                               {d.image_url ? (
                                 <div>
                                   <img src={d.image_url} alt={d.sentinel_id} className="max-w-[100px] max-h-[60px] rounded-sm" loading="lazy" />
                                   {capturedAt && <div className="text-[9px] text-slate-400 mt-0.5">{capturedAt}</div>}
+                                  <button
+                                    onClick={e => { e.stopPropagation(); e.preventDefault(); setImageHistoryId(d.sentinel_id); }}
+                                    onMouseDown={e => e.stopPropagation()}
+                                    type="button"
+                                    className="mt-1 w-full flex items-center justify-center gap-1 px-1.5 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded-sm transition-colors"
+                                    data-testid={`email-img-history-${d.sentinel_id}`}
+                                  >
+                                    <History className="w-2.5 h-2.5" />
+                                    <span className="text-[7px] font-bold tracking-wider">HISTORY</span>
+                                  </button>
                                 </div>
                               ) : (
                                 <span className="text-slate-300 text-[10px]">No image</span>
@@ -750,6 +761,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
         </div>
       </div>
       {drawerDevice && <DeviceDrawer device={drawerDevice} onClose={() => setDrawerDevice(null)} />}
+      {imageHistoryId && <ImageHistoryModal sentinelId={imageHistoryId} subscriber={subscriber} onClose={() => setImageHistoryId(null)} />}
     </div>
   );
 }
