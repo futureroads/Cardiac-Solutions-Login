@@ -520,7 +520,7 @@ export default function StarkDashboard({ user, onLogout }) {
           <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden" style={{ height: 180 }} data-testid="stark-di-panel">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
-            <div className="plabel">AI Overwatch</div>
+            <div className="font-orbitron text-[10px] font-bold tracking-[0.3em] text-red-500 text-center mb-1">AI OVERWATCH</div>
             <div className="absolute top-[6px] right-[8px] z-20">
               <button onClick={() => setDiPaused(!diPaused)} className="w-[24px] h-[24px] flex items-center justify-center rounded-sm border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20" data-testid="stark-di-toggle">
                 {diPaused ? <Play className="w-3 h-3 text-cyan-400" /> : <Pause className="w-3 h-3 text-cyan-400" />}
