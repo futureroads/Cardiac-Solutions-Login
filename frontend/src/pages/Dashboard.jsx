@@ -445,6 +445,26 @@ export default function Dashboard({ user, onLogout }) {
         });
       }
     }
+    // Expired B/P trend
+    const prevDsc = totals.prev_detailed_status_counts || {};
+    const dsc = totals.detailed_status_counts || {};
+    const expToday = dsc.expired_bp || 0;
+    const expPrev = prevDsc.expired_bp;
+    if (expPrev != null) {
+      const expDiff = expToday - expPrev;
+      if (expDiff > 0) items.push({ type: 'INFO', msg: `Expired B/P has increased from ${expPrev} yesterday to ${expToday} today (+${expDiff}).` });
+      else if (expDiff < 0) items.push({ type: 'INFO', msg: `Expired B/P has decreased from ${expPrev} yesterday to ${expToday} today (${expDiff}).` });
+      else items.push({ type: 'INFO', msg: `Expired B/P is static at ${expToday} (same as yesterday).` });
+    }
+    // Expiring B/P trend
+    const expgToday = dsc.expiring_batt_pads || 0;
+    const expgPrev = prevDsc.expiring_batt_pads;
+    if (expgPrev != null) {
+      const expgDiff = expgToday - expgPrev;
+      if (expgDiff > 0) items.push({ type: 'INFO', msg: `Expiring B/P has increased from ${expgPrev} yesterday to ${expgToday} today (+${expgDiff}).` });
+      else if (expgDiff < 0) items.push({ type: 'INFO', msg: `Expiring B/P has decreased from ${expgPrev} yesterday to ${expgToday} today (${expgDiff}).` });
+      else items.push({ type: 'INFO', msg: `Expiring B/P is static at ${expgToday} (same as yesterday).` });
+    }
     return items.length > 0 ? items : [{ type: 'SYS', msg: 'No device alerts at this time.' }];
   })();
 
