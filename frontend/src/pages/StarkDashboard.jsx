@@ -503,30 +503,36 @@ export default function StarkDashboard({ user, onLogout }) {
           {/* MAP */}
           <div className="panel relative bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1" data-testid="stark-map-card">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
-            <div className="absolute top-2 left-3 z-20 flex items-center gap-2 flex-wrap">
+            <div className="absolute top-2 left-3 z-20 flex items-center gap-2">
               <MapPin className="w-3.5 h-3.5 text-cyan-400" />
               <span className="font-orbitron text-[9px] text-cyan-400 tracking-wider">{mapMode === "subscribers" ? "SUBSCRIBER MAP" : "AED MAP"}</span>
               <span className="font-orbitron text-[7px] text-slate-500">{mapMode === "subscribers" ? "AED READINESS MONITORING" : `${aedPins.length} DEVICES`}</span>
-              {/* Mode toggle */}
-              <div className="ml-2 inline-flex border border-cyan-500/30 rounded-sm overflow-hidden">
+            </div>
+
+            {/* Prominent view selector - second row so it's clearly visible */}
+            <div className="absolute top-[26px] left-3 z-20 flex items-center gap-2 bg-[rgba(0,18,32,0.94)] border border-cyan-500/50 rounded-sm px-2 py-[5px] shadow-lg shadow-cyan-500/20">
+              <span className="font-orbitron text-[8px] text-cyan-500/80 tracking-[0.2em] uppercase">View:</span>
+              <div className="inline-flex border border-cyan-500/50 rounded-sm overflow-hidden">
                 <button data-testid="stark-map-mode-subscribers"
                   onClick={() => { setMapMode("subscribers"); setSelectedId(null); setHoveredId(null); }}
-                  className={`font-orbitron text-[8px] tracking-wider px-2 py-[3px] ${mapMode === "subscribers" ? "bg-cyan-500/25 text-cyan-200" : "text-cyan-400/70 hover:bg-cyan-500/10"}`}>SUBSCRIBERS</button>
+                  className={`font-orbitron text-[10px] font-bold tracking-wider px-3 py-[5px] transition-colors ${mapMode === "subscribers" ? "bg-cyan-500/35 text-cyan-50 shadow-[inset_0_0_8px_rgba(6,182,212,0.5)]" : "text-cyan-400/80 hover:bg-cyan-500/15"}`}>SUBSCRIBERS</button>
                 <button data-testid="stark-map-mode-aeds"
                   onClick={() => { setMapMode("aeds"); setSelectedId(null); setHoveredId(null); }}
-                  className={`font-orbitron text-[8px] tracking-wider px-2 py-[3px] border-l border-cyan-500/30 ${mapMode === "aeds" ? "bg-cyan-500/25 text-cyan-200" : "text-cyan-400/70 hover:bg-cyan-500/10"}`}>AEDS</button>
+                  className={`font-orbitron text-[10px] font-bold tracking-wider px-3 py-[5px] border-l border-cyan-500/50 transition-colors ${mapMode === "aeds" ? "bg-cyan-500/35 text-cyan-50 shadow-[inset_0_0_8px_rgba(6,182,212,0.5)]" : "text-cyan-400/80 hover:bg-cyan-500/15"}`}>AEDS</button>
               </div>
-              {/* AED subscriber filter (only in AED mode) */}
               {mapMode === "aeds" && (
-                <select data-testid="stark-map-aed-subscriber"
-                  value={aedSubscriber}
-                  onChange={(e) => setAedSubscriber(e.target.value)}
-                  className="font-orbitron text-[8px] tracking-wider px-2 py-[3px] bg-[rgba(0,18,32,0.95)] border border-cyan-500/30 text-cyan-200 rounded-sm focus:outline-none">
-                  <option value="all">ALL SUBSCRIBERS</option>
-                  {aedSubscribersList.map(s => (
-                    <option key={s.subscriber} value={s.subscriber}>{s.subscriber.toUpperCase()} ({s.aed_count})</option>
-                  ))}
-                </select>
+                <>
+                  <span className="font-orbitron text-[8px] text-cyan-500/80 tracking-[0.2em] uppercase ml-1">Filter:</span>
+                  <select data-testid="stark-map-aed-subscriber"
+                    value={aedSubscriber}
+                    onChange={(e) => setAedSubscriber(e.target.value)}
+                    className="font-orbitron text-[10px] font-bold tracking-wider px-2 py-[4px] bg-[rgba(0,18,32,0.95)] border border-cyan-500/50 text-cyan-100 rounded-sm focus:outline-none cursor-pointer hover:bg-cyan-500/10">
+                    <option value="all">ALL SUBSCRIBERS</option>
+                    {aedSubscribersList.map(s => (
+                      <option key={s.subscriber} value={s.subscriber}>{s.subscriber.toUpperCase()} ({s.aed_count})</option>
+                    ))}
+                  </select>
+                </>
               )}
             </div>
             <button onClick={fitAll} className="absolute top-2 right-3 z-20 font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 flex items-center gap-1" data-testid="stark-fit-all">
