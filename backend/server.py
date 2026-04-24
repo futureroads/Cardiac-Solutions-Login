@@ -13,7 +13,7 @@ import uuid
 print("[SERVER] Module loading started", flush=True)
 
 try:
-    from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status, BackgroundTasks
+    from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status, BackgroundTasks, Header
     from fastapi.responses import JSONResponse
     from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
     from dotenv import load_dotenv
@@ -1988,6 +1988,231 @@ async def get_subscriber_aeds(
         return {"aeds": aeds, "count": len(aeds), "subscriber": subscriber or "all"}
     except Exception as e:
         return {"aeds": [], "count": 0, "_error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Voice-friendly public API: find AEDs near a location
+# ---------------------------------------------------------------------------
+def _haversine_miles(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    import math
+    R = 3958.7613  # Earth radius in miles
+    phi1 = math.radians(lat1); phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlmb = math.radians(lng2 - lng1)
+    a = math.sin(dphi/2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlmb/2)**2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+async def _geocode_text(address: str) -> dict | None:
+    import httpx
+    key = os.environ.get("GOOGLE_MAPS_SERVER_KEY")
+    if not key:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(
+                "https://maps.googleapis.com/maps/api/geocode/json",
+                params={"address": address, "key": key, "region": "us"},
+            )
+        if r.status_code != 200:
+            return None
+        d = r.json()
+        if d.get("status") != "OK" or not d.get("results"):
+            return None
+        top = d["results"][0]
+        loc = top["geometry"]["location"]
+        return {
+            "lat": float(loc["lat"]),
+            "lng": float(loc["lng"]),
+            "formatted": top.get("formatted_address", address),
+        }
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _status_human(status: str) -> str:
+    """Convert raw status string to natural-language phrase."""
+    s = (status or "").upper()
+    mapping = {
+        "READY": "ready",
+        "NOT READY": "not ready",
+        "LOST CONTACT": "offline — lost contact",
+        "EXPIRED B/P": "needs attention — expired battery or pads",
+        "EXPIRED BATT/PADS": "needs attention — expired battery or pads",
+        "EXPIRING BATT/PADS": "expiring battery or pads soon",
+        "REPOSITION": "needs to be repositioned",
+        "NOT PRESENT": "not currently present",
+        "UNKNOWN": "in an unknown state",
+    }
+    return mapping.get(s, s.lower() or "in an unknown state")
+
+
+def _verify_voice_api_key(x_voice_api_key: str | None) -> None:
+    expected = os.environ.get("VOICE_API_KEY", "").strip()
+    if not expected:
+        # If no key is configured, deny by default rather than opening wide.
+        raise HTTPException(status_code=503, detail="VOICE_API_KEY not configured on server")
+    if not x_voice_api_key or x_voice_api_key.strip() != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-Voice-API-Key header")
+
+
+@api_router.get("/voice/aeds-near")
+async def voice_aeds_near(
+    location: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
+    radius_miles: float = 25.0,
+    limit: int = 5,
+    x_voice_api_key: str | None = Header(default=None, alias="X-Voice-API-Key"),
+):
+    """Voice-app friendly endpoint — find AEDs near a location.
+
+    Query parameters (provide either `location` OR both `lat`+`lng`):
+      - location:      free-text place (e.g. "Valdosta, GA", "30501", "Atlanta")
+      - lat, lng:      explicit coordinates
+      - radius_miles:  search radius (default 25, max 500)
+      - limit:         max AEDs to return (default 5, max 50)
+
+    Auth: `X-Voice-API-Key` header must match server `VOICE_API_KEY` env.
+    """
+    _verify_voice_api_key(x_voice_api_key)
+
+    radius_miles = max(0.1, min(float(radius_miles), 500.0))
+    limit = max(1, min(int(limit), 50))
+
+    query_lat: float | None = None
+    query_lng: float | None = None
+    formatted = None
+
+    if lat is not None and lng is not None:
+        query_lat, query_lng = float(lat), float(lng)
+        formatted = f"{query_lat:.5f}, {query_lng:.5f}"
+    elif location:
+        g = await _geocode_text(location)
+        if not g:
+            return {
+                "ok": False,
+                "reason": "geocode_failed",
+                "query": location,
+                "voice_answer": f"I couldn't find a location matching '{location}'. Please try again.",
+                "aeds": [],
+                "count": 0,
+            }
+        query_lat, query_lng, formatted = g["lat"], g["lng"], g["formatted"]
+    else:
+        raise HTTPException(status_code=400, detail="Provide either 'location' or both 'lat' and 'lng'")
+
+    # Pull all geocoded AEDs (small dataset) and compute distance client-side.
+    cursor = _db.subscriber_map_locations.find(
+        {"latitude": {"$ne": None}, "longitude": {"$ne": None}},
+        {"_id": 0},
+    )
+    all_aeds = [doc async for doc in cursor]
+
+    # Attach distance
+    nearby: list[dict] = []
+    for a in all_aeds:
+        try:
+            dist = _haversine_miles(query_lat, query_lng, float(a["latitude"]), float(a["longitude"]))
+        except Exception:  # noqa: BLE001
+            continue
+        if dist <= radius_miles:
+            nearby.append({**a, "_distance": dist})
+    nearby.sort(key=lambda x: x["_distance"])
+    nearby = nearby[:limit]
+
+    # Fetch current status for the subscribers represented
+    import httpx, urllib.parse
+    subs_needed = sorted({a.get("subscriber") for a in nearby if a.get("subscriber")})
+    status_map: dict[str, dict[str, str]] = {}
+    headers = _readisys_auth_headers()
+    async with httpx.AsyncClient(timeout=20) as client:
+        for sub_name in subs_needed:
+            try:
+                enc = urllib.parse.quote(sub_name)
+                resp = await client.get(
+                    f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc}/devices?limit=500",
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    devs = resp.json().get("devices", []) or []
+                    status_map[sub_name] = {
+                        d.get("sentinel_id", ""): (d.get("detailed_status") or "").strip().upper()
+                        for d in devs if d.get("sentinel_id")
+                    }
+                else:
+                    status_map[sub_name] = {}
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[voice/aeds-near] status fetch failed for {sub_name}: {e}")
+                status_map[sub_name] = {}
+
+    # Build voice-friendly payload
+    results = []
+    for a in nearby:
+        sub = a.get("subscriber") or ""
+        sid = a.get("sentinel_id") or ""
+        status = status_map.get(sub, {}).get(sid) or "UNKNOWN"
+        distance = round(float(a["_distance"]), 2)
+        building = a.get("building") or ""
+        placement = a.get("placement_location") or ""
+        site = a.get("site") or ""
+        address = a.get("formatted_address") or a.get("clean_address") or ""
+        status_phrase = _status_human(status)
+
+        # Short natural-language summary for the voice app
+        loc_phrase = address or f"{site}"
+        voice_summary = (
+            f"{sub} has a{'n' if status_phrase[:1] in 'aeiou' else ''} "
+            f"{status_phrase} AED at {loc_phrase}, about {distance} miles away."
+        )
+
+        results.append({
+            "sentinel_id": sid,
+            "subscriber": sub,
+            "status": status,
+            "status_phrase": status_phrase,
+            "site": site,
+            "building": building,
+            "placement_location": placement,
+            "address": address,
+            "latitude": a.get("latitude"),
+            "longitude": a.get("longitude"),
+            "distance_miles": distance,
+            "voice_summary": voice_summary,
+        })
+
+    # Overall voice answer
+    if not results:
+        voice_answer = (
+            f"I couldn't find any AEDs within {int(radius_miles)} miles of {formatted}."
+        )
+    else:
+        # Group by status for a concise top-line summary
+        ready = [r for r in results if r["status"] == "READY"]
+        issues = [r for r in results if r["status"] != "READY"]
+        top = results[0]
+        parts = [
+            f"I found {len(results)} AED{'s' if len(results) != 1 else ''} "
+            f"within {int(radius_miles)} miles of {formatted}."
+        ]
+        if ready:
+            parts.append(f"{len(ready)} {'are' if len(ready) != 1 else 'is'} ready.")
+        if issues:
+            parts.append(f"{len(issues)} need{'s' if len(issues) == 1 else ''} attention.")
+        parts.append("The closest is " + top["voice_summary"])
+        voice_answer = " ".join(parts)
+
+    return {
+        "ok": True,
+        "query": location or f"{query_lat},{query_lng}",
+        "query_lat": query_lat,
+        "query_lng": query_lng,
+        "query_formatted": formatted,
+        "radius_miles": radius_miles,
+        "count": len(results),
+        "voice_answer": voice_answer,
+        "aeds": results,
+    }
 
 
 @api_router.get("/support/image-download")
