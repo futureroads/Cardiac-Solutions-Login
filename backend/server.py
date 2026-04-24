@@ -1269,6 +1269,46 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
                         "model": dev.get("model", ""),
                     })
 
+        # Call subscriber-outreach-event API after successful send
+        if notified_devices and success:
+            status_to_issue = {
+                "EXPIRED B/P": "expired_bp",
+                "EXPIRING BATT/PADS": "expiring_bp",
+                "NOT READY": "not_ready",
+                "REPOSITION": "reposition",
+                "NOT PRESENT": "not_present",
+                "UNKNOWN": "unknown",
+                "LOST CONTACT": "lost_contact",
+            }
+            outreach_items = []
+            for dev in notified_devices:
+                sid = dev.get("sentinel_id", "")
+                if not sid:
+                    continue
+                raw_status = dev.get("detailed_status", "UNKNOWN")
+                issue_key = status_to_issue.get(raw_status, raw_status.lower().replace(" ", "_"))
+                outreach_items.append({"sentinel_id": sid, "issue_types": [issue_key]})
+            if outreach_items:
+                try:
+                    import httpx
+                    outreach_headers = _readisys_auth_headers()
+                    outreach_headers["Content-Type"] = "application/json"
+                    outreach_payload = {
+                        "subscriber": subscriber,
+                        "triggered_by": "support_dashboard_notification_page",
+                        "note": "daily outreach send",
+                        "items": outreach_items,
+                    }
+                    async with httpx.AsyncClient(timeout=15) as client:
+                        outreach_resp = await client.post(
+                            "https://readisys.survivalpath.ai/api/integrations/subscriber-outreach-event",
+                            json=outreach_payload,
+                            headers=outreach_headers,
+                        )
+                    logger.info(f"Subscriber outreach event for {subscriber}: {outreach_resp.status_code}")
+                except Exception as oe:
+                    logger.warning(f"Subscriber outreach event failed for {subscriber}: {oe}")
+
         return {"success": success, "message": f"Email {'sent' if success else 'failed'} to {to_email}"}
     except Exception as e:
         logger.error(f"Support notification error: {e}")
