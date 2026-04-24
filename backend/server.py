@@ -1939,7 +1939,12 @@ async def get_subscriber_aeds(
     current_user: dict = Depends(get_current_user),
 ):
     """Return AED pins. If subscriber is provided, filter to that subscriber;
-    otherwise return AEDs for all subscribers that have geocoded data."""
+    otherwise return AEDs for all subscribers that have geocoded data.
+
+    Also enriches each AED with its current `status` (detailed_status) fetched
+    live from Readisys for the corresponding subscriber.
+    """
+    import httpx, urllib.parse
     try:
         query = {
             "latitude": {"$ne": None},
@@ -1949,6 +1954,37 @@ async def get_subscriber_aeds(
             query["subscriber"] = subscriber
         cursor = _db.subscriber_map_locations.find(query, {"_id": 0})
         aeds = [doc async for doc in cursor]
+
+        # Build set of subscribers we need status data for
+        subs_needed = sorted({a.get("subscriber") for a in aeds if a.get("subscriber")})
+        # {subscriber: {sentinel_id: status}}
+        status_map: dict[str, dict[str, str]] = {}
+        headers = _readisys_auth_headers()
+        async with httpx.AsyncClient(timeout=20) as client:
+            for sub_name in subs_needed:
+                try:
+                    enc = urllib.parse.quote(sub_name)
+                    resp = await client.get(
+                        f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc}/devices?limit=500",
+                        headers=headers,
+                    )
+                    if resp.status_code == 200:
+                        devs = resp.json().get("devices", []) or []
+                        status_map[sub_name] = {
+                            d.get("sentinel_id", ""): (d.get("detailed_status") or "").strip().upper()
+                            for d in devs if d.get("sentinel_id")
+                        }
+                    else:
+                        status_map[sub_name] = {}
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"[map/subscriber-aeds] status fetch failed for {sub_name}: {e}")
+                    status_map[sub_name] = {}
+
+        for a in aeds:
+            sub = a.get("subscriber") or ""
+            sid = a.get("sentinel_id") or ""
+            a["status"] = status_map.get(sub, {}).get(sid, "UNKNOWN")
+
         return {"aeds": aeds, "count": len(aeds), "subscriber": subscriber or "all"}
     except Exception as e:
         return {"aeds": [], "count": 0, "_error": str(e)}

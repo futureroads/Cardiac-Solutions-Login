@@ -603,9 +603,14 @@ export default function StarkDashboard({ user, onLogout }) {
                   const lat = parseFloat(aed.latitude); const lng = parseFloat(aed.longitude);
                   if (isNaN(lat) || isNaN(lng)) return null;
                   const key = `aed-${aed.sentinel_id}-${i}`;
+                  const status = (aed.status || "UNKNOWN").toUpperCase();
+                  const redStatuses = ["NOT READY", "LOST CONTACT", "EXPIRED B/P", "EXPIRED BATT/PADS"];
+                  const dotColor = status === "READY" ? "#22c55e"
+                    : redStatuses.includes(status) ? "#ef4444"
+                    : "#f59e0b";
                   return (
                     <Marker key={key} position={{ lat, lng }}
-                      icon={{ path: window.google.maps.SymbolPath.CIRCLE, fillColor: "#06b6d4", fillOpacity: 0.95, strokeColor: "#0a0f1c", strokeWeight: 1.5, scale: 5 }}
+                      icon={{ path: window.google.maps.SymbolPath.CIRCLE, fillColor: dotColor, fillOpacity: 0.95, strokeColor: "#0a0f1c", strokeWeight: 1.5, scale: 5 }}
                       onMouseOver={() => { if (selectedId !== key) setHoveredId(key); }} onMouseOut={() => setHoveredId(null)}
                       onClick={() => setSelectedId(prev => prev === key ? null : key)}
                     >
@@ -613,6 +618,7 @@ export default function StarkDashboard({ user, onLogout }) {
                         <OverlayView position={{ lat, lng }} mapPaneName={OverlayView.FLOAT_PANE} getPixelPositionOffset={(w, h) => ({ x: -(w/2), y: -h-14 })}>
                           <div style={{ background: "rgba(6,10,20,0.92)", border: "1px solid rgba(6,182,212,0.4)", borderRadius: 3, padding: "6px 10px", fontFamily: "Orbitron, monospace", whiteSpace: "nowrap", pointerEvents: "none" }}>
                             <div style={{ fontWeight: 700, fontSize: 11, color: "#06b6d4", letterSpacing: 1 }}>{aed.sentinel_id}</div>
+                            <div style={{ fontSize: 10, color: dotColor, marginTop: 2, fontWeight: 700 }}>{status}</div>
                             <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{aed.site}{aed.building ? ` - ${aed.building}` : ""}</div>
                           </div>
                         </OverlayView>
@@ -621,6 +627,7 @@ export default function StarkDashboard({ user, onLogout }) {
                         <OverlayView position={{ lat, lng }} mapPaneName={OverlayView.FLOAT_PANE} getPixelPositionOffset={(w, h) => ({ x: -(w/2), y: -h-18 })}>
                           <div style={{ background: "rgba(6,10,20,0.95)", border: "1px solid rgba(6,182,212,0.5)", borderRadius: 4, padding: "10px 14px", fontFamily: "Orbitron, monospace", minWidth: 220, maxWidth: 320 }}>
                             <div style={{ fontWeight: 700, fontSize: 12, color: "#06b6d4", letterSpacing: 1, marginBottom: 4 }}>{aed.sentinel_id}</div>
+                            <div style={{ display: "inline-block", fontSize: 10, fontWeight: 700, color: dotColor, border: `1px solid ${dotColor}`, padding: "2px 8px", borderRadius: 3, marginBottom: 6, letterSpacing: 1 }}>{status}</div>
                             <div style={{ fontSize: 11, color: "#e2e8f0", marginBottom: 2 }}>{aed.subscriber}</div>
                             <div style={{ fontSize: 10, color: "#94a3b8" }}>{aed.site}</div>
                             {aed.building && <div style={{ fontSize: 10, color: "#94a3b8" }}>{aed.building}</div>}
