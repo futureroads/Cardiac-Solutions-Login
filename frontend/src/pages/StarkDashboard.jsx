@@ -28,6 +28,7 @@ const darkMapStyles = [
 ];
 
 const mapOptions = { styles: darkMapStyles, disableDefaultUI: false, zoomControl: true, mapTypeControl: false, streetViewControl: false, fullscreenControl: false, minZoom: 4, maxZoom: 18 };
+const satelliteMapOptions = { styles: [], disableDefaultUI: false, zoomControl: true, mapTypeControl: false, streetViewControl: false, fullscreenControl: false, minZoom: 4, maxZoom: 18, mapTypeId: "hybrid" };
 const mapCenter = { lat: 33.5, lng: -86.8 };
 
 export default function StarkDashboard({ user, onLogout }) {
@@ -57,6 +58,8 @@ export default function StarkDashboard({ user, onLogout }) {
   const [aedSubscribersList, setAedSubscribersList] = useState([]);
   const [aedPins, setAedPins] = useState([]);
   const [aedLoading, setAedLoading] = useState(false);
+  // Base map style: "dark" (custom styled roadmap) or "satellite" (hybrid imagery)
+  const [mapType, setMapType] = useState("dark");
 
   // Status data
   const [liveStats, setLiveStats] = useState(null);
@@ -534,6 +537,16 @@ export default function StarkDashboard({ user, onLogout }) {
                   </select>
                 </>
               )}
+              {/* Base map style toggle */}
+              <span className="font-orbitron text-[8px] text-cyan-500/80 tracking-[0.2em] uppercase ml-1">Style:</span>
+              <div className="inline-flex border border-cyan-500/50 rounded-sm overflow-hidden">
+                <button data-testid="stark-map-style-dark"
+                  onClick={() => setMapType("dark")}
+                  className={`font-orbitron text-[10px] font-bold tracking-wider px-3 py-[5px] transition-colors ${mapType === "dark" ? "bg-cyan-500/35 text-cyan-50 shadow-[inset_0_0_8px_rgba(6,182,212,0.5)]" : "text-cyan-400/80 hover:bg-cyan-500/15"}`}>MAP</button>
+                <button data-testid="stark-map-style-satellite"
+                  onClick={() => setMapType("satellite")}
+                  className={`font-orbitron text-[10px] font-bold tracking-wider px-3 py-[5px] border-l border-cyan-500/50 transition-colors ${mapType === "satellite" ? "bg-cyan-500/35 text-cyan-50 shadow-[inset_0_0_8px_rgba(6,182,212,0.5)]" : "text-cyan-400/80 hover:bg-cyan-500/15"}`}>SATELLITE</button>
+              </div>
             </div>
             <button onClick={fitAll} className="absolute top-2 right-3 z-20 font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 flex items-center gap-1" data-testid="stark-fit-all">
               <Maximize2 className="w-3 h-3" /> FIT ALL
@@ -541,7 +554,7 @@ export default function StarkDashboard({ user, onLogout }) {
             {mapLoading || !isLoaded ? (
               <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
             ) : (
-              <GoogleMap mapContainerStyle={{ width: "100%", height: "100%" }} center={mapCenter} zoom={7} options={mapOptions} onLoad={(m) => { mapRef.current = m; setTimeout(() => fitAll(), 500); }} onClick={() => { setSelectedId(null); setHoveredId(null); }}>
+              <GoogleMap mapContainerStyle={{ width: "100%", height: "100%" }} center={mapCenter} zoom={7} options={mapType === "satellite" ? satelliteMapOptions : mapOptions} mapTypeId={mapType === "satellite" ? "hybrid" : "roadmap"} onLoad={(m) => { mapRef.current = m; setTimeout(() => fitAll(), 500); }} onClick={() => { setSelectedId(null); setHoveredId(null); }}>
                 {mapMode === "subscribers" && geoSubs.map((sub, i) => {
                   const lat = parseFloat(sub.geocode_lat); const lng = parseFloat(sub.geocode_lng);
                   if (isNaN(lat) || isNaN(lng)) return null;
