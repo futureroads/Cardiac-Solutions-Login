@@ -49,6 +49,15 @@ export default function StarkDashboard({ user, onLogout }) {
   const mapRef = useRef(null);
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: MAP_KEY });
 
+  // Map view mode state: "subscribers" = readiness pins per subscriber,
+  // "aeds" = individual AED pins. When in AED mode, `aedSubscriber` filters to
+  // a specific subscriber or "all".
+  const [mapMode, setMapMode] = useState("subscribers");
+  const [aedSubscriber, setAedSubscriber] = useState("all");
+  const [aedSubscribersList, setAedSubscribersList] = useState([]);
+  const [aedPins, setAedPins] = useState([]);
+  const [aedLoading, setAedLoading] = useState(false);
+
   // Status data
   const [liveStats, setLiveStats] = useState(null);
   const [statusError, setStatusError] = useState(null);
@@ -175,15 +184,53 @@ export default function StarkDashboard({ user, onLogout }) {
     return () => clearInterval(i);
   }, [token]);
 
+  // Fetch the list of subscribers that have AED geocode data (for the AED mode dropdown)
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API}/map/subscribers-with-aeds`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) { const d = await res.json(); setAedSubscribersList(d.subscribers || []); }
+      } catch {}
+    })();
+  }, [token]);
+
+  // Fetch AED pins when in AED mode and selection changes
+  useEffect(() => {
+    if (mapMode !== "aeds") return;
+    (async () => {
+      setAedLoading(true);
+      try {
+        const url = aedSubscriber === "all"
+          ? `${API}/map/subscriber-aeds`
+          : `${API}/map/subscriber-aeds?subscriber=${encodeURIComponent(aedSubscriber)}`;
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) { const d = await res.json(); setAedPins(d.aeds || []); }
+        else setAedPins([]);
+      } catch { setAedPins([]); }
+      setAedLoading(false);
+      setSelectedId(null); setHoveredId(null);
+    })();
+  }, [mapMode, aedSubscriber, token]);
+
   // Map helpers
   const geoSubs = mapSubs;
   const fitAll = useCallback(() => {
-    if (geoSubs.length > 0 && mapRef.current && window.google) {
-      const bounds = new window.google.maps.LatLngBounds();
-      geoSubs.forEach(s => bounds.extend({ lat: parseFloat(s.geocode_lat), lng: parseFloat(s.geocode_lng) }));
-      mapRef.current.fitBounds(bounds, 60);
+    if (!mapRef.current || !window.google) return;
+    const bounds = new window.google.maps.LatLngBounds();
+    let added = 0;
+    if (mapMode === "subscribers") {
+      geoSubs.forEach(s => {
+        const lat = parseFloat(s.geocode_lat); const lng = parseFloat(s.geocode_lng);
+        if (!isNaN(lat) && !isNaN(lng)) { bounds.extend({ lat, lng }); added++; }
+      });
+    } else {
+      aedPins.forEach(p => {
+        const lat = parseFloat(p.latitude); const lng = parseFloat(p.longitude);
+        if (!isNaN(lat) && !isNaN(lng)) { bounds.extend({ lat, lng }); added++; }
+      });
     }
-  }, [geoSubs]);
+    if (added > 0) mapRef.current.fitBounds(bounds, 60);
+  }, [geoSubs, aedPins, mapMode]);
   useEffect(() => { fitAll(); }, [fitAll]);
 
   // Stats
@@ -456,10 +503,31 @@ export default function StarkDashboard({ user, onLogout }) {
           {/* MAP */}
           <div className="panel relative bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1" data-testid="stark-map-card">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
-            <div className="absolute top-2 left-3 z-20 flex items-center gap-2">
+            <div className="absolute top-2 left-3 z-20 flex items-center gap-2 flex-wrap">
               <MapPin className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="font-orbitron text-[9px] text-cyan-400 tracking-wider">SUBSCRIBER MAP</span>
-              <span className="font-orbitron text-[7px] text-slate-500 ml-1">AED READINESS MONITORING</span>
+              <span className="font-orbitron text-[9px] text-cyan-400 tracking-wider">{mapMode === "subscribers" ? "SUBSCRIBER MAP" : "AED MAP"}</span>
+              <span className="font-orbitron text-[7px] text-slate-500">{mapMode === "subscribers" ? "AED READINESS MONITORING" : `${aedPins.length} DEVICES`}</span>
+              {/* Mode toggle */}
+              <div className="ml-2 inline-flex border border-cyan-500/30 rounded-sm overflow-hidden">
+                <button data-testid="stark-map-mode-subscribers"
+                  onClick={() => { setMapMode("subscribers"); setSelectedId(null); setHoveredId(null); }}
+                  className={`font-orbitron text-[8px] tracking-wider px-2 py-[3px] ${mapMode === "subscribers" ? "bg-cyan-500/25 text-cyan-200" : "text-cyan-400/70 hover:bg-cyan-500/10"}`}>SUBSCRIBERS</button>
+                <button data-testid="stark-map-mode-aeds"
+                  onClick={() => { setMapMode("aeds"); setSelectedId(null); setHoveredId(null); }}
+                  className={`font-orbitron text-[8px] tracking-wider px-2 py-[3px] border-l border-cyan-500/30 ${mapMode === "aeds" ? "bg-cyan-500/25 text-cyan-200" : "text-cyan-400/70 hover:bg-cyan-500/10"}`}>AEDS</button>
+              </div>
+              {/* AED subscriber filter (only in AED mode) */}
+              {mapMode === "aeds" && (
+                <select data-testid="stark-map-aed-subscriber"
+                  value={aedSubscriber}
+                  onChange={(e) => setAedSubscriber(e.target.value)}
+                  className="font-orbitron text-[8px] tracking-wider px-2 py-[3px] bg-[rgba(0,18,32,0.95)] border border-cyan-500/30 text-cyan-200 rounded-sm focus:outline-none">
+                  <option value="all">ALL SUBSCRIBERS</option>
+                  {aedSubscribersList.map(s => (
+                    <option key={s.subscriber} value={s.subscriber}>{s.subscriber.toUpperCase()} ({s.aed_count})</option>
+                  ))}
+                </select>
+              )}
             </div>
             <button onClick={fitAll} className="absolute top-2 right-3 z-20 font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 flex items-center gap-1" data-testid="stark-fit-all">
               <Maximize2 className="w-3 h-3" /> FIT ALL
@@ -468,19 +536,19 @@ export default function StarkDashboard({ user, onLogout }) {
               <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
             ) : (
               <GoogleMap mapContainerStyle={{ width: "100%", height: "100%" }} center={mapCenter} zoom={7} options={mapOptions} onLoad={(m) => { mapRef.current = m; setTimeout(() => fitAll(), 500); }} onClick={() => { setSelectedId(null); setHoveredId(null); }}>
-                {geoSubs.map((sub, i) => {
+                {mapMode === "subscribers" && geoSubs.map((sub, i) => {
                   const lat = parseFloat(sub.geocode_lat); const lng = parseFloat(sub.geocode_lng);
                   if (isNaN(lat) || isNaN(lng)) return null;
                   const counts = sub.status_counts || {}; const total = sub.aed_count || 0;
                   const readyPct = total > 0 ? Math.round(((counts.READY || 0) / total) * 100) : 0;
                   const pinColor = readyPct >= 90 ? "#22c55e" : readyPct >= 50 ? "#f59e0b" : "#ef4444";
                   return (
-                    <Marker key={`${sub.subscriber}-${i}`} position={{ lat, lng }}
+                    <Marker key={`sub-${sub.subscriber}-${i}`} position={{ lat, lng }}
                       icon={{ path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z", fillColor: pinColor, fillOpacity: 1, strokeColor: "#0a0f1c", strokeWeight: 2, scale: 2.2, anchor: { x: 12, y: 24 } }}
-                      onMouseOver={() => { if (selectedId !== i) setHoveredId(i); }} onMouseOut={() => setHoveredId(null)}
-                      onClick={() => setSelectedId(prev => prev === i ? null : i)}
+                      onMouseOver={() => { if (selectedId !== `sub-${i}`) setHoveredId(`sub-${i}`); }} onMouseOut={() => setHoveredId(null)}
+                      onClick={() => setSelectedId(prev => prev === `sub-${i}` ? null : `sub-${i}`)}
                     >
-                      {hoveredId === i && selectedId !== i && (
+                      {hoveredId === `sub-${i}` && selectedId !== `sub-${i}` && (
                         <OverlayView position={{ lat, lng }} mapPaneName={OverlayView.FLOAT_PANE} getPixelPositionOffset={(w, h) => ({ x: -(w/2), y: -h-30 })}>
                           <div style={{ background: "rgba(6,10,20,0.92)", border: "1px solid rgba(6,182,212,0.4)", borderRadius: 3, padding: "8px 14px", fontFamily: "Orbitron, monospace", whiteSpace: "nowrap", pointerEvents: "none" }}>
                             <div style={{ fontWeight: 700, fontSize: 13, color: "#06b6d4", letterSpacing: 1 }}>{sub.display_name || sub.subscriber}</div>
@@ -488,7 +556,7 @@ export default function StarkDashboard({ user, onLogout }) {
                           </div>
                         </OverlayView>
                       )}
-                      {selectedId === i && (
+                      {selectedId === `sub-${i}` && (
                         <OverlayView position={{ lat, lng }} mapPaneName={OverlayView.FLOAT_PANE} getPixelPositionOffset={(w, h) => ({ x: -(w/2), y: -h-36 })}>
                           <div style={{ background: "rgba(6,10,20,0.95)", border: "1px solid rgba(6,182,212,0.5)", borderRadius: 4, padding: "10px 16px", fontFamily: "Orbitron, monospace", minWidth: 200, maxWidth: 280 }}>
                             <div style={{ fontWeight: 700, fontSize: 13, color: "#06b6d4", letterSpacing: 1, marginBottom: 6 }}>{sub.display_name || sub.subscriber}</div>
@@ -506,6 +574,39 @@ export default function StarkDashboard({ user, onLogout }) {
                                 <span>READY</span><span style={{ color: "#22c55e", fontWeight: 700, marginLeft: 16 }}>{counts.READY}</span>
                               </div>
                             )}
+                          </div>
+                        </OverlayView>
+                      )}
+                    </Marker>
+                  );
+                })}
+                {mapMode === "aeds" && aedPins.map((aed, i) => {
+                  const lat = parseFloat(aed.latitude); const lng = parseFloat(aed.longitude);
+                  if (isNaN(lat) || isNaN(lng)) return null;
+                  const key = `aed-${aed.sentinel_id}-${i}`;
+                  return (
+                    <Marker key={key} position={{ lat, lng }}
+                      icon={{ path: window.google.maps.SymbolPath.CIRCLE, fillColor: "#06b6d4", fillOpacity: 0.95, strokeColor: "#0a0f1c", strokeWeight: 1.5, scale: 5 }}
+                      onMouseOver={() => { if (selectedId !== key) setHoveredId(key); }} onMouseOut={() => setHoveredId(null)}
+                      onClick={() => setSelectedId(prev => prev === key ? null : key)}
+                    >
+                      {hoveredId === key && selectedId !== key && (
+                        <OverlayView position={{ lat, lng }} mapPaneName={OverlayView.FLOAT_PANE} getPixelPositionOffset={(w, h) => ({ x: -(w/2), y: -h-14 })}>
+                          <div style={{ background: "rgba(6,10,20,0.92)", border: "1px solid rgba(6,182,212,0.4)", borderRadius: 3, padding: "6px 10px", fontFamily: "Orbitron, monospace", whiteSpace: "nowrap", pointerEvents: "none" }}>
+                            <div style={{ fontWeight: 700, fontSize: 11, color: "#06b6d4", letterSpacing: 1 }}>{aed.sentinel_id}</div>
+                            <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{aed.site}{aed.building ? ` - ${aed.building}` : ""}</div>
+                          </div>
+                        </OverlayView>
+                      )}
+                      {selectedId === key && (
+                        <OverlayView position={{ lat, lng }} mapPaneName={OverlayView.FLOAT_PANE} getPixelPositionOffset={(w, h) => ({ x: -(w/2), y: -h-18 })}>
+                          <div style={{ background: "rgba(6,10,20,0.95)", border: "1px solid rgba(6,182,212,0.5)", borderRadius: 4, padding: "10px 14px", fontFamily: "Orbitron, monospace", minWidth: 220, maxWidth: 320 }}>
+                            <div style={{ fontWeight: 700, fontSize: 12, color: "#06b6d4", letterSpacing: 1, marginBottom: 4 }}>{aed.sentinel_id}</div>
+                            <div style={{ fontSize: 11, color: "#e2e8f0", marginBottom: 2 }}>{aed.subscriber}</div>
+                            <div style={{ fontSize: 10, color: "#94a3b8" }}>{aed.site}</div>
+                            {aed.building && <div style={{ fontSize: 10, color: "#94a3b8" }}>{aed.building}</div>}
+                            {aed.placement_location && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 3 }}>Placement: {aed.placement_location}</div>}
+                            {aed.location_group && <div style={{ fontSize: 9, color: "#475569", marginTop: 4 }}>{aed.location_group}</div>}
                           </div>
                         </OverlayView>
                       )}

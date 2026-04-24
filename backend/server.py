@@ -1914,6 +1914,46 @@ async def get_all_map_locations(current_user: dict = Depends(get_current_user)):
         return {"subscribers": [], "_error": str(e)}
 
 
+@api_router.get("/map/subscribers-with-aeds")
+async def list_subscribers_with_aeds(current_user: dict = Depends(get_current_user)):
+    """List subscribers that have geocoded AED records in MongoDB."""
+    try:
+        names = await _db.subscriber_map_locations.distinct("subscriber")
+        out = []
+        for name in names:
+            count = await _db.subscriber_map_locations.count_documents({
+                "subscriber": name,
+                "latitude": {"$ne": None},
+                "longitude": {"$ne": None},
+            })
+            out.append({"subscriber": name, "aed_count": count})
+        out.sort(key=lambda x: x["subscriber"].lower())
+        return {"subscribers": out}
+    except Exception as e:
+        return {"subscribers": [], "_error": str(e)}
+
+
+@api_router.get("/map/subscriber-aeds")
+async def get_subscriber_aeds(
+    subscriber: str | None = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Return AED pins. If subscriber is provided, filter to that subscriber;
+    otherwise return AEDs for all subscribers that have geocoded data."""
+    try:
+        query = {
+            "latitude": {"$ne": None},
+            "longitude": {"$ne": None},
+        }
+        if subscriber:
+            query["subscriber"] = subscriber
+        cursor = _db.subscriber_map_locations.find(query, {"_id": 0})
+        aeds = [doc async for doc in cursor]
+        return {"aeds": aeds, "count": len(aeds), "subscriber": subscriber or "all"}
+    except Exception as e:
+        return {"aeds": [], "count": 0, "_error": str(e)}
+
+
 @api_router.get("/support/image-download")
 async def image_download_proxy(url: str, current_user: dict = Depends(get_current_user)):
     """Proxy to download an AED image from Readisys S3 with auth."""

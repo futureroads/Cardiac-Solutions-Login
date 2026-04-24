@@ -65,6 +65,7 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - Refactor large frontend components
 
 ## Changelog
+- 2026-04-24: **Stark Dashboard Map AED Mode** — Added Subscribers/AEDs toggle at top of Stark Dashboard map. In AED mode, dropdown filters to ALL SUBSCRIBERS or a specific subscriber. Seeded 272 geocoded Georgia Power AEDs (out of 280) via new `seed_map_subscribers.py` script. Added `GET /api/map/subscribers-with-aeds` and `GET /api/map/subscriber-aeds` endpoints backed by `subscriber_map_locations` MongoDB collection. Individual AED pins show device id, site, building, placement on hover/click.
 - 2026-04-18: Added Image History feature to DeviceListModal — red HISTORY button below each camera image opens modal showing all captured images for that device (stored in MongoDB, auto-populated from Readisys API)
 - 2026-04-17: Created "Stark" dashboard type — MAP as hero center card, DI panel compact below with overview mode, assigned to user Stark. Skip-to-dashboard login when only "dashboard" module enabled.
 - 2026-04-16: Backfill logic for notified AEDs from historical notification_history records; percent format fixed to XX.X%; uses /devices API for accurate device list
