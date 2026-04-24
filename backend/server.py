@@ -423,6 +423,50 @@ async def seed_users():
     logger.info(f"Seeding complete: {seeded} new users")
 
 
+async def _seed_subscriber_map_locations():
+    """Seed subscriber_map_locations from bundled JSON (used by voice API and Stark map).
+
+    Runs idempotently: reads /app/backend/subscriber_map_seed.json and inserts
+    any docs for a (subscriber, sentinel_id) pair that doesn't already exist.
+    """
+    import json
+    from pathlib import Path
+    seed_path = Path(__file__).parent / "subscriber_map_seed.json"
+    if not seed_path.exists():
+        logger.info("subscriber_map_seed.json not present, skipping map seed")
+        return
+    try:
+        docs = json.loads(seed_path.read_text())
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Failed to parse subscriber_map_seed.json: {e}")
+        return
+    if not isinstance(docs, list) or not docs:
+        return
+
+    existing = await _db.subscriber_map_locations.count_documents({})
+    if existing >= len(docs):
+        logger.info(f"Subscriber map locations already seeded ({existing} docs), skipping")
+        return
+
+    inserted = 0
+    for d in docs:
+        sid = d.get("sentinel_id"); sub = d.get("subscriber")
+        if not sid or not sub:
+            continue
+        await _db.subscriber_map_locations.update_one(
+            {"sentinel_id": sid, "subscriber": sub},
+            {"$set": d},
+            upsert=True,
+        )
+        inserted += 1
+    try:
+        await _db.subscriber_map_locations.create_index([("subscriber", 1)])
+        await _db.subscriber_map_locations.create_index([("sentinel_id", 1)])
+    except Exception:  # noqa: BLE001
+        pass
+    logger.info(f"Seeded/updated {inserted} subscriber map locations")
+
+
 async def _seed_subscriber_contacts():
     """Seed subscriber contacts from the Sentinel Customer Database Excel data."""
     existing = await _db.subscriber_contacts.count_documents({})
@@ -557,6 +601,7 @@ async def _run_lazy_init():
         await _db.users.create_index("id", unique=True, sparse=True)
         await asyncio.wait_for(seed_users(), timeout=10)
         await _seed_subscriber_contacts()
+        await _seed_subscriber_map_locations()
         _seed_done = True
         logger.info("Lazy init complete: cleanup + indexes + seed done")
     except Exception as e:
