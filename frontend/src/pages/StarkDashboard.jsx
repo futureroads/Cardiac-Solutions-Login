@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoogleMap, useJsApiLoader, Marker, OverlayView } from "@react-google-maps/api";
-import { Loader2, Play, Pause, Maximize2, MapPin, LogOut, Mic, AlertTriangle, RefreshCw } from "lucide-react";
+import { Loader2, Play, Pause, Maximize2, Minimize2, MapPin, LogOut, Mic, AlertTriangle, RefreshCw } from "lucide-react";
 import { getLedColor, LED_STYLES, useServiceStatuses } from "@/data/serviceStatuses";
 import { ReadinessBreakdownModal } from "@/components/ReadinessBreakdownModal";
 import API_BASE from "@/apiBase";
@@ -60,6 +60,8 @@ export default function StarkDashboard({ user, onLogout }) {
   const [aedLoading, setAedLoading] = useState(false);
   // Base map style: "dark" (custom styled roadmap) or "satellite" (hybrid imagery)
   const [mapType, setMapType] = useState("dark");
+  // Fullscreen toggle for the map panel
+  const [mapFullscreen, setMapFullscreen] = useState(false);
 
   // Status data
   const [liveStats, setLiveStats] = useState(null);
@@ -186,6 +188,32 @@ export default function StarkDashboard({ user, onLogout }) {
     const i = setInterval(fetchNotifCount, 60000);
     return () => clearInterval(i);
   }, [token]);
+
+  // ESC closes fullscreen map
+  useEffect(() => {
+    if (!mapFullscreen) return;
+    const onKey = (e) => { if (e.key === "Escape") setMapFullscreen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mapFullscreen]);
+
+  // Re-fit when fullscreen toggles so Google Map adjusts to new size
+  useEffect(() => {
+    if (!mapRef.current || !window.google) return;
+    // Trigger a resize twice: immediately after layout, and again once tiles have re-loaded
+    const t1 = setTimeout(() => {
+      if (!mapRef.current) return;
+      window.google.maps.event.trigger(mapRef.current, "resize");
+      const c = mapRef.current.getCenter();
+      if (c) mapRef.current.setCenter(c);
+    }, 100);
+    const t2 = setTimeout(() => {
+      if (!mapRef.current) return;
+      window.google.maps.event.trigger(mapRef.current, "resize");
+      fitAll();
+    }, 500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [mapFullscreen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch the list of subscribers that have AED geocode data (for the AED mode dropdown)
   useEffect(() => {
@@ -504,7 +532,7 @@ export default function StarkDashboard({ user, onLogout }) {
         {/* CENTER COLUMN */}
         <div className="flex flex-col gap-[7px]">
           {/* MAP */}
-          <div className="panel relative bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden flex-1" data-testid="stark-map-card">
+          <div className={`panel relative bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden ${mapFullscreen ? "fixed inset-0 z-[60] flex-none" : "flex-1"}`} data-testid="stark-map-card">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="absolute top-2 left-3 z-20 flex items-center gap-2">
               <MapPin className="w-3.5 h-3.5 text-cyan-400" />
@@ -548,8 +576,14 @@ export default function StarkDashboard({ user, onLogout }) {
                   className={`font-orbitron text-[10px] font-bold tracking-wider px-3 py-[5px] border-l border-cyan-500/50 transition-colors ${mapType === "satellite" ? "bg-cyan-500/35 text-cyan-50 shadow-[inset_0_0_8px_rgba(6,182,212,0.5)]" : "text-cyan-400/80 hover:bg-cyan-500/15"}`}>SATELLITE</button>
               </div>
             </div>
-            <button onClick={fitAll} className="absolute top-2 right-3 z-20 font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 flex items-center gap-1" data-testid="stark-fit-all">
+            <button onClick={fitAll} className="absolute top-2 right-[110px] z-20 font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 flex items-center gap-1" data-testid="stark-fit-all">
               <Maximize2 className="w-3 h-3" /> FIT ALL
+            </button>
+            <button onClick={() => setMapFullscreen(v => !v)}
+              className="absolute top-2 right-3 z-20 font-orbitron text-[7px] px-2 py-1 border border-cyan-500/40 text-cyan-300 rounded-sm hover:bg-cyan-500/15 flex items-center gap-1"
+              data-testid="stark-map-fullscreen-toggle"
+              title={mapFullscreen ? "Exit fullscreen (Esc)" : "Enter fullscreen"}>
+              {mapFullscreen ? (<><Minimize2 className="w-3 h-3" /> EXIT FULLSCREEN</>) : (<><Maximize2 className="w-3 h-3" /> FULLSCREEN</>)}
             </button>
             {mapLoading || !isLoaded ? (
               <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
