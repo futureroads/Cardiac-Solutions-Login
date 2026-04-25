@@ -200,19 +200,22 @@ export default function StarkDashboard({ user, onLogout }) {
   // Re-fit when fullscreen toggles so Google Map adjusts to new size
   useEffect(() => {
     if (!mapRef.current || !window.google) return;
-    // Trigger a resize twice: immediately after layout, and again once tiles have re-loaded
-    const t1 = setTimeout(() => {
+    const doResize = () => {
       if (!mapRef.current) return;
       window.google.maps.event.trigger(mapRef.current, "resize");
       const c = mapRef.current.getCenter();
-      if (c) mapRef.current.setCenter(c);
-    }, 100);
-    const t2 = setTimeout(() => {
-      if (!mapRef.current) return;
-      window.google.maps.event.trigger(mapRef.current, "resize");
-      fitAll();
-    }, 500);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+      if (c) {
+        // Force tile re-render by panning to and from the same point
+        mapRef.current.setCenter({ lat: c.lat(), lng: c.lng() });
+      }
+    };
+    // Multiple staged resizes to handle CSS transition + tile load
+    const timers = [
+      setTimeout(doResize, 50),
+      setTimeout(doResize, 250),
+      setTimeout(() => { doResize(); fitAll(); }, 600),
+    ];
+    return () => timers.forEach(clearTimeout);
   }, [mapFullscreen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch the list of subscribers that have AED geocode data (for the AED mode dropdown)
@@ -532,7 +535,10 @@ export default function StarkDashboard({ user, onLogout }) {
         {/* CENTER COLUMN */}
         <div className="flex flex-col gap-[7px]">
           {/* MAP */}
-          <div className={`panel relative bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden ${mapFullscreen ? "fixed inset-0 z-[60] flex-none" : "flex-1"}`} data-testid="stark-map-card">
+          <div
+            className={`panel relative bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden ${mapFullscreen ? "" : "flex-1"}`}
+            style={mapFullscreen ? { position: "fixed", inset: 0, zIndex: 9999, width: "100vw", height: "100vh" } : undefined}
+            data-testid="stark-map-card">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="absolute top-2 left-3 z-20 flex items-center gap-2">
               <MapPin className="w-3.5 h-3.5 text-cyan-400" />
