@@ -1132,6 +1132,34 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
 
     totals = status_data.get("totals", {})
     dsc = totals.get("detailed_status_counts", {})
+    prev_dsc = totals.get("prev_detailed_status_counts", {}) or {}
+
+    # ---- Daily snapshot for "subscribers with issues" trend ----
+    today_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    yesterday_key = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    prev_total_subscribers = None
+    try:
+        # Store today's value (idempotent — overwrites within the day)
+        await _db.support_daily_snapshots.update_one(
+            {"date": today_key},
+            {"$set": {
+                "date": today_key,
+                "total_subscribers": len(subscribers),
+                "captured_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+        # Fetch yesterday's, falling back to most recent prior snapshot
+        prev_doc = await _db.support_daily_snapshots.find_one({"date": yesterday_key})
+        if not prev_doc:
+            prev_doc = await _db.support_daily_snapshots.find_one(
+                {"date": {"$lt": today_key}},
+                sort=[("date", -1)],
+            )
+        if prev_doc:
+            prev_total_subscribers = prev_doc.get("total_subscribers")
+    except Exception as e:
+        logger.warning(f"daily-snapshot failed: {e}")
 
     # Get notified AED tracking data for adjusted readiness
     notified_aed_unresolved = 0
@@ -1168,7 +1196,15 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
             "not_present": dsc.get("not_present", 0),
             "unknown": dsc.get("unknown", 0),
             "lost_contact": dsc.get("lost_contact", 0),
+            "prev_expired_bp": prev_dsc.get("expired_bp"),
+            "prev_expiring_bp": prev_dsc.get("expiring_batt_pads"),
+            "prev_not_ready": prev_dsc.get("not_ready"),
+            "prev_reposition": prev_dsc.get("reposition"),
+            "prev_not_present": prev_dsc.get("not_present"),
+            "prev_unknown": prev_dsc.get("unknown"),
+            "prev_lost_contact": prev_dsc.get("lost_contact"),
         },
+        "total_subscribers_prev": prev_total_subscribers,
         "readiness": {
             "total_monitored": total_monitored,
             "total_ready": total_ready,

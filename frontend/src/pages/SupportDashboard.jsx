@@ -12,7 +12,39 @@ import API_BASE from "@/apiBase";
 
 const API = API_BASE + "/api";
 
-function StatCard({ value, label, color, icon: Icon, onClick, active, notified }) {
+function TrendIndicator({ value, prev }) {
+  // Up red if today > yesterday; Down green if today < yesterday; Blue dash if same; nothing if prev is null
+  if (prev == null || value == null) return null;
+  if (value > prev) {
+    // up-right (45deg) red — using SVG so we can rotate exactly 45deg
+    return (
+      <span title={`+${value - prev} since yesterday (was ${prev})`} className="inline-flex">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path d="M2 10 L10 2 M10 2 L4.5 2 M10 2 L10 7.5" stroke="#ef4444" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+    );
+  }
+  if (value < prev) {
+    // down-right (135deg) green
+    return (
+      <span title={`-${prev - value} since yesterday (was ${prev})`} className="inline-flex">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path d="M2 2 L10 10 M10 10 L4.5 10 M10 10 L10 4.5" stroke="#22c55e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+    );
+  }
+  return (
+    <span title={`No change since yesterday (${prev})`} className="inline-flex">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+        <path d="M2 6 L10 6" stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    </span>
+  );
+}
+
+function StatCard({ value, label, color, icon: Icon, onClick, active, notified, prev }) {
   const pct = value > 0 && notified != null ? Math.min(100, Math.round((notified / value) * 100)) : 0;
   const allDone = value > 0 && notified != null && notified >= value;
   return (
@@ -21,10 +53,12 @@ function StatCard({ value, label, color, icon: Icon, onClick, active, notified }
       className={`border rounded-sm p-4 min-w-[130px] cursor-pointer transition-all ${allDone ? "border-green-500/50 bg-[rgba(34,197,94,0.08)]" : active ? "border-current ring-1 ring-current bg-[rgba(10,15,28,1)]" : "border-slate-700/50 bg-[rgba(10,15,28,0.85)] hover:border-slate-600"}`}
       style={active && !allDone ? { borderColor: color, boxShadow: `0 0 12px ${color}22` } : allDone ? { boxShadow: "0 0 12px rgba(34,197,94,0.15)" } : {}}
     >
-      <div className="flex items-start justify-between">
-        <div className="font-orbitron text-2xl font-black" style={{ color }}>{value}</div>
+      <div className="absolute" />
+      <div className="flex items-center justify-between mb-1">
+        <TrendIndicator value={value} prev={prev} />
         {Icon && <Icon className="w-4 h-4 opacity-60" style={{ color }} />}
       </div>
+      <div className="font-orbitron text-2xl font-black" style={{ color }}>{value}</div>
       <div className="font-orbitron text-[7px] tracking-wider text-slate-400 mt-1.5 uppercase">{label}</div>
       {notified != null && value > 0 && (
         <div className="mt-2">
@@ -1945,13 +1979,13 @@ export default function SupportDashboard({ user, onLogout }) {
           <>
             {/* Fleet Stats */}
             <div className="flex gap-3 flex-wrap mb-6">
-              <StatCard value={data?.total_subscribers || 0} label="SUBSCRIBERS WITH ISSUES" color="#06b6d4" icon={Users} onClick={() => setActiveFilter("all")} active={activeFilter === "all"} notified={subscribers.filter(s => s.notified).length} />
-              <StatCard value={totals.expired_bp || 0} label="EXPIRED B/P" color="#ef4444" icon={AlertTriangle} onClick={() => setActiveFilter("expired_bp")} active={activeFilter === "expired_bp"} notified={nc.expired_bp || 0} />
-              <StatCard value={totals.expiring_bp || 0} label="EXPIRING B/P" color="#f59e0b" icon={Clock} onClick={() => setActiveFilter("expiring_bp")} active={activeFilter === "expiring_bp"} notified={nc.expiring_bp || 0} />
-              <StatCard value={totals.not_ready || 0} label="NOT READY" color="#f97316" icon={Activity} onClick={() => setActiveFilter("not_ready")} active={activeFilter === "not_ready"} notified={nc.not_ready || 0} />
-              <StatCard value={totals.reposition || 0} label="REPOSITION" color="#a855f7" icon={Shield} onClick={() => setActiveFilter("reposition")} active={activeFilter === "reposition"} notified={nc.reposition || 0} />
-              <StatCard value={totals.not_present || 0} label="NOT PRESENT" color="#38bdf8" icon={AlertCircle} onClick={() => setActiveFilter("not_present")} active={activeFilter === "not_present"} notified={nc.not_present || 0} />
-              <StatCard value={totals.unknown || 0} label="UNKNOWN" color="#64748b" icon={Shield} onClick={() => setActiveFilter("unknown")} active={activeFilter === "unknown"} notified={nc.unknown || 0} />
+              <StatCard value={data?.total_subscribers || 0} label="SUBSCRIBERS WITH ISSUES" color="#06b6d4" icon={Users} onClick={() => setActiveFilter("all")} active={activeFilter === "all"} notified={subscribers.filter(s => s.notified).length} prev={data?.total_subscribers_prev} />
+              <StatCard value={totals.expired_bp || 0} label="EXPIRED B/P" color="#ef4444" icon={AlertTriangle} onClick={() => setActiveFilter("expired_bp")} active={activeFilter === "expired_bp"} notified={nc.expired_bp || 0} prev={totals.prev_expired_bp} />
+              <StatCard value={totals.expiring_bp || 0} label="EXPIRING B/P" color="#f59e0b" icon={Clock} onClick={() => setActiveFilter("expiring_bp")} active={activeFilter === "expiring_bp"} notified={nc.expiring_bp || 0} prev={totals.prev_expiring_bp} />
+              <StatCard value={totals.not_ready || 0} label="NOT READY" color="#f97316" icon={Activity} onClick={() => setActiveFilter("not_ready")} active={activeFilter === "not_ready"} notified={nc.not_ready || 0} prev={totals.prev_not_ready} />
+              <StatCard value={totals.reposition || 0} label="REPOSITION" color="#a855f7" icon={Shield} onClick={() => setActiveFilter("reposition")} active={activeFilter === "reposition"} notified={nc.reposition || 0} prev={totals.prev_reposition} />
+              <StatCard value={totals.not_present || 0} label="NOT PRESENT" color="#38bdf8" icon={AlertCircle} onClick={() => setActiveFilter("not_present")} active={activeFilter === "not_present"} notified={nc.not_present || 0} prev={totals.prev_not_present} />
+              <StatCard value={totals.unknown || 0} label="UNKNOWN" color="#64748b" icon={Shield} onClick={() => setActiveFilter("unknown")} active={activeFilter === "unknown"} notified={nc.unknown || 0} prev={totals.prev_unknown} />
             </div>
 
             {/* Notified AEDs Readiness Tracker */}
