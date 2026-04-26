@@ -1182,6 +1182,39 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
     }
 
 
+# ---------------------------------------------------------------------------
+# Email tracking helpers
+# ---------------------------------------------------------------------------
+def _extract_sg_message_id(resp) -> str:
+    """Best-effort extraction of SendGrid X-Message-Id from a response object."""
+    try:
+        h = getattr(resp, "headers", None)
+        if h is None:
+            return ""
+        for key in ("X-Message-Id", "x-message-id", "X-Message-ID"):
+            try:
+                v = h.get(key)
+                if v:
+                    return str(v)
+            except Exception:
+                pass
+        try:
+            for k, v in dict(h).items():
+                if str(k).lower() == "x-message-id" and v:
+                    return str(v)
+        except Exception:
+            pass
+        try:
+            for k, v in h:
+                if str(k).lower() == "x-message-id" and v:
+                    return str(v)
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return ""
+
+
 @api_router.post("/support/test-email")
 async def send_test_email(data: dict, current_user: dict = Depends(get_current_user)):
     """Send a test email to verify SendGrid is working — and create a
@@ -1221,14 +1254,13 @@ async def send_test_email(data: dict, current_user: dict = Depends(get_current_u
         sg = SendGridAPIClient(sendgrid_key)
         resp = sg.send(message)
         success = resp.status_code in (200, 201, 202)
-        sg_message_id = ""
+        sg_message_id = _extract_sg_message_id(resp)
+        # Diagnostic: dump the full set of header keys we see (helps if header name differs)
         try:
-            mid = resp.headers.get("X-Message-Id") if hasattr(resp, "headers") else None
-            if mid:
-                sg_message_id = str(mid)
-        except Exception:  # noqa: BLE001
-            pass
-        logger.info(f"Test email to {to_email}: SendGrid {resp.status_code} (msgid={sg_message_id})")
+            hdr_keys = list(dict(resp.headers).keys()) if hasattr(resp, "headers") else []
+        except Exception:
+            hdr_keys = []
+        logger.info(f"Test email to {to_email}: SendGrid {resp.status_code} msgid={sg_message_id!r} hdr_keys={hdr_keys}")
 
         history_id = None
         if success:
@@ -1310,15 +1342,8 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
         sg = SendGridAPIClient(sendgrid_key)
         resp = sg.send(message)
         success = resp.status_code in (200, 201, 202)
-        # Capture SendGrid Message ID so we can correlate webhook events later
-        sg_message_id = ""
-        try:
-            mid = resp.headers.get("X-Message-Id") if hasattr(resp, "headers") else None
-            if mid:
-                sg_message_id = str(mid)
-        except Exception:  # noqa: BLE001
-            pass
-        logger.info(f"Support notification to {to_email} for {subscriber}: SendGrid {resp.status_code} (msgid={sg_message_id})")
+        sg_message_id = _extract_sg_message_id(resp)
+        logger.info(f"Support notification to {to_email} for {subscriber}: SendGrid {resp.status_code} (msgid={sg_message_id!r})")
 
         # Log to DB
         await _db.notification_history.insert_one({
@@ -1474,6 +1499,8 @@ async def sendgrid_event_webhook(request: Request):
 
     processed = 0
     matched = 0
+    # Log every event into sendgrid_event_log for diagnostics
+    log_records = []
     for ev in events:
         try:
             event_type = (ev.get("event") or "").lower()
@@ -1484,6 +1511,19 @@ async def sendgrid_event_webhook(request: Request):
                 if ts else datetime.now(timezone.utc).isoformat()
             )
             email = ev.get("email") or ""
+
+            log_records.append({
+                "received_at": datetime.now(timezone.utc).isoformat(),
+                "event": event_type,
+                "email": email,
+                "sg_message_id": sg_msg_id,
+                "sg_event_id": ev.get("sg_event_id", ""),
+                "url": ev.get("url"),
+                "reason": ev.get("reason"),
+                "timestamp": iso_ts,
+                "matched_history": False,
+            })
+
             if not event_type or not sg_msg_id:
                 processed += 1
                 continue
@@ -1532,11 +1572,52 @@ async def sendgrid_event_webhook(request: Request):
             res = await _db.notification_history.update_one(query, update)
             if res.matched_count:
                 matched += 1
+                if log_records:
+                    log_records[-1]["matched_history"] = True
             processed += 1
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[sendgrid-webhook] failed to process event: {e}")
 
+    # Persist the diagnostic log (keep last 500 entries)
+    try:
+        if log_records:
+            await _db.sendgrid_event_log.insert_many(log_records)
+            count = await _db.sendgrid_event_log.count_documents({})
+            if count > 500:
+                # Drop the oldest extras
+                excess = count - 500
+                old_ids = [
+                    d["_id"] async for d in _db.sendgrid_event_log.find({}, {"_id": 1}).sort("received_at", 1).limit(excess)
+                ]
+                if old_ids:
+                    await _db.sendgrid_event_log.delete_many({"_id": {"$in": old_ids}})
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[sendgrid-webhook] failed to log events: {e}")
+
+    logger.info(f"[sendgrid-webhook] received={len(events)} processed={processed} matched={matched}")
     return {"received": len(events), "processed": processed, "matched": matched}
+
+
+@api_router.get("/support/sendgrid-debug")
+async def sendgrid_debug(current_user: dict = Depends(get_current_user)):
+    """Return recent SendGrid webhook events + recent notification_history sg_message_ids for diagnostic correlation."""
+    events = []
+    async for doc in _db.sendgrid_event_log.find({}, {"_id": 0}).sort("received_at", -1).limit(30):
+        events.append(doc)
+    histories = []
+    async for doc in _db.notification_history.find(
+        {"sg_message_id": {"$exists": True, "$ne": ""}},
+        {"_id": 0, "sg_message_id": 1, "subscriber": 1, "to_email": 1, "subject": 1, "sent_at": 1, "delivered_at": 1, "open_count": 1, "click_count": 1, "is_test": 1},
+    ).sort("sent_at", -1).limit(20):
+        histories.append(doc)
+    return {
+        "recent_events": events,
+        "recent_history_with_msgid": histories,
+        "stats": {
+            "events_logged_total": await _db.sendgrid_event_log.count_documents({}),
+            "history_with_msgid_total": await _db.notification_history.count_documents({"sg_message_id": {"$exists": True, "$ne": ""}}),
+        },
+    }
 
 
 @api_router.get("/support/notification-history/{history_id}")
