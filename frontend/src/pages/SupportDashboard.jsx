@@ -186,6 +186,183 @@ function DeviceDrawer({ device, onClose }) {
   );
 }
 
+function TrackingTestModal({ onClose }) {
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [historyId, setHistoryId] = useState(null);
+  const [record, setRecord] = useState(null);
+  const [polling, setPolling] = useState(false);
+  const [pollCount, setPollCount] = useState(0);
+  const [error, setError] = useState("");
+
+  const send = async () => {
+    if (!email) { toast.error("Enter an email"); return; }
+    setSending(true); setError("");
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API}/support/test-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ to_email: email }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        toast.success(d.message);
+        if (d.history_id) {
+          setHistoryId(d.history_id);
+          setPolling(true);
+          setRecord({ subscriber: "[Test Email]", to_email: email, sg_message_id: d.sg_message_id, events: [] });
+        } else {
+          setError("Email sent but no history record was created — webhook tracking will not be visible.");
+        }
+      } else {
+        setError(d.message || "Failed to send test email");
+        toast.error(d.message || "Failed");
+      }
+    } catch (err) {
+      setError(String(err)); toast.error("Failed to send test email");
+    }
+    setSending(false);
+  };
+
+  // Poll the notification record for events every 3s while modal open
+  useEffect(() => {
+    if (!polling || !historyId) return;
+    const t = setInterval(async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API}/support/notification-history/${historyId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const d = await res.json();
+          setRecord(d);
+          setPollCount((n) => n + 1);
+        }
+      } catch {}
+    }, 3000);
+    return () => clearInterval(t);
+  }, [polling, historyId]);
+
+  const fmt = (iso) => iso ? new Date(iso).toLocaleString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "—";
+  const events = (record && record.events) || [];
+  const delivered = !!(record && record.delivered_at);
+  const opens = (record && record.open_count) || 0;
+  const clicks = (record && record.click_count) || 0;
+  const bounced = !!(record && record.bounced);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-full max-w-2xl max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="border-b border-cyan-500/15 px-5 py-3 flex items-center justify-between bg-[rgba(6,10,20,0.95)]">
+          <div className="flex items-center gap-2">
+            <Mail className="w-4 h-4 text-green-400" />
+            <div className="font-orbitron text-xs tracking-wider text-green-400">EMAIL TRACKING DIAGNOSTIC</div>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-white" data-testid="tracking-test-close"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Step 1: address */}
+          <div>
+            <div className="font-orbitron text-[8px] text-slate-500 tracking-[0.2em] uppercase mb-1.5">Step 1 — Recipient</div>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@cardiac-solutions.ai"
+                disabled={!!historyId}
+                className="flex-1 bg-slate-900 border border-slate-700 rounded-sm px-3 py-2 text-white text-[12px] placeholder-slate-600 focus:border-cyan-500/40 focus:outline-none disabled:opacity-50"
+                data-testid="tracking-test-email"
+              />
+              <button
+                onClick={send}
+                disabled={sending || !!historyId}
+                className="font-orbitron text-[10px] px-4 bg-green-500/15 text-green-400 border border-green-500/30 rounded-sm hover:bg-green-500/25 disabled:opacity-50 flex items-center gap-1.5"
+                data-testid="tracking-test-send"
+              >
+                {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                {historyId ? "SENT" : "SEND TEST"}
+              </button>
+            </div>
+            {error && <div className="mt-2 text-[10px] text-red-400">{error}</div>}
+          </div>
+
+          {/* Step 2: instructions */}
+          {historyId && (
+            <>
+              <div className="border-t border-slate-800/60 pt-4">
+                <div className="font-orbitron text-[8px] text-slate-500 tracking-[0.2em] uppercase mb-1.5">Step 2 — Open the email</div>
+                <div className="text-[11px] text-slate-400 leading-relaxed">
+                  Check your inbox at <span className="text-cyan-400 font-bold">{email}</span>. Open the message, then click the cyan
+                  <span className="text-cyan-400 font-bold"> "Click to verify CLICK tracking"</span> button inside it. Events arrive in
+                  ~5–30 seconds.
+                </div>
+              </div>
+
+              {/* Live tracking dashboard */}
+              <div className="border-t border-slate-800/60 pt-4">
+                <div className="font-orbitron text-[8px] text-slate-500 tracking-[0.2em] uppercase mb-2 flex items-center gap-2">
+                  Step 3 — Live Tracking
+                  <span className="text-cyan-400/70 normal-case tracking-normal text-[10px]">polling every 3s · {pollCount} updates</span>
+                </div>
+                <div className="grid grid-cols-4 gap-2 mb-3">
+                  <div className={`rounded-sm border px-3 py-2 text-center ${historyId ? "border-cyan-500/40 bg-cyan-500/10" : "border-slate-700 bg-slate-900/40"}`}>
+                    <div className="font-orbitron text-[8px] text-slate-400">SENT</div>
+                    <div className={`font-orbitron text-base font-bold ${historyId ? "text-cyan-400" : "text-slate-600"}`}>{historyId ? "✓" : "—"}</div>
+                  </div>
+                  <div className={`rounded-sm border px-3 py-2 text-center ${delivered ? "border-cyan-500/40 bg-cyan-500/10" : "border-slate-700 bg-slate-900/40"}`}>
+                    <div className="font-orbitron text-[8px] text-slate-400">DELIVERED</div>
+                    <div className={`font-orbitron text-base font-bold ${delivered ? "text-cyan-400" : "text-slate-600"}`}>{delivered ? "✓" : "…"}</div>
+                  </div>
+                  <div className={`rounded-sm border px-3 py-2 text-center ${opens > 0 ? "border-emerald-500/40 bg-emerald-500/10" : "border-slate-700 bg-slate-900/40"}`}>
+                    <div className="font-orbitron text-[8px] text-slate-400">OPENED</div>
+                    <div className={`font-orbitron text-base font-bold ${opens > 0 ? "text-emerald-400" : "text-slate-600"}`}>{opens > 0 ? `×${opens}` : "…"}</div>
+                  </div>
+                  <div className={`rounded-sm border px-3 py-2 text-center ${clicks > 0 ? "border-amber-500/40 bg-amber-500/10" : "border-slate-700 bg-slate-900/40"}`}>
+                    <div className="font-orbitron text-[8px] text-slate-400">CLICKED</div>
+                    <div className={`font-orbitron text-base font-bold ${clicks > 0 ? "text-amber-400" : "text-slate-600"}`}>{clicks > 0 ? `×${clicks}` : "…"}</div>
+                  </div>
+                </div>
+                {bounced && (
+                  <div className="rounded-sm border border-red-500/40 bg-red-500/10 px-3 py-2 mb-3">
+                    <div className="font-orbitron text-[9px] text-red-400 font-bold">BOUNCED</div>
+                    <div className="text-[10px] text-red-300/80">{record.bounce_reason || "Email rejected by recipient mail server"}</div>
+                  </div>
+                )}
+                <div className="font-orbitron text-[8px] text-slate-500 tracking-wider mb-1.5 uppercase">Event log</div>
+                <div className="bg-slate-950 border border-slate-800 rounded-sm max-h-48 overflow-y-auto p-2 space-y-1">
+                  {events.length === 0 ? (
+                    <div className="text-[10px] text-slate-600 italic px-1.5 py-1">Waiting for SendGrid webhook events…</div>
+                  ) : (
+                    [...events].reverse().map((ev, i) => (
+                      <div key={i} className="flex items-baseline gap-2 text-[10px] font-mono">
+                        <span className="text-slate-500 w-20">{fmt(ev.timestamp)}</span>
+                        <span className={`font-bold uppercase ${
+                          ev.event === "delivered" ? "text-cyan-400" :
+                          ev.event === "open" ? "text-emerald-400" :
+                          ev.event === "click" ? "text-amber-400" :
+                          ev.event === "bounce" || ev.event === "dropped" || ev.event === "blocked" ? "text-red-400" :
+                          "text-slate-400"
+                        }`}>{ev.event}</span>
+                        <span className="text-slate-400 truncate">{ev.url || ev.reason || ev.useragent || ""}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {record && record.sg_message_id && (
+                  <div className="mt-2 text-[9px] text-slate-600 font-mono break-all">msg-id: {record.sg_message_id}</div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NotificationHistoryModal({ onClose }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1629,6 +1806,7 @@ export default function SupportDashboard({ user, onLogout }) {
   const [selectedSub, setSelectedSub] = useState(null);
   const [showContacts, setShowContacts] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showTrackingTest, setShowTrackingTest] = useState(false);
   const [deviceList, setDeviceList] = useState(null);
   const [sortField, setSortField] = useState("total_issues");
   const [sortDir, setSortDir] = useState("desc");
@@ -1735,21 +1913,7 @@ export default function SupportDashboard({ user, onLogout }) {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={async () => {
-              const email = prompt("Send test email to:");
-              if (!email) return;
-              try {
-                const token = localStorage.getItem("token");
-                const res = await fetch(`${API}/support/test-email`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                  body: JSON.stringify({ to_email: email }),
-                });
-                const d = await res.json();
-                if (d.success) toast.success(d.message);
-                else toast.error(d.message || "Failed to send test email");
-              } catch { toast.error("Failed to send test email"); }
-            }}
+            onClick={() => setShowTrackingTest(true)}
             className="font-orbitron text-[8px] px-3 py-1.5 border border-green-500/30 text-green-400 rounded-sm hover:bg-green-500/10 flex items-center gap-1.5"
             data-testid="test-email-btn"
           >
@@ -2041,6 +2205,7 @@ export default function SupportDashboard({ user, onLogout }) {
       )}
       {showContacts && <ContactsModal subscribers={subscribers} onClose={() => { setShowContacts(false); fetchData(); }} />}
       {showHistory && <NotificationHistoryModal onClose={() => setShowHistory(false)} />}
+      {showTrackingTest && <TrackingTestModal onClose={() => setShowTrackingTest(false)} />}
       {deviceList && <DeviceListModal subscriber={deviceList.subscriber} issueType={deviceList.issueType} onClose={() => setDeviceList(null)} />}
       {showNotifiedAeds && <NotifiedAedsModal onClose={() => setShowNotifiedAeds(false)} onRefresh={() => { fetchNotifiedAeds(); fetchData(); }} />}
     </div>
