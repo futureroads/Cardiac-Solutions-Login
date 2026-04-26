@@ -310,6 +310,7 @@ function NotificationHistoryModal({ onClose }) {
                   <th className="text-left p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider">SUBJECT</th>
                   <th className="text-left p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider">SENT BY</th>
                   <th className="text-left p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider">DATE</th>
+                  <th className="text-center p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider">TRACKING</th>
                   <th className="text-center p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider">STATUS</th>
                   <th className="text-center p-2 font-orbitron text-[8px] text-cyan-500/70 tracking-wider w-16">VIEW</th>
                 </tr>
@@ -329,6 +330,27 @@ function NotificationHistoryModal({ onClose }) {
                       <td className="p-2 text-slate-300 text-[10px] max-w-[200px] truncate">{h.subject || "—"}</td>
                       <td className="p-2 text-slate-400 text-[10px]">{h.sent_by || "—"}</td>
                       <td className="p-2 text-slate-400 text-[10px] whitespace-nowrap">{sentDate}</td>
+                      <td className="p-2 text-center whitespace-nowrap">
+                        {h.bounced ? (
+                          <span title={h.bounce_reason || "Bounced"} className="inline-block text-[8px] px-1.5 py-0.5 bg-red-500/15 text-red-400 border border-red-500/30 rounded-sm font-orbitron">BOUNCED</span>
+                        ) : h.spam_reported ? (
+                          <span className="inline-block text-[8px] px-1.5 py-0.5 bg-orange-500/15 text-orange-400 border border-orange-500/30 rounded-sm font-orbitron">SPAM</span>
+                        ) : (
+                          <div className="flex items-center gap-1 justify-center">
+                            {h.delivered_at ? (
+                              <span title={`Delivered ${new Date(h.delivered_at).toLocaleString()}`} className="inline-block text-[8px] px-1.5 py-0.5 bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 rounded-sm font-orbitron">DELIV</span>
+                            ) : (
+                              <span title="Sent — awaiting delivery confirmation" className="inline-block text-[8px] px-1.5 py-0.5 bg-slate-700/40 text-slate-400 border border-slate-600/40 rounded-sm font-orbitron">SENT</span>
+                            )}
+                            {(h.open_count || 0) > 0 && (
+                              <span title={`Opened ${h.open_count}× — first ${h.first_opened_at ? new Date(h.first_opened_at).toLocaleString() : ""}`} className="inline-block text-[8px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-sm font-orbitron">OPEN {h.open_count > 1 ? `×${h.open_count}` : ""}</span>
+                            )}
+                            {(h.click_count || 0) > 0 && (
+                              <span title={`Clicked ${h.click_count}×`} className="inline-block text-[8px] px-1.5 py-0.5 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-sm font-orbitron">CLICK {h.click_count > 1 ? `×${h.click_count}` : ""}</span>
+                            )}
+                          </div>
+                        )}
+                      </td>
                       <td className="p-2 text-center relative">
                         {isEditing ? (
                           <div className="absolute right-0 top-full mt-1 z-20 bg-[#0a0f1c] border border-cyan-500/30 rounded-sm p-3 w-[240px] shadow-xl" onClick={e => e.stopPropagation()}>

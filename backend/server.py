@@ -1263,7 +1263,15 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
         sg = SendGridAPIClient(sendgrid_key)
         resp = sg.send(message)
         success = resp.status_code in (200, 201, 202)
-        logger.info(f"Support notification to {to_email} for {subscriber}: SendGrid {resp.status_code}")
+        # Capture SendGrid Message ID so we can correlate webhook events later
+        sg_message_id = ""
+        try:
+            mid = resp.headers.get("X-Message-Id") if hasattr(resp, "headers") else None
+            if mid:
+                sg_message_id = str(mid)
+        except Exception:  # noqa: BLE001
+            pass
+        logger.info(f"Support notification to {to_email} for {subscriber}: SendGrid {resp.status_code} (msgid={sg_message_id})")
 
         # Log to DB
         await _db.notification_history.insert_one({
@@ -1277,6 +1285,14 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
             "sent_at": datetime.now(timezone.utc).isoformat(),
             "success": success,
             "email_response": f"SendGrid {resp.status_code}",
+            "sg_message_id": sg_message_id,
+            "events": [],
+            "delivered_at": None,
+            "first_opened_at": None,
+            "open_count": 0,
+            "click_count": 0,
+            "bounced": False,
+            "spam_reported": False,
         })
 
         # Track each notified AED device in notified_aeds collection
@@ -1380,6 +1396,100 @@ async def notifications_today_count(current_user: dict = Depends(get_current_use
     count = await _db.notification_history.count_documents({"sent_at": {"$gte": today_start}})
     return {"count": count, "date": today_start[:10]}
 
+
+# ---------------------------------------------------------------------------
+# SendGrid Event Webhook — open/click/delivery tracking
+# ---------------------------------------------------------------------------
+@api_router.post("/sendgrid/events")
+async def sendgrid_event_webhook(request: Request):
+    """Receive SendGrid Event Webhook batches.
+
+    SendGrid POSTs an array of event objects. Each event has at minimum
+    `event` (processed/delivered/open/click/bounce/dropped/spamreport/unsubscribe),
+    `sg_message_id`, `email`, and `timestamp` (unix seconds).
+
+    Auth: optional shared secret in `SENDGRID_WEBHOOK_SECRET` env, sent as
+    query param `?secret=...`. (SendGrid Signed Event Webhook validation is
+    available too — left as a future hardening step.)
+    """
+    expected = os.environ.get("SENDGRID_WEBHOOK_SECRET", "").strip()
+    if expected:
+        provided = request.query_params.get("secret", "").strip()
+        if provided != expected:
+            raise HTTPException(status_code=401, detail="Invalid webhook secret")
+
+    try:
+        events = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    if not isinstance(events, list):
+        raise HTTPException(status_code=400, detail="Expected a JSON array of events")
+
+    processed = 0
+    matched = 0
+    for ev in events:
+        try:
+            event_type = (ev.get("event") or "").lower()
+            sg_msg_id = ev.get("sg_message_id") or ""
+            ts = ev.get("timestamp")
+            iso_ts = (
+                datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
+                if ts else datetime.now(timezone.utc).isoformat()
+            )
+            email = ev.get("email") or ""
+            if not event_type or not sg_msg_id:
+                processed += 1
+                continue
+
+            # SendGrid sg_message_id has a suffix after the first dot; the
+            # value we captured at send time may match the full id or just
+            # the prefix. Try both.
+            base_id = sg_msg_id.split(".")[0] if "." in sg_msg_id else sg_msg_id
+            query = {"$or": [
+                {"sg_message_id": sg_msg_id},
+                {"sg_message_id": base_id},
+                {"sg_message_id": {"$regex": f"^{base_id}"}},
+            ]}
+
+            event_record = {
+                "event": event_type,
+                "email": email,
+                "timestamp": iso_ts,
+                "sg_event_id": ev.get("sg_event_id", ""),
+                "url": ev.get("url"),  # for click events
+                "reason": ev.get("reason"),  # for bounces/drops
+                "useragent": ev.get("useragent"),
+                "ip": ev.get("ip"),
+            }
+            event_record = {k: v for k, v in event_record.items() if v is not None}
+
+            update = {"$push": {"events": event_record}}
+            if event_type == "delivered":
+                update.setdefault("$set", {})["delivered_at"] = iso_ts
+            elif event_type == "open":
+                update["$inc"] = {"open_count": 1}
+                update.setdefault("$set", {})["last_opened_at"] = iso_ts
+                # Set first_opened_at only if not already set
+                update["$min"] = {"first_opened_at": iso_ts}
+            elif event_type == "click":
+                update["$inc"] = {"click_count": 1}
+                update.setdefault("$set", {})["last_clicked_at"] = iso_ts
+            elif event_type in ("bounce", "blocked", "dropped"):
+                update.setdefault("$set", {})["bounced"] = True
+                update["$set"]["bounce_reason"] = ev.get("reason", "")
+            elif event_type == "spamreport":
+                update.setdefault("$set", {})["spam_reported"] = True
+            elif event_type == "unsubscribe":
+                update.setdefault("$set", {})["unsubscribed"] = True
+
+            res = await _db.notification_history.update_one(query, update)
+            if res.matched_count:
+                matched += 1
+            processed += 1
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[sendgrid-webhook] failed to process event: {e}")
+
+    return {"received": len(events), "processed": processed, "matched": matched}
 
 
 @api_router.get("/support/notification-history/{history_id}")
