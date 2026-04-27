@@ -408,6 +408,7 @@ function NotificationHistoryModal({ onClose }) {
   const [saving, setSaving] = useState(false);
   const [viewEmail, setViewEmail] = useState(null);
   const [loadingEmail, setLoadingEmail] = useState(false);
+  const [bounceDetail, setBounceDetail] = useState(null);
 
   const statusOptions = [
     { value: "SENT", label: "SENT", bg: "bg-green-500/15", text: "text-green-400" },
@@ -543,7 +544,12 @@ function NotificationHistoryModal({ onClose }) {
                       <td className="p-2 text-slate-400 text-[10px] whitespace-nowrap">{sentDate}</td>
                       <td className="p-2 text-center whitespace-nowrap">
                         {h.bounced ? (
-                          <span title={h.bounce_reason || "Bounced"} className="inline-block text-[8px] px-1.5 py-0.5 bg-red-500/15 text-red-400 border border-red-500/30 rounded-sm font-orbitron">BOUNCED</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setBounceDetail(h); }}
+                            title="Click to see bounce details"
+                            className="inline-block text-[8px] px-1.5 py-0.5 bg-red-500/15 text-red-400 border border-red-500/30 rounded-sm font-orbitron hover:bg-red-500/25 cursor-pointer"
+                            data-testid={`bounced-badge-${i}`}
+                          >BOUNCED</button>
                         ) : h.spam_reported ? (
                           <span className="inline-block text-[8px] px-1.5 py-0.5 bg-orange-500/15 text-orange-400 border border-orange-500/30 rounded-sm font-orbitron">SPAM</span>
                         ) : (
@@ -628,7 +634,80 @@ function NotificationHistoryModal({ onClose }) {
           )}
         </div>
 
-        {/* Email Viewer */}
+        {/* Bounce Detail Popup */}
+        {bounceDetail && (() => {
+          const bounceEvents = (bounceDetail.events || []).filter(ev => ["bounce", "blocked", "dropped"].includes((ev.event || "").toLowerCase()));
+          const reason = bounceDetail.bounce_reason || (bounceEvents[0] && bounceEvents[0].reason) || "";
+          // Classify
+          const reasonLow = reason.toLowerCase();
+          const isHard = /(no such user|user unknown|mailbox not found|address.*does not exist|account that you tried to reach does not exist|recipient.*rejected|550|5\.1\.[01])/.test(reasonLow);
+          const isSoftFull = /(quota|over.*quota|mailbox.*full|452|4\.2\.2)/.test(reasonLow);
+          const isPolicy = /(spam|blacklist|reputation|policy|550 5\.7|relay denied|blocked)/.test(reasonLow);
+          let category = "Hard bounce — address invalid";
+          let advice = "Update or remove this address from the subscriber's contact info.";
+          if (isPolicy) { category = "Blocked by recipient server"; advice = "The recipient mail server rejected based on policy (spam filter, IP reputation, or attachment scanning). Try resending later, or contact the recipient to whitelist no-reply@cardiac-solutions.ai."; }
+          else if (isSoftFull) { category = "Soft bounce — mailbox full"; advice = "The recipient's mailbox is over quota. SendGrid will retry for ~72 hours; no immediate action needed."; }
+          else if (isHard) { category = "Hard bounce — address invalid"; advice = "Update the subscriber's contact email. SendGrid has added this address to its suppression list — future sends to it will be auto-dropped."; }
+          else if (reason) { category = "Bounce / Rejection"; }
+          return (
+            <div className="fixed inset-0 bg-black/85 z-[80] flex items-center justify-center p-4" onClick={() => setBounceDetail(null)}>
+              <div className="bg-[#0a0f1c] border border-red-500/40 rounded-sm w-full max-w-xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="bounce-detail-modal">
+                <div className="border-b border-red-500/20 px-5 py-3 flex items-center justify-between bg-[rgba(60,10,10,0.4)]">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-400" />
+                    <div className="font-orbitron text-xs tracking-wider text-red-400">EMAIL BOUNCE DETAIL</div>
+                  </div>
+                  <button onClick={() => setBounceDetail(null)} className="text-slate-500 hover:text-white" data-testid="bounce-detail-close"><X className="w-4 h-4" /></button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-5 space-y-3 text-[11px] text-slate-300 leading-relaxed">
+                  <div>
+                    <div className="font-orbitron text-[8px] text-slate-500 tracking-[0.2em] uppercase mb-1">Recipient</div>
+                    <div className="text-cyan-400 font-bold text-[12px]">{bounceDetail.to_email || "—"}</div>
+                    <div className="text-slate-500 mt-0.5">{bounceDetail.subscriber || ""}</div>
+                  </div>
+                  <div>
+                    <div className="font-orbitron text-[8px] text-slate-500 tracking-[0.2em] uppercase mb-1">Subject</div>
+                    <div>{bounceDetail.subject || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="font-orbitron text-[8px] text-slate-500 tracking-[0.2em] uppercase mb-1">Sent</div>
+                    <div>{bounceDetail.sent_at ? new Date(bounceDetail.sent_at).toLocaleString() : "—"} by {bounceDetail.sent_by || "—"}</div>
+                  </div>
+                  <div className="border-t border-slate-800/60 pt-3">
+                    <div className="font-orbitron text-[8px] text-slate-500 tracking-[0.2em] uppercase mb-1">Bounce Category</div>
+                    <div className={`inline-block px-2 py-0.5 rounded-sm border font-orbitron text-[10px] ${isPolicy ? "bg-orange-500/15 text-orange-400 border-orange-500/30" : isSoftFull ? "bg-amber-500/15 text-amber-400 border-amber-500/30" : "bg-red-500/15 text-red-400 border-red-500/30"}`}>{category}</div>
+                  </div>
+                  <div>
+                    <div className="font-orbitron text-[8px] text-slate-500 tracking-[0.2em] uppercase mb-1">Reason from recipient mail server</div>
+                    {reason ? (
+                      <pre className="bg-slate-950 border border-slate-800 rounded-sm p-2 text-[10px] text-red-300 whitespace-pre-wrap break-words font-mono">{reason}</pre>
+                    ) : (
+                      <div className="italic text-slate-500">No detailed reason was provided by SendGrid.</div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="font-orbitron text-[8px] text-slate-500 tracking-[0.2em] uppercase mb-1">What this means / What to do</div>
+                    <div className="text-slate-300">{advice}</div>
+                  </div>
+                  {bounceEvents.length > 0 && (
+                    <div className="border-t border-slate-800/60 pt-3">
+                      <div className="font-orbitron text-[8px] text-slate-500 tracking-[0.2em] uppercase mb-1">Event timeline</div>
+                      <div className="space-y-1">
+                        {bounceEvents.map((ev, i) => (
+                          <div key={i} className="flex gap-2 items-baseline text-[10px] font-mono">
+                            <span className="text-slate-500 w-32 flex-shrink-0">{ev.timestamp ? new Date(ev.timestamp).toLocaleString() : "—"}</span>
+                            <span className="text-red-400 font-bold uppercase w-16">{ev.event}</span>
+                            <span className="text-slate-400 break-words">{ev.reason || "—"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
         {viewEmail && (
           <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center" onClick={() => setViewEmail(null)}>
             <div className="bg-white rounded-sm w-[800px] max-w-[95vw] max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="email-viewer">
