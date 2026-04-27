@@ -1097,6 +1097,40 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
     except Exception as e:
         logger.warning(f"Failed to fetch notified_aeds counts: {e}")
 
+    # Per-subscriber recently-resolved counts (24h, 7d) — fully + partially
+    sub_resolved_map = {}  # {subscriber: {"resolved_24h": n, "resolved_7d": n, "partial_24h": n, "partial_7d": n}}
+    try:
+        cutoff_24 = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        cutoff_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        pipe_resolved = [
+            {"$match": {"resolved": True, "resolved_at": {"$gte": cutoff_7d}}},
+            {"$group": {
+                "_id": "$subscriber",
+                "resolved_7d": {"$sum": 1},
+                "resolved_24h": {"$sum": {"$cond": [{"$gte": ["$resolved_at", cutoff_24]}, 1, 0]}},
+            }},
+        ]
+        async for doc in _db.notified_aeds.aggregate(pipe_resolved):
+            sub = doc["_id"]
+            sub_resolved_map.setdefault(sub, {})
+            sub_resolved_map[sub]["resolved_7d"] = doc.get("resolved_7d", 0)
+            sub_resolved_map[sub]["resolved_24h"] = doc.get("resolved_24h", 0)
+        pipe_partial = [
+            {"$match": {"partially_resolved": True, "resolved": {"$ne": True}, "partially_resolved_at": {"$gte": cutoff_7d}}},
+            {"$group": {
+                "_id": "$subscriber",
+                "partial_7d": {"$sum": 1},
+                "partial_24h": {"$sum": {"$cond": [{"$gte": ["$partially_resolved_at", cutoff_24]}, 1, 0]}},
+            }},
+        ]
+        async for doc in _db.notified_aeds.aggregate(pipe_partial):
+            sub = doc["_id"]
+            sub_resolved_map.setdefault(sub, {})
+            sub_resolved_map[sub]["partial_7d"] = doc.get("partial_7d", 0)
+            sub_resolved_map[sub]["partial_24h"] = doc.get("partial_24h", 0)
+    except Exception as e:
+        logger.warning(f"Failed to compute per-subscriber resolutions: {e}")
+
     try:
         async for doc in _db.notification_history.find({}, {"_id": 0, "subscriber": 1}):
             if doc.get("subscriber"):
@@ -1124,6 +1158,14 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
                 "unknown": sn.get("UNKNOWN", 0),
             }
             s["notified_devices"]["total"] = sum(s["notified_devices"].values())
+            # Attach resolution counts (default to zeros if no entry)
+            r = sub_resolved_map.get(s["subscriber"], {})
+            s["resolutions"] = {
+                "resolved_24h": r.get("resolved_24h", 0),
+                "resolved_7d": r.get("resolved_7d", 0),
+                "partial_24h": r.get("partial_24h", 0),
+                "partial_7d": r.get("partial_7d", 0),
+            }
     except Exception as e:
         logger.warning(f"Failed to fetch notification history: {e}")
         for s in subscribers:

@@ -2278,6 +2278,9 @@ export default function SupportDashboard({ user, onLogout }) {
                     <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-pink-400/70 cursor-pointer w-20" onClick={() => toggleSort("total_issues")}>
                       TOTAL <SortIcon field="total_issues" />
                     </th>
+                    <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-emerald-400/70 w-24" title="Recently resolved by subscriber (last 24h / last 7 days). Includes fully and partially resolved AEDs.">
+                      RESOLVED
+                    </th>
                     <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-slate-500 w-24">
                       ACTIONS
                     </th>
@@ -2320,6 +2323,25 @@ export default function SupportDashboard({ user, onLogout }) {
                       <td className="p-3 text-center">
                         {(() => { const v = s.total_issues; const n = s.notified_devices?.total || 0; return n > 0 ? <span className="font-orbitron text-sm"><span className="text-green-400 font-bold">{n}&#10003;</span><span className="text-slate-500 text-[9px]">/{v}</span></span> : <span className="font-orbitron text-sm font-bold text-pink-400">{v}</span>; })()}
                       </td>
+                      <td className="p-3 text-center" data-testid={`resolved-cell-${s.subscriber}`}>
+                        {(() => {
+                          const r = s.resolutions || {};
+                          const r24 = (r.resolved_24h || 0) + (r.partial_24h || 0);
+                          const r7 = (r.resolved_7d || 0) + (r.partial_7d || 0);
+                          if (r24 === 0 && r7 === 0) return <span className="text-slate-600">—</span>;
+                          return (
+                            <div className="font-orbitron text-[10px] leading-tight">
+                              <div title={`${r.resolved_24h || 0} fully + ${r.partial_24h || 0} partial in last 24h`}>
+                                <span className="text-emerald-400 font-bold">{r24}</span>
+                                <span className="text-slate-500 text-[8px]"> 24h</span>
+                              </div>
+                              <div className="text-slate-500 text-[8px]" title={`${r.resolved_7d || 0} fully + ${r.partial_7d || 0} partial in last 7 days`}>
+                                <span className="text-emerald-400/70">{r7}</span> 7d
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="p-3 text-center">
                         <div className="flex items-center justify-center gap-2">
                           {s.notified && <span className="text-[7px] px-1.5 py-0.5 bg-green-500/15 text-green-400 rounded-sm font-orbitron">SENT</span>}
@@ -2335,7 +2357,7 @@ export default function SupportDashboard({ user, onLogout }) {
                     </tr>
                   ))}
                   {sorted.length === 0 && (
-                    <tr><td colSpan={7} className="text-center py-8 text-slate-500 font-orbitron text-[10px]">NO SUBSCRIBERS WITH ISSUES</td></tr>
+                    <tr><td colSpan={9} className="text-center py-8 text-slate-500 font-orbitron text-[10px]">NO SUBSCRIBERS WITH ISSUES</td></tr>
                   )}
                 </tbody>
               </table>
