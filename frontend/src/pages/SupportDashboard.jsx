@@ -409,6 +409,7 @@ function NotificationHistoryModal({ onClose }) {
   const [viewEmail, setViewEmail] = useState(null);
   const [loadingEmail, setLoadingEmail] = useState(false);
   const [bounceDetail, setBounceDetail] = useState(null);
+  const [engagementDetail, setEngagementDetail] = useState(null); // {record, eventType: "open"|"click"}
 
   const statusOptions = [
     { value: "SENT", label: "SENT", bg: "bg-green-500/15", text: "text-green-400" },
@@ -560,10 +561,20 @@ function NotificationHistoryModal({ onClose }) {
                               <span title="Sent — awaiting delivery confirmation" className="inline-block text-[8px] px-1.5 py-0.5 bg-slate-700/40 text-slate-400 border border-slate-600/40 rounded-sm font-orbitron">SENT</span>
                             )}
                             {(h.open_count || 0) > 0 && (
-                              <span title={`Opened ${h.open_count}× — first ${h.first_opened_at ? new Date(h.first_opened_at).toLocaleString() : ""}`} className="inline-block text-[8px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-sm font-orbitron">OPEN {h.open_count > 1 ? `×${h.open_count}` : ""}</span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setEngagementDetail({ record: h, eventType: "open" }); }}
+                                title={`Click to see who opened this email`}
+                                className="inline-block text-[8px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-sm font-orbitron hover:bg-emerald-500/25 cursor-pointer"
+                                data-testid={`open-badge-${i}`}
+                              >OPEN {h.open_count > 1 ? `×${h.open_count}` : ""}</button>
                             )}
                             {(h.click_count || 0) > 0 && (
-                              <span title={`Clicked ${h.click_count}×`} className="inline-block text-[8px] px-1.5 py-0.5 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-sm font-orbitron">CLICK {h.click_count > 1 ? `×${h.click_count}` : ""}</span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setEngagementDetail({ record: h, eventType: "click" }); }}
+                                title={`Click to see clicks`}
+                                className="inline-block text-[8px] px-1.5 py-0.5 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-sm font-orbitron hover:bg-amber-500/25 cursor-pointer"
+                                data-testid={`click-badge-${i}`}
+                              >CLICK {h.click_count > 1 ? `×${h.click_count}` : ""}</button>
                             )}
                           </div>
                         )}
@@ -634,6 +645,82 @@ function NotificationHistoryModal({ onClose }) {
           )}
         </div>
 
+        {/* Email Engagement (Open / Click) Detail Popup */}
+        {engagementDetail && (() => {
+          const { record, eventType } = engagementDetail;
+          const allEvents = (record.events || []).filter(ev => (ev.event || "").toLowerCase() === eventType);
+          // Group by recipient email
+          const byEmail = {};
+          allEvents.forEach(ev => {
+            const e = (ev.email || "").toLowerCase();
+            if (!byEmail[e]) byEmail[e] = [];
+            byEmail[e].push(ev);
+          });
+          const recipients = Object.keys(byEmail).sort();
+          const isOpen = eventType === "open";
+          const titleColor = isOpen ? "text-emerald-400" : "text-amber-400";
+          const borderColor = isOpen ? "border-emerald-500/40" : "border-amber-500/40";
+          const headerBg = isOpen ? "bg-[rgba(16,40,28,0.5)]" : "bg-[rgba(50,30,8,0.5)]";
+          return (
+            <div className="fixed inset-0 bg-black/85 z-[80] flex items-center justify-center p-4" onClick={() => setEngagementDetail(null)}>
+              <div className={`bg-[#0a0f1c] border ${borderColor} rounded-sm w-full max-w-2xl max-h-[85vh] flex flex-col`} onClick={e => e.stopPropagation()} data-testid="engagement-detail-modal">
+                <div className={`border-b border-slate-800/40 px-5 py-3 flex items-center justify-between ${headerBg}`}>
+                  <div className="flex items-center gap-2">
+                    <Mail className={`w-4 h-4 ${titleColor}`} />
+                    <div className={`font-orbitron text-xs tracking-wider ${titleColor}`}>{isOpen ? "EMAIL OPENS" : "LINK CLICKS"} ({allEvents.length})</div>
+                  </div>
+                  <button onClick={() => setEngagementDetail(null)} className="text-slate-500 hover:text-white" data-testid="engagement-detail-close"><X className="w-4 h-4" /></button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                  <div>
+                    <div className="font-orbitron text-[8px] text-slate-500 tracking-[0.2em] uppercase mb-1">Original Email</div>
+                    <div className="text-cyan-400 text-[12px] font-bold">{record.subject || "—"}</div>
+                    <div className="text-slate-500 text-[10px] mt-0.5">to {record.to_email}{record.cc_email ? ` · cc ${record.cc_email}` : ""}{record.bcc_emails ? ` · bcc ${record.bcc_emails}` : ""}</div>
+                    <div className="text-slate-600 text-[10px]">sent {record.sent_at ? new Date(record.sent_at).toLocaleString() : "—"}</div>
+                  </div>
+                  <div className="border-t border-slate-800/60 pt-3">
+                    <div className="font-orbitron text-[8px] text-slate-500 tracking-[0.2em] uppercase mb-2">{isOpen ? "Recipients who opened" : "Recipients who clicked"} ({recipients.length})</div>
+                    {recipients.length === 0 ? (
+                      <div className="italic text-slate-500 text-[11px]">No detailed event data available.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {recipients.map((email) => {
+                          const evs = byEmail[email];
+                          return (
+                            <div key={email} className="border border-slate-800 rounded-sm p-3 bg-slate-950/40">
+                              <div className="flex items-baseline justify-between mb-1.5">
+                                <div className="text-cyan-400 text-[11px] font-bold break-all">{email || "(unknown address)"}</div>
+                                <div className={`font-orbitron text-[9px] ${titleColor}`}>{evs.length}{evs.length > 1 ? " events" : " event"}</div>
+                              </div>
+                              <div className="space-y-1">
+                                {evs.map((ev, i) => (
+                                  <div key={i} className="flex items-baseline gap-2 text-[10px] font-mono">
+                                    <span className="text-slate-500 w-40 flex-shrink-0">{ev.timestamp ? new Date(ev.timestamp).toLocaleString() : "—"}</span>
+                                    {!isOpen && ev.url && (
+                                      <a href={ev.url} target="_blank" rel="noreferrer" className="text-amber-400 hover:underline truncate" title={ev.url}>{ev.url}</a>
+                                    )}
+                                    {ev.useragent && (
+                                      <span className="text-slate-500 truncate" title={ev.useragent}>{ev.useragent.length > 60 ? ev.useragent.slice(0, 60) + "…" : ev.useragent}</span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  {isOpen && allEvents.length > recipients.length && (
+                    <div className="text-[10px] text-slate-500 italic border-t border-slate-800/60 pt-2">
+                      Multiple opens by the same recipient typically come from email re-renders or cached image refreshes; <span className="text-slate-400">Apple Mail Privacy Protection</span> can also auto-fetch images on Apple's servers, generating opens even if the user didn't actively view the message.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
         {/* Bounce Detail Popup */}
         {bounceDetail && (() => {
           const bounceEvents = (bounceDetail.events || []).filter(ev => ["bounce", "blocked", "dropped"].includes((ev.event || "").toLowerCase()));
