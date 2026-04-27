@@ -368,6 +368,21 @@ export default function Dashboard({ user, onLogout }) {
   const [bpLoading, setBpLoading] = useState(true);
   const [bpError, setBpError] = useState(null);
 
+  // Recent email/resolution events for the DI feed
+  const [diEvents, setDiEvents] = useState([]);
+  useEffect(() => {
+    const fetchDiEvents = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API_URL}/api/support/di-events?hours=24`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) { const d = await res.json(); setDiEvents(d.events || []); }
+      } catch {}
+    };
+    fetchDiEvents();
+    const t = setInterval(fetchDiEvents, 60000); // refresh every minute
+    return () => clearInterval(t);
+  }, []);
+
   // Get user's DI permissions (default: all details)
   const diPerms = freshUser?.di_permissions || { expired_bp: 'details', expiring_bp: 'details', camera_battery: 'details', camera_cellular: 'details' };
 
@@ -421,6 +436,13 @@ export default function Dashboard({ user, onLogout }) {
       else items.push({ type: 'INFO', msg: `Adjusted percent ready is stable at ${Number(adjToday).toFixed(1)}% (same as yesterday).` });
     }
     items.push({ type: 'SYS', msg: `SUBSCRIBER NOTIFICATIONS: ${notifToday} email${notifToday !== 1 ? 's' : ''} sent today.` });
+
+    // Recent email/resolution events from /support/di-events
+    if (diEvents && diEvents.length > 0) {
+      diEvents.forEach((ev) => {
+        items.push({ type: ev.type || "INFO", msg: ev.msg });
+      });
+    }
 
     // Camera Battery events
     if (diPerms.camera_battery === 'overview') {

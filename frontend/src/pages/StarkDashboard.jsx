@@ -80,6 +80,7 @@ export default function StarkDashboard({ user, onLogout }) {
   const [supportData, setSupportData] = useState(null);
   // Notifications sent today
   const [notifToday, setNotifToday] = useState(0);
+  const [diEvents, setDiEvents] = useState([]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -194,6 +195,19 @@ export default function StarkDashboard({ user, onLogout }) {
     };
     fetchNotifCount();
     const i = setInterval(fetchNotifCount, 60000);
+    return () => clearInterval(i);
+  }, [token]);
+
+  // Fetch recent email engagement + AED resolution events for the DI feed
+  useEffect(() => {
+    const fetchDiEvents = async () => {
+      try {
+        const res = await fetch(`${API}/support/di-events?hours=24`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) { const d = await res.json(); setDiEvents(d.events || []); }
+      } catch {}
+    };
+    fetchDiEvents();
+    const i = setInterval(fetchDiEvents, 60000);
     return () => clearInterval(i);
   }, [token]);
 
@@ -354,6 +368,9 @@ export default function StarkDashboard({ user, onLogout }) {
       else items.push({ type: "INFO", msg: `Adjusted percent ready is stable at ${Number(adjToday).toFixed(1)}% (same as yesterday).` });
     }
     items.push({ type: "SYS", msg: `SUBSCRIBER NOTIFICATIONS: ${notifToday} email${notifToday !== 1 ? "s" : ""} sent today.` });
+    if (diEvents && diEvents.length > 0) {
+      diEvents.forEach((ev) => items.push({ type: ev.type || "INFO", msg: ev.msg }));
+    }
     if (diPerms.camera_battery === "overview") {
       items.push({ type: "SYS", msg: `POTENTIAL CAMERA BATTERY ISSUES: Less than 25%: ${bd.p0_24 || 0}, Between 25% and 50%: ${bd.p25_49 || 0}` });
     } else if (diPerms.camera_battery === "details") {
