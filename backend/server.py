@@ -1163,8 +1163,28 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
 
     # Get notified AED tracking data for adjusted readiness
     notified_aed_unresolved = 0
+    recently_resolved_24h = 0
+    recently_resolved_72h = 0
+    last_status_check = None
     try:
         notified_aed_unresolved = await _db.notified_aeds.count_documents({"resolved": False})
+        cutoff_24 = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        cutoff_72 = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+        recently_resolved_24h = await _db.notified_aeds.count_documents({
+            "$or": [
+                {"resolved": True, "resolved_at": {"$gte": cutoff_24}},
+                {"partially_resolved": True, "partially_resolved_at": {"$gte": cutoff_24}},
+            ]
+        })
+        recently_resolved_72h = await _db.notified_aeds.count_documents({
+            "$or": [
+                {"resolved": True, "resolved_at": {"$gte": cutoff_72}},
+                {"partially_resolved": True, "partially_resolved_at": {"$gte": cutoff_72}},
+            ]
+        })
+        meta = await _db.system_meta.find_one({"key": "notified_aeds_last_refresh"}, {"_id": 0})
+        if meta:
+            last_status_check = meta.get("value")
     except:
         pass
 
@@ -1214,6 +1234,11 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
             "adjusted_issues": adjusted_issues,
             "pct_ready_adjusted": pct_ready_adjusted,
             "prev_pct_ready_adjusted": prev_pct_ready_adjusted,
+        },
+        "resolutions": {
+            "recently_resolved_24h": recently_resolved_24h,
+            "recently_resolved_72h": recently_resolved_72h,
+            "last_status_check": last_status_check,
         },
     }
 
@@ -1791,48 +1816,118 @@ async def _get_last_notified_aeds_refresh():
 
 
 async def _refresh_notified_aeds_statuses():
-    """Background task: refresh current_status of all unresolved notified AEDs from Readisys."""
+    """Background task: refresh current_status of all unresolved notified AEDs from Readisys.
+
+    For each unresolved notified AED:
+      * Fetch current detailed_status from Readisys
+      * If status changed since last check, append to status_history
+      * Mark `resolved=true` when status becomes READY (full resolution)
+      * Mark `partially_resolved=true` when status leaves original issue_type but
+        still isn't READY (progress but not full fix)
+      * Always update last_status_check timestamp
+
+    Returns dict with run statistics for caller to surface.
+    """
     import httpx, urllib.parse
-    logger.info("[NOTIFIED_AEDS] Starting daily status refresh...")
+    logger.info("[NOTIFIED_AEDS] Starting status refresh...")
     headers = _readisys_auth_headers()
 
     # Get all unresolved notified AEDs grouped by subscriber
     subs = {}
-    async for doc in _db.notified_aeds.find({"resolved": False}, {"_id": 0, "sentinel_id": 1, "subscriber": 1}):
+    async for doc in _db.notified_aeds.find(
+        {"resolved": False},
+        {"_id": 0, "sentinel_id": 1, "subscriber": 1, "issue_type": 1, "current_status": 1, "status_at_notification": 1},
+    ):
         sub = doc["subscriber"]
         if sub not in subs:
             subs[sub] = []
-        subs[sub].append(doc["sentinel_id"])
+        subs[sub].append(doc)
 
     updated = 0
     resolved = 0
-    for sub_name, sentinel_ids in subs.items():
+    partial = 0
+    changed = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for sub_name, docs in subs.items():
         try:
             enc = urllib.parse.quote(sub_name)
             async with httpx.AsyncClient(timeout=20) as client:
                 resp = await client.get(
-                    f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc}/status",
+                    f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc}/devices?limit=2000",
                     headers=headers,
                 )
                 if resp.status_code != 200:
+                    logger.warning(f"[NOTIFIED_AEDS] {sub_name}: HTTP {resp.status_code}")
                     continue
                 data = resp.json()
-                devices = data.get("devices", [])
-                device_map = {d.get("sentinel_id"): d for d in devices}
+                devices = data.get("devices", []) or []
+                device_map = {d.get("sentinel_id"): d for d in devices if d.get("sentinel_id")}
 
-                for sid in sentinel_ids:
+                for tracked in docs:
+                    sid = tracked["sentinel_id"]
                     dev = device_map.get(sid)
                     if not dev:
+                        # Device disappeared from Readisys feed (decommissioned?) — skip
                         continue
-                    new_status = dev.get("detailed_status", "UNKNOWN")
-                    update_fields = {"current_status": new_status}
+                    new_status = (dev.get("detailed_status") or "UNKNOWN").strip().upper()
+                    prev_status = (tracked.get("current_status") or "").strip().upper()
+                    issue_type = (tracked.get("issue_type") or "").lower()
+
+                    # Build update operations
+                    set_ops = {"current_status": new_status, "last_status_check": now_iso}
+                    push_ops = {}
+
+                    status_changed = bool(new_status and prev_status and new_status != prev_status)
+                    if status_changed:
+                        push_ops["status_history"] = {
+                            "status": new_status,
+                            "from_status": prev_status,
+                            "at": now_iso,
+                        }
+                        changed += 1
+
                     if new_status == "READY":
-                        update_fields["resolved"] = True
-                        update_fields["resolved_at"] = datetime.now(timezone.utc).isoformat()
+                        # Full resolution
+                        set_ops["resolved"] = True
+                        set_ops["resolved_at"] = now_iso
+                        set_ops["resolution_reason"] = f"Status changed from {prev_status or 'issue'} to READY"
                         resolved += 1
+                    else:
+                        # Partial resolution: status no longer matches the original issue.
+                        # `issue_type` is stored either as a snake_case key (legacy) or
+                        # the raw Readisys status string. Compare on a normalized form.
+                        normalized_issue = (
+                            tracked.get("issue_type") or ""
+                        ).strip().upper().replace("_", " ").replace("BATT/PADS", "BATT/PADS")
+                        # snake_case → readisys mapping
+                        snake_to_readisys = {
+                            "EXPIRED BP": "EXPIRED B/P",
+                            "EXPIRING BP": "EXPIRING BATT/PADS",
+                            "EXPIRING BATT PADS": "EXPIRING BATT/PADS",
+                            "NOT READY": "NOT READY",
+                            "REPOSITION": "REPOSITION",
+                            "NOT PRESENT": "NOT PRESENT",
+                            "LOST CONTACT": "LOST CONTACT",
+                            "UNKNOWN": "UNKNOWN",
+                        }
+                        normalized_issue = snake_to_readisys.get(normalized_issue, normalized_issue)
+                        if (
+                            normalized_issue
+                            and new_status != normalized_issue
+                            and not tracked.get("partially_resolved", False)
+                        ):
+                            set_ops["partially_resolved"] = True
+                            set_ops["partially_resolved_at"] = now_iso
+                            set_ops["resolution_reason"] = f"Status changed from {prev_status} to {new_status} (no longer {normalized_issue})"
+                            partial += 1
+
+                    update_doc = {"$set": set_ops}
+                    if push_ops:
+                        update_doc["$push"] = push_ops
                     await _db.notified_aeds.update_one(
                         {"sentinel_id": sid, "subscriber": sub_name},
-                        {"$set": update_fields},
+                        update_doc,
                     )
                     updated += 1
         except Exception as e:
@@ -1841,38 +1936,52 @@ async def _refresh_notified_aeds_statuses():
     # Record refresh timestamp
     await _db.system_meta.update_one(
         {"key": "notified_aeds_last_refresh"},
-        {"$set": {"key": "notified_aeds_last_refresh", "value": datetime.now(timezone.utc).isoformat()}},
+        {"$set": {"key": "notified_aeds_last_refresh", "value": now_iso, "stats": {"updated": updated, "resolved": resolved, "partial": partial, "changed": changed}}},
         upsert=True,
     )
-    logger.info(f"[NOTIFIED_AEDS] Refresh complete: {updated} updated, {resolved} resolved")
+    logger.info(f"[NOTIFIED_AEDS] Refresh complete: {updated} checked, {changed} status changes, {resolved} fully resolved, {partial} partial")
+    return {"updated": updated, "resolved": resolved, "partially_resolved": partial, "status_changed": changed}
 
 
 async def _notified_aeds_daily_loop():
-    """Run the notified AEDs refresh once daily (checks every hour)."""
+    """Run the notified AEDs refresh every 30 minutes."""
+    # Initial delay so we don't hammer Readisys at startup
+    await asyncio.sleep(120)
     while True:
         try:
-            await asyncio.sleep(3600)  # Check every hour
-            # Only run if last refresh was >20 hours ago
-            last = await _get_last_notified_aeds_refresh()
-            should_run = True
-            if last:
-                try:
-                    last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
-                    if (datetime.now(timezone.utc) - last_dt).total_seconds() < 72000:  # 20 hours
-                        should_run = False
-                except:
-                    pass
-            if should_run:
-                await _refresh_notified_aeds_statuses()
+            await _refresh_notified_aeds_statuses()
         except Exception as e:
-            logger.error(f"[NOTIFIED_AEDS] Daily loop error: {e}")
+            logger.error(f"[NOTIFIED_AEDS] Refresh loop error: {e}")
+        await asyncio.sleep(1800)  # 30 minutes
 
 
 @api_router.post("/support/notified-aeds/refresh")
 async def trigger_notified_aeds_refresh(current_user: dict = Depends(get_current_user)):
-    """Manually trigger a refresh of notified AED statuses."""
-    asyncio.create_task(_refresh_notified_aeds_statuses())
-    return {"success": True, "message": "Refresh started in background"}
+    """Manually trigger a refresh of notified AED statuses and wait for completion.
+    Returns counts of updates so the UI can surface progress immediately."""
+    try:
+        stats = await _refresh_notified_aeds_statuses()
+        return {"success": True, **stats}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@api_router.get("/support/recently-resolved")
+async def get_recently_resolved(hours: int = 24, current_user: dict = Depends(get_current_user)):
+    """Return notified AEDs that were resolved (or partially resolved) in the last N hours."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=max(1, min(int(hours), 720)))).isoformat()
+    out = []
+    async for d in _db.notified_aeds.find(
+        {"$or": [
+            {"resolved": True, "resolved_at": {"$gte": cutoff}},
+            {"partially_resolved": True, "partially_resolved_at": {"$gte": cutoff}},
+        ]},
+        {"_id": 0},
+    ).sort([("resolved_at", -1), ("partially_resolved_at", -1)]).limit(500):
+        out.append(d)
+    fully = sum(1 for d in out if d.get("resolved"))
+    partial = sum(1 for d in out if d.get("partially_resolved") and not d.get("resolved"))
+    return {"items": out, "count": len(out), "fully_resolved": fully, "partially_resolved": partial, "hours": hours}
 
 
 async def _backfill_notified_aeds():

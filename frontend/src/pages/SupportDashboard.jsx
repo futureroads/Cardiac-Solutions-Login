@@ -1884,10 +1884,10 @@ function NotifiedAedsModal({ onClose, onRefresh }) {
                         </div>
                       </div>
 
-                      {/* Right: Notification Timeline */}
-                      <div className="flex-shrink-0 w-[200px]">
+                      {/* Right: Notification + Status Timeline */}
+                      <div className="flex-shrink-0 w-[230px]">
                         <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mb-2">NOTIFICATION TIMELINE</div>
-                        <div className="space-y-1 max-h-[80px] overflow-y-auto">
+                        <div className="space-y-1 max-h-[80px] overflow-y-auto mb-2">
                           {(aed.notification_dates || []).map((nd, idx) => {
                             const d = nd.date ? new Date(nd.date).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
                             return (
@@ -1899,6 +1899,36 @@ function NotifiedAedsModal({ onClose, onRefresh }) {
                             );
                           })}
                         </div>
+                        {(aed.status_history && aed.status_history.length > 0) && (
+                          <>
+                            <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mb-1.5 mt-2 pt-2 border-t border-slate-800/40">STATUS CHANGES</div>
+                            <div className="space-y-1 max-h-[120px] overflow-y-auto">
+                              {[...aed.status_history].reverse().map((sh, idx) => {
+                                const dt = sh.at ? new Date(sh.at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+                                const isReady = (sh.status || "").toUpperCase() === "READY";
+                                return (
+                                  <div key={idx} className="flex items-start gap-2">
+                                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1 ${isReady ? "bg-green-400" : "bg-amber-400"}`} />
+                                    <div className="flex-1">
+                                      <div className="text-[8px] text-slate-400">{dt}</div>
+                                      <div className="text-[8px] font-orbitron">
+                                        <span className="text-slate-500">{sh.from_status || "—"}</span>
+                                        <span className="text-slate-600 mx-1">→</span>
+                                        <span style={{ color: statusColor(sh.status) }}>{sh.status}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
+                        {aed.partially_resolved && !aed.resolved && (
+                          <div className="mt-2 px-2 py-1 bg-amber-500/10 border border-amber-500/30 rounded-sm">
+                            <div className="text-[8px] text-amber-400 font-orbitron font-bold">PARTIALLY RESOLVED</div>
+                            <div className="text-[7px] text-amber-300/80 mt-0.5">{aed.resolution_reason}</div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2108,6 +2138,18 @@ export default function SupportDashboard({ user, onLogout }) {
                           <div className="font-orbitron text-lg font-black text-amber-400">
                             {na?.unresolved || 0}
                           </div>
+                        </div>
+                        <div
+                          className="text-center cursor-pointer hover:bg-emerald-500/5 rounded px-2"
+                          onClick={e => { e.stopPropagation(); setShowNotifiedAeds(true); }}
+                          data-testid="resolved-24h-card"
+                          title="Click to see all recently resolved AEDs"
+                        >
+                          <div className="font-orbitron text-[7px] text-emerald-400/80 tracking-wider mb-1">RESOLVED 24H</div>
+                          <div className="font-orbitron text-lg font-black text-emerald-400">
+                            {data?.resolutions?.recently_resolved_24h || 0}
+                          </div>
+                          <div className="font-orbitron text-[7px] text-slate-500/70 mt-0.5">{data?.resolutions?.recently_resolved_72h || 0} in 72h</div>
                         </div>
                       </div>
                       <button
