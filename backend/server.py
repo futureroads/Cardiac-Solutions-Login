@@ -1575,6 +1575,137 @@ async def notifications_today_count(current_user: dict = Depends(get_current_use
 # ---------------------------------------------------------------------------
 # SendGrid Event Webhook — open/click/delivery tracking
 # ---------------------------------------------------------------------------
+async def _send_bounce_alert_email(record: dict, event: dict) -> None:
+    """Send an internal alert email when a notification email bounces.
+
+    Idempotent — checks `bounce_alert_sent` on the record before sending.
+    """
+    try:
+        sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
+        sender = os.environ.get("DISPATCH_SENDER", "no-reply@cardiac-solutions.ai")
+        if not sendgrid_key:
+            logger.warning("[bounce-alert] SENDGRID_API_KEY not configured")
+            return
+
+        # Re-fetch the record to check bounce_alert_sent (idempotency)
+        sg_id = record.get("sg_message_id", "")
+        if not sg_id:
+            return
+        latest = await _db.notification_history.find_one(
+            {"sg_message_id": sg_id},
+            {"_id": 1, "bounce_alert_sent": 1, "subscriber": 1, "to_email": 1, "subject": 1, "sent_at": 1, "sent_by": 1},
+        )
+        if not latest:
+            return
+        if latest.get("bounce_alert_sent"):
+            return  # Already alerted
+
+        subscriber = latest.get("subscriber", "Unknown")
+        to_email = latest.get("to_email", "")
+        subject_orig = latest.get("subject", "")
+        sent_at = latest.get("sent_at", "")
+        sent_by = latest.get("sent_by", "")
+
+        event_type = (event.get("event") or "").upper()
+        bounce_reason = event.get("reason") or "(no reason provided)"
+        bounce_ts = event.get("timestamp") or datetime.now(timezone.utc).isoformat()
+        try:
+            bounce_human = datetime.fromisoformat(bounce_ts.replace("Z", "+00:00")).strftime("%b %d, %Y %I:%M:%S %p UTC")
+        except Exception:
+            bounce_human = bounce_ts
+
+        # Classify the bounce
+        rl = bounce_reason.lower()
+        if any(p in rl for p in ["no such user", "user unknown", "mailbox not found", "550 5.1.1", "does not exist"]):
+            category = "HARD BOUNCE — address invalid"
+            advice = "The recipient email address does not exist. Please update the subscriber's contact email and re-send the notification."
+        elif any(p in rl for p in ["quota", "mailbox full", "452", "4.2.2"]):
+            category = "SOFT BOUNCE — mailbox full"
+            advice = "The recipient mailbox is over quota. SendGrid will retry for ~72 hours; no immediate action required."
+        elif any(p in rl for p in ["spam", "blacklist", "reputation", "policy", "550 5.7", "blocked"]):
+            category = "BLOCKED — recipient policy"
+            advice = "The recipient mail server rejected based on policy (spam filter, IP reputation, or attachment scanning). Verify the address is correct and consider asking the recipient to whitelist no-reply@cardiac-solutions.ai."
+        else:
+            category = f"{event_type} / Rejection"
+            advice = "Review the reason text from the recipient mail server and update the subscriber's contact information if needed."
+
+        alert_to = "mallred@cardiac-solutions.net"
+        alert_cc = "tprince@cardiac-solutions.net"
+        alert_subject = f"BOUNCED EMAIL to {subscriber}"
+
+        html = f"""
+        <div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;background:#0d1526;border:1px solid rgba(239,68,68,0.4);border-radius:4px;padding:24px;color:#e2e8f0;">
+          <div style="color:#ef4444;font-size:13px;letter-spacing:2px;font-weight:bold;margin-bottom:6px;">CARDIAC SOLUTIONS - DELIVERY ALERT</div>
+          <div style="color:#fca5a5;font-size:18px;font-weight:bold;margin-bottom:18px;">A subscriber notification email has bounced.</div>
+
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <tr><td style="padding:6px 0;color:#94a3b8;width:160px;">Subscriber</td><td style="padding:6px 0;color:#06b6d4;font-weight:bold;">{subscriber}</td></tr>
+            <tr><td style="padding:6px 0;color:#94a3b8;">Recipient address</td><td style="padding:6px 0;color:#fca5a5;font-weight:bold;">{to_email}</td></tr>
+            <tr><td style="padding:6px 0;color:#94a3b8;">Original subject</td><td style="padding:6px 0;">{subject_orig}</td></tr>
+            <tr><td style="padding:6px 0;color:#94a3b8;">Sent</td><td style="padding:6px 0;color:#cbd5e1;">{sent_at} by {sent_by}</td></tr>
+            <tr><td style="padding:6px 0;color:#94a3b8;">Bounced at</td><td style="padding:6px 0;color:#fca5a5;">{bounce_human}</td></tr>
+            <tr><td style="padding:6px 0;color:#94a3b8;">SendGrid event</td><td style="padding:6px 0;color:#cbd5e1;font-family:monospace;">{event_type.lower()}</td></tr>
+          </table>
+
+          <div style="margin-top:18px;padding:12px 14px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:3px;">
+            <div style="color:#fca5a5;font-size:11px;letter-spacing:2px;font-weight:bold;margin-bottom:6px;">CATEGORY</div>
+            <div style="font-size:14px;color:#f87171;font-weight:bold;">{category}</div>
+          </div>
+
+          <div style="margin-top:12px;">
+            <div style="color:#94a3b8;font-size:11px;letter-spacing:2px;font-weight:bold;margin-bottom:6px;">REASON FROM RECIPIENT MAIL SERVER</div>
+            <pre style="background:#020617;border:1px solid #1e293b;border-radius:3px;padding:10px;color:#fda4af;font-size:12px;white-space:pre-wrap;word-break:break-word;font-family:monospace;margin:0;">{bounce_reason}</pre>
+          </div>
+
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(100,116,139,0.2);">
+            <div style="color:#94a3b8;font-size:11px;letter-spacing:2px;font-weight:bold;margin-bottom:6px;">RECOMMENDED ACTION</div>
+            <div style="font-size:13px;color:#cbd5e1;">{advice}</div>
+          </div>
+
+          <div style="margin-top:18px;font-size:11px;color:#475569;">
+            This is an automated alert from the Cardiac Solutions Support Dashboard.
+          </div>
+        </div>
+        """
+
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail
+        message = Mail(
+            from_email=f"Cardiac Solutions Alerts <{sender}>",
+            to_emails=[alert_to],
+            subject=alert_subject,
+            html_content=html,
+        )
+        # Add CC
+        from sendgrid.helpers.mail import Personalization, Email as SgEmail, Cc
+        try:
+            personalization = message.personalizations[0]
+            personalization.add_cc(Cc(alert_cc))
+        except Exception:
+            try:
+                p = Personalization()
+                p.add_to(SgEmail(alert_to))
+                p.add_cc(SgEmail(alert_cc))
+                message.add_personalization(p)
+            except Exception as e:
+                logger.warning(f"[bounce-alert] could not add CC: {e}")
+
+        sg = SendGridAPIClient(sendgrid_key)
+        resp = sg.send(message)
+        success = resp.status_code in (200, 201, 202)
+        logger.info(f"[bounce-alert] subscriber={subscriber} to={to_email} -> SendGrid {resp.status_code}")
+        if success:
+            await _db.notification_history.update_one(
+                {"_id": latest["_id"]},
+                {"$set": {
+                    "bounce_alert_sent": True,
+                    "bounce_alert_sent_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[bounce-alert] failed: {e}")
+
+
 @api_router.post("/sendgrid/events")
 async def sendgrid_event_webhook(request: Request):
     """Receive SendGrid Event Webhook batches.
@@ -1604,6 +1735,7 @@ async def sendgrid_event_webhook(request: Request):
     matched = 0
     # Log every event into sendgrid_event_log for diagnostics
     log_records = []
+    bounce_alerts_to_send = []  # list of (record_dict, event_dict)
     for ev in events:
         try:
             event_type = (ev.get("event") or "").lower()
@@ -1677,6 +1809,11 @@ async def sendgrid_event_webhook(request: Request):
                 matched += 1
                 if log_records:
                     log_records[-1]["matched_history"] = True
+                # If this was a bounce-type event, queue an alert email (sent after main loop)
+                if event_type in ("bounce", "blocked", "dropped"):
+                    rec = await _db.notification_history.find_one(query, {"_id": 0, "sg_message_id": 1})
+                    if rec:
+                        bounce_alerts_to_send.append((rec, ev))
             processed += 1
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[sendgrid-webhook] failed to process event: {e}")
@@ -1698,6 +1835,12 @@ async def sendgrid_event_webhook(request: Request):
         logger.warning(f"[sendgrid-webhook] failed to log events: {e}")
 
     logger.info(f"[sendgrid-webhook] received={len(events)} processed={processed} matched={matched}")
+
+    # Fire-and-forget bounce alert emails (idempotent — _send_bounce_alert_email
+    # checks the `bounce_alert_sent` flag before sending)
+    for rec, ev in bounce_alerts_to_send:
+        asyncio.create_task(_send_bounce_alert_email(rec, ev))
+
     return {"received": len(events), "processed": processed, "matched": matched}
 
 
