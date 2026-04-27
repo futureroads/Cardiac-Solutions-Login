@@ -158,8 +158,16 @@ export default function StarkDashboard({ user, onLogout }) {
     const fetchSupportData = async () => {
       try {
         const res = await fetch(`${API}/support/dashboard-data`, { headers: { Authorization: `Bearer ${token}` } });
-        if (res.ok) { const d = await res.json(); setReadiness(d.readiness || null); setSupportData(d); }
-      } catch {}
+        if (res.ok) {
+          const d = await res.json();
+          setReadiness(d.readiness || null);
+          setSupportData(d);
+        } else {
+          console.warn(`[StarkDashboard] dashboard-data failed: HTTP ${res.status}`);
+        }
+      } catch (e) {
+        console.warn("[StarkDashboard] dashboard-data error:", e);
+      }
     };
     fetchSupportData();
     const i = setInterval(fetchSupportData, 300000);
