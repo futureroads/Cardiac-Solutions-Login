@@ -2295,6 +2295,31 @@ export default function SupportDashboard({ user, onLogout }) {
     }
   };
 
+  const [syncingOpens, setSyncingOpens] = useState(false);
+  const handleSyncOpens = async () => {
+    setSyncingOpens(true);
+    try {
+      const res = await fetch(`${API}/support/backfill-email-opens`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const j = await res.json();
+        toast.success(
+          `Sync complete — ${j.newly_matched_aeds || 0} AED${(j.newly_matched_aeds || 0) === 1 ? "" : "s"} now credited as opened (${j.current_unresolved_with_open}/${j.current_unresolved_total} unresolved with opens)`
+        );
+        await fetchData();
+        await fetchNotifiedAeds();
+      } else {
+        toast.error("Sync failed — check server logs");
+      }
+    } catch {
+      toast.error("Sync failed — network error");
+    } finally {
+      setSyncingOpens(false);
+    }
+  };
+
   const subscribers = data?.subscribers || [];
   const totals = data?.fleet_totals || {};
   const nc = data?.notified_counts || {};
@@ -2457,8 +2482,19 @@ export default function SupportDashboard({ user, onLogout }) {
                         disabled={refreshingAeds}
                         className="font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 disabled:opacity-50"
                         data-testid="refresh-aeds-btn"
+                        title="Re-check device statuses against Readisys"
                       >
                         <RefreshCw className={`w-3 h-3 ${refreshingAeds ? "animate-spin" : ""}`} />
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); handleSyncOpens(); }}
+                        disabled={syncingOpens}
+                        className="font-orbitron text-[7px] px-2 py-1 border border-emerald-500/30 text-emerald-400 rounded-sm hover:bg-emerald-500/10 disabled:opacity-50 flex items-center gap-1"
+                        data-testid="sync-opens-btn"
+                        title="Backfill: link historical email opens to notified AEDs (lifts Adjusted % above Actual)"
+                      >
+                        <Mail className={`w-3 h-3 ${syncingOpens ? "animate-pulse" : ""}`} />
+                        <span>SYNC OPENS</span>
                       </button>
                       <button
                         onClick={e => { e.stopPropagation(); setShowNotifiedAeds(true); }}
