@@ -415,8 +415,26 @@ function SubscriberEngagementModal({ onClose }) {
   };
   useEffect(() => { load(days); /* eslint-disable-next-line */ }, [days]);
 
+  // Recompute all rates locally so they ALWAYS use SENT as the denominator,
+  // regardless of what the backend sends back. This guarantees the displayed
+  // math always matches the disclaimer ("All percentages use SENT as denominator").
+  const pct = (num, den) => {
+    if (!den || den <= 0) return 0;
+    return Math.round((num / den) * 1000) / 10; // 1 decimal place
+  };
+  const enriched = ((data && data.subscribers) || []).map(s => {
+    const sent = s.emails_sent || 0;
+    return {
+      ...s,
+      delivery_rate: pct(s.delivered || 0, sent),
+      open_rate:     pct(s.opened_by_to || 0, sent),
+      bounce_rate:   pct(s.bounced || 0, sent),
+      click_rate:    pct(s.clicked || 0, sent),
+    };
+  });
+
   const sorted = (() => {
-    const arr = [...((data && data.subscribers) || [])];
+    const arr = [...enriched];
     arr.sort((a, b) => {
       const av = a[sortKey]; const bv = b[sortKey];
       if (av == null && bv == null) return 0;
@@ -537,8 +555,14 @@ function SubscriberEngagementModal({ onClose }) {
           )}
         </div>
 
-        <div className="border-t border-slate-800/60 px-5 py-2 text-[9px] text-slate-500 font-orbitron tracking-wider">
-          All percentages use <span className="text-cyan-400/80">SENT</span> as the denominator (e.g. OPEN % = opens by TO / total sent). <span className="text-cyan-400/80">OPENED</span> counts only opens by the TO recipient. Adjusted % Ready uses this metric. <span className="text-slate-600">·</span> Click any column to sort.
+        <div className="border-t border-slate-800/60 px-5 py-2 text-[9px] text-slate-500 font-orbitron tracking-wider leading-relaxed">
+          <span className="text-cyan-400/90">FORMULAS:</span>{" "}
+          <span className="text-slate-300">DELIV %</span> = delivered ÷ <span className="text-cyan-400/80">sent</span>{" · "}
+          <span className="text-slate-300">OPEN %</span> = opened-by-TO ÷ <span className="text-cyan-400/80">sent</span>{" · "}
+          all rates share the same denominator so they're directly comparable.
+          <span className="text-slate-600"> · </span>
+          <span className="text-slate-300">OPENED</span> counts only opens by the TO recipient (used for Adjusted % Ready).
+          <span className="text-slate-600"> · </span>Click any column to sort.
         </div>
       </div>
     </div>
