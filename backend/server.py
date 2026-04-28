@@ -2904,6 +2904,137 @@ def _verify_voice_api_key(x_voice_api_key: str | None) -> None:
         raise HTTPException(status_code=401, detail="Invalid or missing X-Voice-API-Key header")
 
 
+@api_router.get("/voice/outreach/unresolved-devices")
+async def voice_outreach_unresolved_devices(
+    include_resolved: bool = True,
+    x_voice_api_key: str | None = Header(default=None, alias="X-Voice-API-Key"),
+):
+    """Return device-level list of every AED a subscriber outreach email has
+    been sent for (resolved + unresolved by default).
+
+    Query params:
+        include_resolved (default True): when False, only unresolved devices
+                                          are returned.
+
+    Auth: `X-Voice-API-Key` header (same key as other voice endpoints).
+    """
+    _verify_voice_api_key(x_voice_api_key)
+
+    # Map raw status strings → snake_case issue_type enum
+    status_to_issue = {
+        "EXPIRED B/P": "expired_bp",
+        "EXPIRED BATT/PADS": "expired_bp",
+        "EXPIRING BATT/PADS": "expiring_bp",
+        "EXPIRING B/P": "expiring_bp",
+        "NOT READY": "not_ready",
+        "REPOSITION": "reposition",
+        "NOT PRESENT": "not_present",
+        "LOST CONTACT": "lost_contact",
+        "UNKNOWN": "unknown",
+    }
+    snake_case_keys = {"expired_bp", "expiring_bp", "not_ready", "reposition",
+                       "not_present", "lost_contact", "unknown"}
+
+    def _normalize_issue(raw: str | None) -> list[str]:
+        if not raw:
+            return []
+        s = raw.strip()
+        if s.lower() in snake_case_keys:
+            return [s.lower()]
+        return [status_to_issue.get(s.upper(), s.lower().replace(" ", "_").replace("/", "_"))]
+
+    query = {} if include_resolved else {"resolved": False}
+    devices = []
+    last_updated_iso = None
+
+    try:
+        async for d in _db.notified_aeds.find(query, {"_id": 0}):
+            sid = d.get("sentinel_id") or None
+            sub = d.get("subscriber") or None
+            outreach_sent_at = d.get("first_notified_at") or d.get("last_notified_at")
+            resolved = bool(d.get("resolved", False))
+            resolved_at = d.get("resolved_at")
+            triggered_by = None
+            try:
+                first_nd = (d.get("notification_dates") or [{}])[0]
+                triggered_by = first_nd.get("sent_by")
+            except Exception:
+                pass
+
+            devices.append({
+                "aed_device_id": sid,
+                "sentinel_id": sid,
+                "subscriber": sub,
+                "issue_types": _normalize_issue(d.get("issue_type")),
+                "detailed_status_at_send": d.get("status_at_notification") or d.get("issue_type"),
+                "outreach_sent_at": outreach_sent_at,
+                "resolved": resolved,
+                "resolved_at": resolved_at,
+                "source": "notified_aeds",
+                "mailgun_message_id": None,  # Migrated to SendGrid; see email_message_id
+                "email_message_id": None,    # Filled below if a matching record exists
+                "triggered_by": triggered_by,
+                "note": d.get("resolution_reason"),
+                # Bonus fields (extra context, ignored if your client doesn't use them)
+                "current_status": d.get("current_status"),
+                "partially_resolved": d.get("partially_resolved", False),
+                "partially_resolved_at": d.get("partially_resolved_at"),
+                "last_status_check": d.get("last_status_check"),
+                "notification_count": len(d.get("notification_dates") or []),
+            })
+            ts = d.get("last_status_check") or d.get("last_notified_at") or outreach_sent_at
+            if ts and (last_updated_iso is None or ts > last_updated_iso):
+                last_updated_iso = ts
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"DB query failed: {e}")
+
+    # Attach SendGrid message id by matching subscriber + outreach send time
+    try:
+        # Pull all notification_history with sg_message_id (small set)
+        nh_by_sub: dict[str, list[dict]] = {}
+        async for h in _db.notification_history.find(
+            {"sg_message_id": {"$exists": True, "$ne": ""}},
+            {"_id": 0, "subscriber": 1, "sent_at": 1, "sg_message_id": 1},
+        ):
+            sub = h.get("subscriber")
+            if sub:
+                nh_by_sub.setdefault(sub, []).append(h)
+
+        def _parse_iso(s):
+            try:
+                return datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
+            except Exception:
+                return None
+
+        for dev in devices:
+            sub = dev.get("subscriber")
+            ts = _parse_iso(dev.get("outreach_sent_at"))
+            if not sub or not ts:
+                continue
+            best, best_diff = None, 600
+            for h in nh_by_sub.get(sub, []):
+                t = _parse_iso(h.get("sent_at"))
+                if not t:
+                    continue
+                diff = abs((t - ts).total_seconds())
+                if diff < best_diff:
+                    best_diff = diff
+                    best = h
+            if best:
+                dev["email_message_id"] = best.get("sg_message_id")
+                dev["mailgun_message_id"] = best.get("sg_message_id")  # legacy field name compatibility
+    except Exception as e:
+        logger.warning(f"[outreach/unresolved-devices] message-id enrich failed: {e}")
+
+    return {
+        "last_updated": last_updated_iso or datetime.now(timezone.utc).isoformat(),
+        "total_unresolved_devices": sum(1 for d in devices if not d["resolved"]),
+        "total_devices": len(devices),
+        "include_resolved": include_resolved,
+        "devices": devices,
+    }
+
+
 @api_router.get("/voice/readiness-summary")
 async def voice_readiness_summary(
     x_voice_api_key: str | None = Header(default=None, alias="X-Voice-API-Key"),
