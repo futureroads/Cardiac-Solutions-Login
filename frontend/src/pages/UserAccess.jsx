@@ -51,6 +51,8 @@ const DI_EVENT_CATEGORIES = [
   { id: "expiring_bp", label: "Expiring B/P" },
   { id: "camera_battery", label: "Camera Battery" },
   { id: "camera_cellular", label: "Camera Cellular" },
+  { id: "email_events", label: "Email Events (Delivered/Opened/Bounced)" },
+  { id: "aed_resolutions", label: "AED Resolutions" },
 ];
 const DI_LEVELS = ["details", "overview", "none"];
 const DI_LEVEL_LABELS = { details: "DETAILS", overview: "OVERVIEW", none: "HIDDEN" };

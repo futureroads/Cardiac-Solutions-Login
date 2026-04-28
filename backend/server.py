@@ -2156,107 +2156,171 @@ async def get_di_events(hours: int = 24, current_user: dict = Depends(get_curren
     """Return recent email engagement events + AED resolutions for the
     Decision Intelligence feed.
 
-    Includes:
-      - Recent email deliveries / opens / bounces (from notification_history)
-      - Recently resolved or partially-resolved AEDs (from notified_aeds)
+    Honors the caller's `di_permissions.email_events` and
+    `di_permissions.aed_resolutions` levels:
+      - "details": one event per item
+      - "overview": aggregated per subscriber
+      - "none": hidden
     """
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=max(1, min(int(hours), 168)))).isoformat()
+    perms = current_user.get("di_permissions") or {}
+    email_level = (perms.get("email_events") or "details").lower()
+    aed_level = (perms.get("aed_resolutions") or "details").lower()
     items: list[dict] = []
 
-    # Email events
-    try:
-        async for h in _db.notification_history.find(
-            {"sg_message_id": {"$exists": True, "$ne": ""}, "sent_at": {"$gte": cutoff}},
-            {"_id": 0, "subscriber": 1, "to_email": 1, "subject": 1, "sent_at": 1,
-             "delivered_at": 1, "first_opened_at": 1, "open_count": 1, "click_count": 1,
-             "bounced": 1, "bounce_reason": 1, "spam_reported": 1, "events": 1, "is_test": 1},
-        ).sort("sent_at", -1).limit(200):
-            sub = h.get("subscriber") or "Unknown"
-            if h.get("is_test"):
-                continue  # Skip diagnostic test emails
+    # ---------------- Email events ----------------
+    if email_level != "none":
+        # Aggregations for overview mode: {subscriber: {delivered, opened, clicked, bounced, spam, last_ts}}
+        agg: dict[str, dict] = {}
 
-            # Bounce
-            if h.get("bounced"):
-                bounce_ev = next((e for e in (h.get("events") or []) if (e.get("event") or "").lower() in ("bounce","blocked","dropped")), None)
-                ts = (bounce_ev or {}).get("timestamp") or h.get("sent_at")
-                items.append({
-                    "type": "ACT",
-                    "msg": f"BOUNCED: Notification email to {sub} ({h.get('to_email')}) bounced. Reason: {h.get('bounce_reason') or 'rejected by recipient mail server'}",
-                    "_ts": ts,
+        try:
+            async for h in _db.notification_history.find(
+                {"sg_message_id": {"$exists": True, "$ne": ""}, "sent_at": {"$gte": cutoff}},
+                {"_id": 0, "subscriber": 1, "to_email": 1, "subject": 1, "sent_at": 1,
+                 "delivered_at": 1, "first_opened_at": 1, "open_count": 1, "click_count": 1,
+                 "bounced": 1, "bounce_reason": 1, "spam_reported": 1, "events": 1, "is_test": 1},
+            ).sort("sent_at", -1).limit(500):
+                if h.get("is_test"):
+                    continue
+                sub = h.get("subscriber") or "Unknown"
+                a = agg.setdefault(sub, {
+                    "delivered": 0, "opened": 0, "clicked": 0,
+                    "bounced": 0, "spam": 0, "last_ts": "",
                 })
 
-            # Spam reported
-            if h.get("spam_reported"):
+                if h.get("bounced"):
+                    a["bounced"] += 1
+                    bounce_ev = next((e for e in (h.get("events") or []) if (e.get("event") or "").lower() in ("bounce","blocked","dropped")), None)
+                    ts = (bounce_ev or {}).get("timestamp") or h.get("sent_at")
+                    a["last_ts"] = max(a["last_ts"], ts or "")
+                    if email_level == "details":
+                        items.append({
+                            "type": "ACT",
+                            "msg": f"BOUNCED: Notification email to {sub} ({h.get('to_email')}) bounced. Reason: {h.get('bounce_reason') or 'rejected by recipient mail server'}",
+                            "_ts": ts,
+                        })
+
+                if h.get("spam_reported"):
+                    a["spam"] += 1
+                    a["last_ts"] = max(a["last_ts"], h.get("sent_at") or "")
+                    if email_level == "details":
+                        items.append({
+                            "type": "WARN",
+                            "msg": f"SPAM REPORT: Recipient at {sub} marked the notification email as spam. Verify contact info before sending again.",
+                            "_ts": h.get("sent_at"),
+                        })
+
+                if h.get("delivered_at") and not h.get("bounced"):
+                    a["delivered"] += 1
+                    a["last_ts"] = max(a["last_ts"], h.get("delivered_at") or "")
+                    if email_level == "details":
+                        items.append({
+                            "type": "SYS",
+                            "msg": f"DELIVERED: Notification email to {sub} ({h.get('to_email')}) was delivered.",
+                            "_ts": h.get("delivered_at"),
+                        })
+
+                if h.get("open_count", 0) > 0:
+                    a["opened"] += 1
+                    a["last_ts"] = max(a["last_ts"], h.get("first_opened_at") or h.get("sent_at") or "")
+                    if email_level == "details":
+                        opens = h.get("open_count", 0)
+                        count_phrase = f" ({opens} times)" if opens > 1 else ""
+                        items.append({
+                            "type": "INFO",
+                            "msg": f"OPENED: {sub} read the notification email{count_phrase}.",
+                            "_ts": h.get("first_opened_at") or h.get("sent_at"),
+                        })
+
+                if h.get("click_count", 0) > 0:
+                    a["clicked"] += 1
+                    a["last_ts"] = max(a["last_ts"], h.get("sent_at") or "")
+                    if email_level == "details":
+                        clicks = h.get("click_count", 0)
+                        items.append({
+                            "type": "INFO",
+                            "msg": f"CLICKED: {sub} clicked a link in the notification email ({clicks} click{'s' if clicks != 1 else ''}).",
+                            "_ts": h.get("sent_at"),
+                        })
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[di-events] notification_history scan failed: {e}")
+
+        # Overview mode: emit one summary line per subscriber
+        if email_level == "overview":
+            for sub, a in agg.items():
+                bits = []
+                if a["delivered"]: bits.append(f"{a['delivered']} delivered")
+                if a["opened"]:    bits.append(f"{a['opened']} opened")
+                if a["clicked"]:   bits.append(f"{a['clicked']} clicked")
+                if a["bounced"]:   bits.append(f"{a['bounced']} bounced")
+                if a["spam"]:      bits.append(f"{a['spam']} spam-reported")
+                if not bits:
+                    continue
+                etype = "ACT" if a["bounced"] or a["spam"] else "INFO" if (a["opened"] or a["clicked"]) else "SYS"
                 items.append({
-                    "type": "WARN",
-                    "msg": f"SPAM REPORT: Recipient at {sub} marked the notification email as spam. Verify contact info before sending again.",
-                    "_ts": h.get("sent_at"),
+                    "type": etype,
+                    "msg": f"EMAILS — {sub}: " + ", ".join(bits) + " in last 24h.",
+                    "_ts": a["last_ts"] or cutoff,
                 })
 
-            # Delivered (only show if no bounce — otherwise misleading)
-            if h.get("delivered_at") and not h.get("bounced"):
-                items.append({
-                    "type": "SYS",
-                    "msg": f"DELIVERED: Notification email to {sub} ({h.get('to_email')}) was delivered.",
-                    "_ts": h.get("delivered_at"),
-                })
+    # ---------------- AED resolutions ----------------
+    if aed_level != "none":
+        agg_r: dict[str, dict] = {}
+        try:
+            async for d in _db.notified_aeds.find(
+                {"$or": [
+                    {"resolved": True, "resolved_at": {"$gte": cutoff}},
+                    {"partially_resolved": True, "partially_resolved_at": {"$gte": cutoff}},
+                ]},
+                {"_id": 0, "sentinel_id": 1, "subscriber": 1, "issue_type": 1,
+                 "current_status": 1, "resolved": 1, "resolved_at": 1,
+                 "partially_resolved": 1, "partially_resolved_at": 1, "resolution_reason": 1},
+            ).sort("resolved_at", -1).limit(500):
+                sub = d.get("subscriber") or "Unknown"
+                sid = d.get("sentinel_id") or ""
+                issue = (d.get("issue_type") or "").upper()
+                a = agg_r.setdefault(sub, {"resolved": 0, "partial": 0, "last_ts": ""})
 
-            # Opened
-            if h.get("open_count", 0) > 0:
-                opens = h.get("open_count", 0)
-                count_phrase = f" ({opens} times)" if opens > 1 else ""
+                if d.get("resolved"):
+                    a["resolved"] += 1
+                    a["last_ts"] = max(a["last_ts"], d.get("resolved_at") or "")
+                    if aed_level == "details":
+                        items.append({
+                            "type": "INFO",
+                            "msg": f"RESOLVED: {sub} fixed AED {sid} (was {issue}, now READY). Subscriber action complete.",
+                            "_ts": d.get("resolved_at"),
+                        })
+                elif d.get("partially_resolved"):
+                    a["partial"] += 1
+                    a["last_ts"] = max(a["last_ts"], d.get("partially_resolved_at") or "")
+                    if aed_level == "details":
+                        cur = d.get("current_status") or "different status"
+                        items.append({
+                            "type": "WARN",
+                            "msg": f"PARTIAL: {sub} AED {sid} changed from {issue} to {cur} (no longer the original issue, but still not READY).",
+                            "_ts": d.get("partially_resolved_at"),
+                        })
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[di-events] notified_aeds scan failed: {e}")
+
+        if aed_level == "overview":
+            for sub, a in agg_r.items():
+                bits = []
+                if a["resolved"]: bits.append(f"{a['resolved']} fully resolved")
+                if a["partial"]:  bits.append(f"{a['partial']} partially resolved")
+                if not bits:
+                    continue
                 items.append({
                     "type": "INFO",
-                    "msg": f"OPENED: {sub} read the notification email{count_phrase}.",
-                    "_ts": h.get("first_opened_at") or h.get("sent_at"),
+                    "msg": f"AED RESOLUTIONS — {sub}: " + ", ".join(bits) + " in last 24h.",
+                    "_ts": a["last_ts"] or cutoff,
                 })
 
-            # Clicked
-            if h.get("click_count", 0) > 0:
-                clicks = h.get("click_count", 0)
-                items.append({
-                    "type": "INFO",
-                    "msg": f"CLICKED: {sub} clicked a link in the notification email ({clicks} click{'s' if clicks != 1 else ''}).",
-                    "_ts": h.get("sent_at"),
-                })
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"[di-events] notification_history scan failed: {e}")
-
-    # AED resolutions
-    try:
-        async for d in _db.notified_aeds.find(
-            {"$or": [
-                {"resolved": True, "resolved_at": {"$gte": cutoff}},
-                {"partially_resolved": True, "partially_resolved_at": {"$gte": cutoff}},
-            ]},
-            {"_id": 0, "sentinel_id": 1, "subscriber": 1, "issue_type": 1,
-             "current_status": 1, "resolved": 1, "resolved_at": 1,
-             "partially_resolved": 1, "partially_resolved_at": 1, "resolution_reason": 1},
-        ).sort("resolved_at", -1).limit(200):
-            sub = d.get("subscriber") or "Unknown"
-            sid = d.get("sentinel_id") or ""
-            issue = (d.get("issue_type") or "").upper()
-            if d.get("resolved"):
-                items.append({
-                    "type": "INFO",
-                    "msg": f"RESOLVED: {sub} fixed AED {sid} (was {issue}, now READY). Subscriber action complete.",
-                    "_ts": d.get("resolved_at"),
-                })
-            elif d.get("partially_resolved"):
-                cur = d.get("current_status") or "different status"
-                items.append({
-                    "type": "WARN",
-                    "msg": f"PARTIAL: {sub} AED {sid} changed from {issue} to {cur} (no longer the original issue, but still not READY).",
-                    "_ts": d.get("partially_resolved_at"),
-                })
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"[di-events] notified_aeds scan failed: {e}")
-
-    # Sort newest-first
+    # Sort newest-first and cap
     items.sort(key=lambda x: x.get("_ts") or "", reverse=True)
-    # Cap at 100 events
-    items = items[:100]
-    return {"events": items, "count": len(items), "since": cutoff}
+    items = items[:200]
+    return {"events": items, "count": len(items), "since": cutoff,
+            "permissions": {"email_events": email_level, "aed_resolutions": aed_level}}
 
 
 @api_router.get("/support/recently-resolved")
