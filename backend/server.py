@@ -1203,13 +1203,20 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
     except Exception as e:
         logger.warning(f"daily-snapshot failed: {e}")
 
-    # Get notified AED tracking data for adjusted readiness
+    # Get notified AED tracking data for adjusted readiness.
+    # Adjusted % is based on AEDs whose subscriber-notification email has been
+    # OPENED by the recipient (proves delivery + recipient awareness).
     notified_aed_unresolved = 0
+    notified_aed_unresolved_total = 0  # All unresolved (opened + not opened) for context
     recently_resolved_24h = 0
     recently_resolved_72h = 0
     last_status_check = None
     try:
-        notified_aed_unresolved = await _db.notified_aeds.count_documents({"resolved": False})
+        notified_aed_unresolved = await _db.notified_aeds.count_documents({
+            "resolved": False,
+            "email_opened": True,
+        })
+        notified_aed_unresolved_total = await _db.notified_aeds.count_documents({"resolved": False})
         cutoff_24 = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
         cutoff_72 = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
         recently_resolved_24h = await _db.notified_aeds.count_documents({
@@ -1273,6 +1280,7 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
             "total_issues": total_issues_fleet,
             "pct_ready": pct_ready,
             "notified_aed_unresolved": notified_aed_unresolved,
+            "notified_aed_unresolved_total": notified_aed_unresolved_total,
             "adjusted_issues": adjusted_issues,
             "pct_ready_adjusted": pct_ready_adjusted,
             "prev_pct_ready_adjusted": prev_pct_ready_adjusted,
@@ -1448,7 +1456,9 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
         sg_message_id = _extract_sg_message_id(resp)
         logger.info(f"Support notification to {to_email} for {subscriber}: SendGrid {resp.status_code} (msgid={sg_message_id!r})")
 
-        # Log to DB
+        # Log to DB — capture device list so webhook events can update related AEDs
+        notified_devices = data.get("devices", [])
+        linked_sentinel_ids = [dev.get("sentinel_id", "") for dev in notified_devices if dev.get("sentinel_id")]
         await _db.notification_history.insert_one({
             "subscriber": subscriber,
             "to_email": to_email,
@@ -1461,6 +1471,7 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
             "success": success,
             "email_response": f"SendGrid {resp.status_code}",
             "sg_message_id": sg_message_id,
+            "linked_sentinel_ids": linked_sentinel_ids,
             "events": [],
             "delivered_at": None,
             "first_opened_at": None,
@@ -1471,7 +1482,6 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
         })
 
         # Track each notified AED device in notified_aeds collection
-        notified_devices = data.get("devices", [])
         if notified_devices and success:
             now_iso = datetime.now(timezone.utc).isoformat()
             sent_by = current_user.get("username", "")
@@ -1809,6 +1819,24 @@ async def sendgrid_event_webhook(request: Request):
                 matched += 1
                 if log_records:
                     log_records[-1]["matched_history"] = True
+
+                # On OPEN: mark each linked AED as email_opened (idempotent)
+                if event_type == "open":
+                    rec = await _db.notification_history.find_one(
+                        query,
+                        {"_id": 0, "subscriber": 1, "linked_sentinel_ids": 1},
+                    )
+                    if rec and rec.get("linked_sentinel_ids"):
+                        sub = rec.get("subscriber")
+                        for sid in rec["linked_sentinel_ids"]:
+                            try:
+                                await _db.notified_aeds.update_one(
+                                    {"sentinel_id": sid, "subscriber": sub, "email_opened": {"$ne": True}},
+                                    {"$set": {"email_opened": True, "email_opened_at": iso_ts}},
+                                )
+                            except Exception:
+                                pass
+
                 # If this was a bounce-type event, queue an alert email (sent after main loop)
                 if event_type in ("bounce", "blocked", "dropped"):
                     rec = await _db.notification_history.find_one(query, {"_id": 0, "sg_message_id": 1})
@@ -2201,6 +2229,99 @@ async def _notified_aeds_daily_loop():
         except Exception as e:
             logger.error(f"[NOTIFIED_AEDS] Refresh loop error: {e}")
         await asyncio.sleep(1800)  # 30 minutes
+
+
+@api_router.post("/support/backfill-email-opens")
+async def backfill_email_opens(current_user: dict = Depends(get_current_user)):
+    """One-time backfill: scan notification_history for records that have
+    open_count > 0 and mark all matching notified_aeds (same subscriber +
+    notification timestamp within 10 minutes) as email_opened=true.
+
+    Useful after deploying the new "OPENED-based adjusted %" logic so historical
+    opens are credited.
+    """
+    matched = 0
+    scanned = 0
+
+    # Pull all opened email records
+    opened_records = []
+    async for h in _db.notification_history.find(
+        {"open_count": {"$gt": 0}},
+        {"_id": 0, "subscriber": 1, "sent_at": 1, "first_opened_at": 1,
+         "linked_sentinel_ids": 1},
+    ):
+        opened_records.append(h)
+    scanned = len(opened_records)
+
+    def _parse_iso(s):
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
+        except Exception:
+            return None
+
+    # Group by subscriber for fast lookup
+    opens_by_sub: dict[str, list[dict]] = {}
+    for h in opened_records:
+        sub = h.get("subscriber")
+        if sub:
+            opens_by_sub.setdefault(sub, []).append(h)
+
+    # Pull all unresolved notified_aeds without email_opened set
+    async for d in _db.notified_aeds.find(
+        {"$or": [{"email_opened": {"$exists": False}}, {"email_opened": {"$ne": True}}]},
+        {"_id": 0, "sentinel_id": 1, "subscriber": 1, "first_notified_at": 1, "notification_dates": 1},
+    ):
+        sub = d.get("subscriber")
+        sid = d.get("sentinel_id")
+        if not sub or not sid:
+            continue
+
+        # First try direct linked_sentinel_ids match
+        match = None
+        for h in opens_by_sub.get(sub, []):
+            if sid in (h.get("linked_sentinel_ids") or []):
+                match = h
+                break
+
+        # Fallback: time-window match against any notification_date on this AED
+        if not match:
+            nd_times = [
+                _parse_iso(nd.get("date"))
+                for nd in (d.get("notification_dates") or [])
+            ]
+            nd_times = [t for t in nd_times if t]
+            if not nd_times:
+                ft = _parse_iso(d.get("first_notified_at"))
+                if ft:
+                    nd_times = [ft]
+            if nd_times:
+                for h in opens_by_sub.get(sub, []):
+                    t_sent = _parse_iso(h.get("sent_at"))
+                    if not t_sent:
+                        continue
+                    if any(abs((t_sent - nt).total_seconds()) <= 600 for nt in nd_times):
+                        match = h
+                        break
+
+        if match:
+            opened_at = match.get("first_opened_at") or match.get("sent_at")
+            await _db.notified_aeds.update_one(
+                {"sentinel_id": sid, "subscriber": sub},
+                {"$set": {"email_opened": True, "email_opened_at": opened_at}},
+            )
+            matched += 1
+
+    # Refresh totals
+    total_unresolved = await _db.notified_aeds.count_documents({"resolved": False})
+    total_unresolved_opened = await _db.notified_aeds.count_documents({"resolved": False, "email_opened": True})
+
+    return {
+        "success": True,
+        "scanned_opened_emails": scanned,
+        "newly_matched_aeds": matched,
+        "current_unresolved_total": total_unresolved,
+        "current_unresolved_with_open": total_unresolved_opened,
+    }
 
 
 @api_router.post("/support/notified-aeds/refresh")
@@ -3090,11 +3211,16 @@ async def voice_readiness_summary(
     pct_ready = totals.get("percent_ready")
     prev_pct_ready = totals.get("prev_percent_ready")
 
-    # Count unresolved notified AEDs
+    # Count unresolved notified AEDs whose email was OPENED by the recipient
     try:
-        notified_aed_unresolved = await _db.notified_aeds.count_documents({"resolved": False})
+        notified_aed_unresolved = await _db.notified_aeds.count_documents({
+            "resolved": False,
+            "email_opened": True,
+        })
+        notified_aed_unresolved_total = await _db.notified_aeds.count_documents({"resolved": False})
     except Exception:
         notified_aed_unresolved = 0
+        notified_aed_unresolved_total = 0
 
     total_issues = max(0, total_monitored - total_ready)
     adjusted_issues = max(0, total_issues - notified_aed_unresolved)
@@ -3126,6 +3252,7 @@ async def voice_readiness_summary(
         "pct_ready": pct_ready,
         "prev_pct_ready": prev_pct_ready,
         "notified_aed_unresolved": notified_aed_unresolved,
+        "notified_aed_unresolved_total": notified_aed_unresolved_total,
         "adjusted_issues": adjusted_issues,
         "adjusted_ready": adjusted_ready,
         "pct_ready_adjusted": pct_ready_adjusted,
@@ -3152,7 +3279,13 @@ async def voice_readiness_summary(
         "calculation": {
             "actual_formula": "pct_ready = total_ready / total_monitored × 100",
             "adjusted_formula": "pct_ready_adjusted = (total_monitored - max(0, total_issues - notified_aed_unresolved)) / total_monitored × 100",
-            "explanation": "Adjusted readiness subtracts AEDs we've already notified the subscriber about (and the subscriber hasn't yet resolved) from the issue count, since responsibility for those devices has shifted to the subscriber.",
+            "explanation": (
+                "Adjusted readiness subtracts AEDs we've already notified the subscriber about "
+                "AND the subscriber has OPENED the notification email "
+                "(and the issue isn't yet resolved) from the issue count. "
+                "Opens prove the subscriber is aware of the issue, so responsibility shifts to them."
+            ),
+            "open_rule": "An AED counts toward adjustment only when notified_aeds.email_opened == True (set by SendGrid OPEN webhook event) AND notified_aeds.resolved == False.",
         },
         "last_updated": datetime.now(timezone.utc).isoformat(),
     }
