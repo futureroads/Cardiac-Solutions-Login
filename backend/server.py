@@ -2565,7 +2565,7 @@ async def get_di_events(hours: int = 24, current_user: dict = Depends(get_curren
                 for sub, e in agg_e.items():
                     if e["sent"] == 0:
                         continue
-                    open_pct = round(e["opened_to"] / max(e["delivered"], 1) * 100) if e["delivered"] else 0
+                    open_pct = round(e["opened_to"] / e["sent"] * 100) if e["sent"] else 0
                     bits = [f"{e['sent']} sent"]
                     if e["delivered"]:
                         bits.append(f"{e['delivered']} delivered")
@@ -2590,9 +2590,9 @@ async def get_di_events(hours: int = 24, current_user: dict = Depends(get_curren
                             "msg": f"ENGAGEMENT — {sub}: {e['delivered']} of {e['sent']} emails delivered in last 30 days.",
                             "_ts": e["last_ts"]})
                     if e["opened_to"]:
-                        open_pct = round(e["opened_to"] / max(e["delivered"], 1) * 100) if e["delivered"] else 0
+                        open_pct = round(e["opened_to"] / e["sent"] * 100) if e["sent"] else 0
                         items.append({"type": "INFO",
-                            "msg": f"ENGAGEMENT — {sub}: {e['opened_to']} emails opened by the TO recipient ({open_pct}% open rate).",
+                            "msg": f"ENGAGEMENT — {sub}: {e['opened_to']} emails opened by the TO recipient ({open_pct}% of sent).",
                             "_ts": e["last_ts"]})
                     elif e["delivered"]:
                         items.append({"type": "WARN",
@@ -2693,14 +2693,16 @@ async def subscriber_engagement(days: int = 30, current_user: dict = Depends(get
             r["last_sent_at"] = sent_at
             r["last_to_email"] = h.get("to_email") or r["last_to_email"]
 
-    # Compute rates
+    # Compute rates — all relative to emails_sent so the columns are
+    # consistent and comparable: deliv% + bounce% + (drops) ≤ 100; open% is
+    # opens-by-TO as a share of the same sent total.
     items = []
     for r in rows.values():
         sent = r["emails_sent"] or 0
         items.append({
             **r,
             "delivery_rate": round(r["delivered"] / sent * 100, 1) if sent else 0.0,
-            "open_rate": round(r["opened_by_to"] / max(r["delivered"], 1) * 100, 1) if r["delivered"] else 0.0,
+            "open_rate": round(r["opened_by_to"] / sent * 100, 1) if sent else 0.0,
             "bounce_rate": round(r["bounced"] / sent * 100, 1) if sent else 0.0,
         })
     items.sort(key=lambda x: x["emails_sent"], reverse=True)

@@ -524,7 +524,7 @@ function SubscriberEngagementModal({ onClose }) {
                     <td className="p-2 text-right font-orbitron text-cyan-400">{s.delivered}</td>
                     <td className="p-2 text-right font-orbitron text-cyan-300/80">{s.delivery_rate}%</td>
                     <td className={`p-2 text-right font-orbitron font-bold ${s.opened_by_to > 0 ? "text-emerald-400" : "text-slate-600"}`}>{s.opened_by_to}</td>
-                    <td className={`p-2 text-right font-orbitron ${s.open_rate >= 60 ? "text-emerald-400" : s.open_rate >= 30 ? "text-amber-400" : "text-slate-500"}`}>{s.open_rate}%</td>
+                    <td className={`p-2 text-right font-orbitron ${s.open_rate >= 40 ? "text-emerald-400" : s.open_rate >= 15 ? "text-amber-400" : "text-slate-500"}`}>{s.open_rate}%</td>
                     <td className={`p-2 text-right font-orbitron ${s.clicked > 0 ? "text-amber-400" : "text-slate-600"}`}>{s.clicked}</td>
                     <td className={`p-2 text-right font-orbitron ${s.bounced > 0 ? "text-red-400 font-bold" : "text-slate-600"}`}>{s.bounced}</td>
                     <td className={`p-2 text-right font-orbitron ${s.spam_reported > 0 ? "text-orange-400" : "text-slate-600"}`}>{s.spam_reported}</td>
@@ -538,7 +538,7 @@ function SubscriberEngagementModal({ onClose }) {
         </div>
 
         <div className="border-t border-slate-800/60 px-5 py-2 text-[9px] text-slate-500 font-orbitron tracking-wider">
-          <span className="text-cyan-400/80">OPENED</span> counts only opens by the TO recipient. Adjusted % Ready uses this metric. <span className="text-slate-600">·</span> Click any column to sort.
+          All percentages use <span className="text-cyan-400/80">SENT</span> as the denominator (e.g. OPEN % = opens by TO / total sent). <span className="text-cyan-400/80">OPENED</span> counts only opens by the TO recipient. Adjusted % Ready uses this metric. <span className="text-slate-600">·</span> Click any column to sort.
         </div>
       </div>
     </div>
