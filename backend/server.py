@@ -1882,22 +1882,85 @@ async def get_single_notification(history_id: str, current_user: dict = Depends(
 
 @api_router.get("/support/device-notification-history/{sentinel_id}")
 async def get_device_notification_history(sentinel_id: str, current_user: dict = Depends(get_current_user)):
-    """Get notification history for a specific AED device from notified_aeds collection."""
+    """Get notification history for a specific AED device, enriched with each
+    email's tracking status (delivered / opened / clicked / bounced)."""
     doc = await _db.notified_aeds.find_one({"sentinel_id": sentinel_id}, {"_id": 0})
     if not doc:
         return {"sentinel_id": sentinel_id, "notified": False, "notification_dates": []}
+
+    subscriber = doc.get("subscriber", "")
+    raw_dates = doc.get("notification_dates", []) or []
+
+    # Pull all notification_history entries for this subscriber (limited window)
+    histories = []
+    if subscriber and raw_dates:
+        try:
+            async for h in _db.notification_history.find(
+                {"subscriber": subscriber},
+                {"_id": 0, "sent_at": 1, "to_email": 1, "subject": 1,
+                 "delivered_at": 1, "first_opened_at": 1, "last_opened_at": 1,
+                 "open_count": 1, "click_count": 1, "last_clicked_at": 1,
+                 "bounced": 1, "bounce_reason": 1, "spam_reported": 1,
+                 "sg_message_id": 1},
+            ).sort("sent_at", -1).limit(500):
+                histories.append(h)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _parse_iso(s):
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
+        except Exception:
+            return None
+
+    def _find_match(date_str: str):
+        target = _parse_iso(date_str)
+        if not target:
+            return None
+        best = None
+        best_diff = 600  # 10 minutes max window
+        for h in histories:
+            t = _parse_iso(h.get("sent_at"))
+            if not t:
+                continue
+            diff = abs((t - target).total_seconds())
+            if diff < best_diff:
+                best_diff = diff
+                best = h
+        return best
+
+    enriched = []
+    for nd in raw_dates:
+        d = dict(nd)
+        m = _find_match(nd.get("date", ""))
+        if m:
+            d["to_email"] = m.get("to_email")
+            d["delivered_at"] = m.get("delivered_at")
+            d["first_opened_at"] = m.get("first_opened_at")
+            d["last_opened_at"] = m.get("last_opened_at")
+            d["open_count"] = m.get("open_count", 0)
+            d["click_count"] = m.get("click_count", 0)
+            d["last_clicked_at"] = m.get("last_clicked_at")
+            d["bounced"] = m.get("bounced", False)
+            d["bounce_reason"] = m.get("bounce_reason")
+            d["spam_reported"] = m.get("spam_reported", False)
+            d["sg_message_id"] = m.get("sg_message_id")
+        enriched.append(d)
+
     return {
         "sentinel_id": sentinel_id,
         "notified": True,
-        "subscriber": doc.get("subscriber", ""),
+        "subscriber": subscriber,
         "issue_type": doc.get("issue_type", ""),
         "first_notified_at": doc.get("first_notified_at", ""),
         "last_notified_at": doc.get("last_notified_at", ""),
-        "notification_dates": doc.get("notification_dates", []),
-        "notification_count": len(doc.get("notification_dates", [])),
+        "notification_dates": enriched,
+        "notification_count": len(enriched),
         "current_status": doc.get("current_status", ""),
         "resolved": doc.get("resolved", False),
         "resolved_at": doc.get("resolved_at"),
+        "partially_resolved": doc.get("partially_resolved", False),
+        "partially_resolved_at": doc.get("partially_resolved_at"),
     }
 
 

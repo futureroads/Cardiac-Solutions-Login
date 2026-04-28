@@ -1612,14 +1612,39 @@ function DeviceListModal({ subscriber, issueType, onClose }) {
                       return (
                         <div className="mt-4">
                           <div className="font-orbitron text-[9px] text-amber-400 tracking-wider mb-1.5 uppercase">Notification History ({nh.notification_count} sent)</div>
-                          <div className="space-y-1.5">
+                          <div className="space-y-2">
                             {(nh.notification_dates || []).map((nd, idx) => {
                               const d2 = nd.date ? new Date(nd.date).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+                              const fmt = (s) => s ? new Date(s).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null;
+                              const opens = nd.open_count || 0;
+                              const clicks = nd.click_count || 0;
                               return (
-                                <div key={idx} className="flex items-center gap-2 text-xs">
-                                  <div className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
-                                  <span className="text-slate-300">{d2}</span>
-                                  <span className="text-slate-500">by {nd.sent_by || "—"}</span>
+                                <div key={idx} className="text-xs">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <div className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                                    <span className="text-slate-300">{d2}</span>
+                                    <span className="text-slate-500">by {nd.sent_by || "—"}</span>
+                                    {nd.to_email && <span className="text-slate-600 text-[10px]">to {nd.to_email}</span>}
+                                  </div>
+                                  {(nd.to_email || nd.delivered_at || opens > 0 || clicks > 0 || nd.bounced) && (
+                                    <div className="ml-4 mt-1 flex items-center gap-1 flex-wrap">
+                                      {nd.bounced ? (
+                                        <span title={nd.bounce_reason || "Bounced"} className="text-[8px] px-1.5 py-0.5 bg-red-500/15 text-red-400 border border-red-500/30 rounded-sm font-orbitron">BOUNCED</span>
+                                      ) : nd.spam_reported ? (
+                                        <span className="text-[8px] px-1.5 py-0.5 bg-orange-500/15 text-orange-400 border border-orange-500/30 rounded-sm font-orbitron">SPAM</span>
+                                      ) : nd.delivered_at ? (
+                                        <span title={`Delivered ${fmt(nd.delivered_at)}`} className="text-[8px] px-1.5 py-0.5 bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 rounded-sm font-orbitron">DELIV {fmt(nd.delivered_at)}</span>
+                                      ) : nd.sg_message_id ? (
+                                        <span className="text-[8px] px-1.5 py-0.5 bg-slate-700/40 text-slate-400 border border-slate-600/40 rounded-sm font-orbitron">SENT</span>
+                                      ) : null}
+                                      {opens > 0 && (
+                                        <span title={`First opened ${fmt(nd.first_opened_at)}${nd.last_opened_at && nd.last_opened_at !== nd.first_opened_at ? `, last opened ${fmt(nd.last_opened_at)}` : ""}`} className="text-[8px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-sm font-orbitron">OPENED {opens > 1 ? `×${opens} ` : ""}{fmt(nd.first_opened_at)}</span>
+                                      )}
+                                      {clicks > 0 && (
+                                        <span title={`Last clicked ${fmt(nd.last_clicked_at)}`} className="text-[8px] px-1.5 py-0.5 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-sm font-orbitron">CLICKED {clicks > 1 ? `×${clicks} ` : ""}{fmt(nd.last_clicked_at)}</span>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -1628,6 +1653,13 @@ function DeviceListModal({ subscriber, issueType, onClose }) {
                                 <div className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
                                 <span className="text-green-400 font-bold">Resolved</span>
                                 {nh.resolved_at && <span className="text-slate-500">{new Date(nh.resolved_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>}
+                              </div>
+                            )}
+                            {!nh.resolved && nh.partially_resolved && (
+                              <div className="flex items-center gap-2 text-xs mt-1">
+                                <div className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                                <span className="text-amber-400 font-bold">Partially Resolved</span>
+                                {nh.partially_resolved_at && <span className="text-slate-500">{new Date(nh.partially_resolved_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>}
                               </div>
                             )}
                           </div>
