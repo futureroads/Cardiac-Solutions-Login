@@ -397,6 +397,163 @@ function TrackingTestModal({ onClose }) {
   );
 }
 
+function SendGridDebugModal({ onClose }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const load = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API}/support/sendgrid-debug`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setData(await res.json());
+    } catch {}
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const fmt = (iso) => iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" }) : "—";
+  const events = (data && data.recent_events) || [];
+  const histories = (data && data.recent_history_with_msgid) || [];
+  const stats = (data && data.stats) || {};
+
+  // Build a set of sg_message_ids from notification_history for matching
+  const knownMsgIds = new Set(histories.map(h => h.sg_message_id).filter(Boolean));
+
+  const eventTypeColor = (t) => {
+    const k = (t || "").toLowerCase();
+    if (k === "open") return "text-emerald-400";
+    if (k === "click") return "text-amber-400";
+    if (k === "delivered") return "text-cyan-400";
+    if (["bounce", "blocked", "dropped"].includes(k)) return "text-red-400";
+    if (k === "spamreport") return "text-orange-400";
+    return "text-slate-400";
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-[#0a0f1c] border border-purple-500/30 rounded-sm w-full max-w-[1200px] max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="sendgrid-debug-modal">
+        <div className="border-b border-purple-500/15 px-5 py-3 flex items-center justify-between bg-[rgba(6,10,20,0.95)]">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-purple-400" />
+            <div className="font-orbitron text-xs tracking-wider text-purple-400">SENDGRID WEBHOOK DEBUG</div>
+            <span className="font-orbitron text-[9px] text-slate-500 ml-2">last 30 events · last 20 sent emails</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={load} className="font-orbitron text-[9px] px-2 py-1 border border-purple-500/30 text-purple-400 rounded-sm hover:bg-purple-500/10" data-testid="sg-debug-refresh">RELOAD</button>
+            <button onClick={onClose} className="text-slate-500 hover:text-white" data-testid="sg-debug-close"><X className="w-4 h-4" /></button>
+          </div>
+        </div>
+
+        {/* Stats strip */}
+        <div className="border-b border-slate-800/60 px-5 py-3 grid grid-cols-3 gap-3 bg-slate-950/40">
+          <div className="text-center">
+            <div className="font-orbitron text-xl font-black text-purple-400">{stats.events_logged_total || 0}</div>
+            <div className="font-orbitron text-[7px] tracking-wider text-slate-500 mt-0.5 uppercase">TOTAL WEBHOOK EVENTS LOGGED</div>
+          </div>
+          <div className="text-center">
+            <div className="font-orbitron text-xl font-black text-cyan-400">{stats.history_with_msgid_total || 0}</div>
+            <div className="font-orbitron text-[7px] tracking-wider text-slate-500 mt-0.5 uppercase">EMAILS SENT WITH MSG-ID</div>
+          </div>
+          <div className="text-center">
+            <div className="font-orbitron text-xl font-black text-emerald-400">{events.filter(e => (e.event || "").toLowerCase() === "open").length}</div>
+            <div className="font-orbitron text-[7px] tracking-wider text-slate-500 mt-0.5 uppercase">OPEN EVENTS (LAST 30)</div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          {loading ? (
+            <div className="flex items-center justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-purple-400" /></div>
+          ) : (
+            <>
+              {/* Recent webhook events */}
+              <div>
+                <div className="font-orbitron text-[10px] tracking-wider text-purple-400 mb-2">RECENT WEBHOOK EVENTS</div>
+                {events.length === 0 ? (
+                  <div className="text-[10px] text-red-400 font-orbitron py-3 px-3 border border-red-500/20 bg-red-500/5 rounded-sm">
+                    NO WEBHOOK EVENTS RECEIVED. Check SendGrid → Settings → Mail Settings → Event Webhook is enabled and pointing at <span className="text-cyan-400">https://cardiac-solutions.ai/api/sendgrid/events</span> with Open/Click toggled ON.
+                  </div>
+                ) : (
+                  <table className="w-full text-[10px]">
+                    <thead className="border-b border-slate-800">
+                      <tr>
+                        <th className="text-left p-2 font-orbitron text-[8px] text-slate-500 tracking-wider">RECEIVED</th>
+                        <th className="text-left p-2 font-orbitron text-[8px] text-slate-500 tracking-wider">EVENT</th>
+                        <th className="text-left p-2 font-orbitron text-[8px] text-slate-500 tracking-wider">EMAIL</th>
+                        <th className="text-left p-2 font-orbitron text-[8px] text-slate-500 tracking-wider">SG MESSAGE ID</th>
+                        <th className="text-center p-2 font-orbitron text-[8px] text-slate-500 tracking-wider">MATCHED?</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {events.map((e, i) => {
+                        const sgId = (e.sg_message_id || "").split(".")[0];
+                        const matched = e.matched_history === true || (sgId && [...knownMsgIds].some(k => (k || "").startsWith(sgId)));
+                        return (
+                          <tr key={i} className="border-b border-slate-800/40 hover:bg-slate-900/40">
+                            <td className="p-2 text-slate-400 whitespace-nowrap">{fmt(e.received_at)}</td>
+                            <td className={`p-2 font-orbitron font-bold ${eventTypeColor(e.event)}`}>{(e.event || "").toUpperCase()}</td>
+                            <td className="p-2 text-slate-300">{e.email || "—"}</td>
+                            <td className="p-2 text-slate-500 font-mono text-[9px]" title={e.sg_message_id}>{sgId ? `${sgId.slice(0, 22)}...` : "—"}</td>
+                            <td className="p-2 text-center">
+                              {matched
+                                ? <span className="text-emerald-400 font-orbitron text-[9px]">✓ YES</span>
+                                : <span className="text-red-400 font-orbitron text-[9px]">✗ NO</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Recent sent emails */}
+              <div>
+                <div className="font-orbitron text-[10px] tracking-wider text-cyan-400 mb-2">RECENT SENT EMAILS (notification_history)</div>
+                {histories.length === 0 ? (
+                  <div className="text-[10px] text-amber-400 font-orbitron py-3 px-3 border border-amber-500/20 bg-amber-500/5 rounded-sm">
+                    NO EMAILS WITH SG MESSAGE-ID FOUND. SendGrid integration may not be configured (check SENDGRID_API_KEY env var).
+                  </div>
+                ) : (
+                  <table className="w-full text-[10px]">
+                    <thead className="border-b border-slate-800">
+                      <tr>
+                        <th className="text-left p-2 font-orbitron text-[8px] text-slate-500 tracking-wider">SENT AT</th>
+                        <th className="text-left p-2 font-orbitron text-[8px] text-slate-500 tracking-wider">SUBSCRIBER</th>
+                        <th className="text-left p-2 font-orbitron text-[8px] text-slate-500 tracking-wider">TO</th>
+                        <th className="text-left p-2 font-orbitron text-[8px] text-slate-500 tracking-wider">SG MESSAGE ID</th>
+                        <th className="text-right p-2 font-orbitron text-[8px] text-slate-500 tracking-wider">DELIV</th>
+                        <th className="text-right p-2 font-orbitron text-[8px] text-slate-500 tracking-wider">OPENS</th>
+                        <th className="text-right p-2 font-orbitron text-[8px] text-slate-500 tracking-wider">CLICKS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {histories.map((h, i) => (
+                        <tr key={i} className={`border-b border-slate-800/40 hover:bg-slate-900/40 ${h.is_test ? "opacity-60" : ""}`}>
+                          <td className="p-2 text-slate-400 whitespace-nowrap">{fmt(h.sent_at)}</td>
+                          <td className="p-2 text-cyan-300">{h.subscriber || "—"}{h.is_test && <span className="ml-1 text-[8px] text-amber-400">[TEST]</span>}</td>
+                          <td className="p-2 text-slate-300">{h.to_email}</td>
+                          <td className="p-2 text-slate-500 font-mono text-[9px]" title={h.sg_message_id}>{(h.sg_message_id || "").slice(0, 22)}...</td>
+                          <td className={`p-2 text-right font-orbitron ${h.delivered_at ? "text-cyan-400" : "text-slate-600"}`}>{h.delivered_at ? "✓" : "—"}</td>
+                          <td className={`p-2 text-right font-orbitron ${(h.open_count || 0) > 0 ? "text-emerald-400 font-bold" : "text-slate-600"}`}>{h.open_count || 0}</td>
+                          <td className={`p-2 text-right font-orbitron ${(h.click_count || 0) > 0 ? "text-amber-400 font-bold" : "text-slate-600"}`}>{h.click_count || 0}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="border-t border-slate-800/60 px-5 py-2 text-[9px] text-slate-500 font-orbitron tracking-wider leading-relaxed">
+          <span className="text-purple-400/90">DIAGNOSE:</span> If "TOTAL WEBHOOK EVENTS LOGGED" is 0, the webhook isn't reaching us. If events are logged but "MATCHED?" is mostly NO, sg_message_id mismatch (config drift). If everything matches but Adjusted = Actual, recipients simply haven't opened the emails yet.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SubscriberEngagementModal({ onClose }) {
   const [data, setData] = useState(null);
   const [days, setDays] = useState(30);
@@ -2242,6 +2399,7 @@ export default function SupportDashboard({ user, onLogout }) {
   const [showHistory, setShowHistory] = useState(false);
   const [showTrackingTest, setShowTrackingTest] = useState(false);
   const [showEngagement, setShowEngagement] = useState(false);
+  const [showSgDebug, setShowSgDebug] = useState(false);
   const [deviceList, setDeviceList] = useState(null);
   const [sortField, setSortField] = useState("total_issues");
   const [sortDir, setSortDir] = useState("desc");
@@ -2386,6 +2544,14 @@ export default function SupportDashboard({ user, onLogout }) {
             title="Per-subscriber email engagement report (delivery, opens, bounces, etc.)"
           >
             <BarChart3 className="w-3 h-3" /> ENGAGEMENT
+          </button>
+          <button
+            onClick={() => setShowSgDebug(true)}
+            className="font-orbitron text-[8px] px-3 py-1.5 border border-purple-500/30 text-purple-400 rounded-sm hover:bg-purple-500/10 flex items-center gap-1.5"
+            data-testid="sg-debug-btn"
+            title="SendGrid webhook diagnostic — see what events are arriving and whether they match"
+          >
+            <Activity className="w-3 h-3" /> SG DEBUG
           </button>
           <button
             onClick={() => setShowHistory(true)}
@@ -2720,6 +2886,7 @@ export default function SupportDashboard({ user, onLogout }) {
       {showHistory && <NotificationHistoryModal onClose={() => setShowHistory(false)} />}
       {showTrackingTest && <TrackingTestModal onClose={() => setShowTrackingTest(false)} />}
       {showEngagement && <SubscriberEngagementModal onClose={() => setShowEngagement(false)} />}
+      {showSgDebug && <SendGridDebugModal onClose={() => setShowSgDebug(false)} />}
       {deviceList && <DeviceListModal subscriber={deviceList.subscriber} issueType={deviceList.issueType} onClose={() => setDeviceList(null)} />}
       {showNotifiedAeds && <NotifiedAedsModal onClose={() => setShowNotifiedAeds(false)} onRefresh={() => { fetchNotifiedAeds(); fetchData(); }} />}
     </div>
