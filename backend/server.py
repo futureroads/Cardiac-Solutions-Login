@@ -1820,22 +1820,26 @@ async def sendgrid_event_webhook(request: Request):
                 if log_records:
                     log_records[-1]["matched_history"] = True
 
-                # On OPEN: mark each linked AED as email_opened (idempotent)
+                # On OPEN: mark each linked AED as email_opened — but ONLY if the
+                # open event came from the TO recipient (not a CC/BCC).
                 if event_type == "open":
                     rec = await _db.notification_history.find_one(
                         query,
-                        {"_id": 0, "subscriber": 1, "linked_sentinel_ids": 1},
+                        {"_id": 0, "subscriber": 1, "linked_sentinel_ids": 1, "to_email": 1},
                     )
                     if rec and rec.get("linked_sentinel_ids"):
-                        sub = rec.get("subscriber")
-                        for sid in rec["linked_sentinel_ids"]:
-                            try:
-                                await _db.notified_aeds.update_one(
-                                    {"sentinel_id": sid, "subscriber": sub, "email_opened": {"$ne": True}},
-                                    {"$set": {"email_opened": True, "email_opened_at": iso_ts}},
-                                )
-                            except Exception:
-                                pass
+                        to_email_norm = (rec.get("to_email") or "").strip().lower()
+                        ev_email_norm = (email or "").strip().lower()
+                        if to_email_norm and ev_email_norm and to_email_norm == ev_email_norm:
+                            sub = rec.get("subscriber")
+                            for sid in rec["linked_sentinel_ids"]:
+                                try:
+                                    await _db.notified_aeds.update_one(
+                                        {"sentinel_id": sid, "subscriber": sub, "email_opened": {"$ne": True}},
+                                        {"$set": {"email_opened": True, "email_opened_at": iso_ts}},
+                                    )
+                                except Exception:
+                                    pass
 
                 # If this was a bounce-type event, queue an alert email (sent after main loop)
                 if event_type in ("bounce", "blocked", "dropped"):
@@ -2243,14 +2247,29 @@ async def backfill_email_opens(current_user: dict = Depends(get_current_user)):
     matched = 0
     scanned = 0
 
-    # Pull all opened email records
+    # Pull all email records that have at least one open event AND whose
+    # to_email matches one of those open events (so we only credit TO opens,
+    # not CC/BCC opens).
     opened_records = []
     async for h in _db.notification_history.find(
         {"open_count": {"$gt": 0}},
         {"_id": 0, "subscriber": 1, "sent_at": 1, "first_opened_at": 1,
-         "linked_sentinel_ids": 1},
+         "to_email": 1, "linked_sentinel_ids": 1, "events": 1},
     ):
-        opened_records.append(h)
+        to_email_norm = (h.get("to_email") or "").strip().lower()
+        opened_by_to = False
+        first_to_open_ts = None
+        for ev in (h.get("events") or []):
+            if (ev.get("event") or "").lower() != "open":
+                continue
+            ev_email = (ev.get("email") or "").strip().lower()
+            if ev_email and ev_email == to_email_norm:
+                opened_by_to = True
+                if not first_to_open_ts and ev.get("timestamp"):
+                    first_to_open_ts = ev.get("timestamp")
+        if opened_by_to:
+            h["_first_to_open_ts"] = first_to_open_ts or h.get("first_opened_at") or h.get("sent_at")
+            opened_records.append(h)
     scanned = len(opened_records)
 
     def _parse_iso(s):
@@ -2304,7 +2323,7 @@ async def backfill_email_opens(current_user: dict = Depends(get_current_user)):
                         break
 
         if match:
-            opened_at = match.get("first_opened_at") or match.get("sent_at")
+            opened_at = match.get("_first_to_open_ts") or match.get("first_opened_at") or match.get("sent_at")
             await _db.notified_aeds.update_one(
                 {"sentinel_id": sid, "subscriber": sub},
                 {"$set": {"email_opened": True, "email_opened_at": opened_at}},
