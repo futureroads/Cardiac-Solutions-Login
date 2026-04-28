@@ -5,7 +5,7 @@ import {
   AlertTriangle, Clock, ChevronDown, ChevronUp, Mail,
   Users, Activity, Shield, History, Battery, Wifi,
   StickyNote, ZoomIn, ChevronLeft, Edit3, RefreshCw,
-  CheckCircle2, AlertCircle,
+  CheckCircle2, AlertCircle, BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import API_BASE from "@/apiBase";
@@ -391,6 +391,154 @@ function TrackingTestModal({ onClose }) {
               </div>
             </>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SubscriberEngagementModal({ onClose }) {
+  const [data, setData] = useState(null);
+  const [days, setDays] = useState(30);
+  const [loading, setLoading] = useState(true);
+  const [sortKey, setSortKey] = useState("emails_sent");
+  const [sortDir, setSortDir] = useState("desc");
+
+  const load = async (d = days) => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API}/support/subscriber-engagement?days=${d}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setData(await res.json());
+    } catch {}
+    setLoading(false);
+  };
+  useEffect(() => { load(days); /* eslint-disable-next-line */ }, [days]);
+
+  const sorted = (() => {
+    const arr = [...((data && data.subscribers) || [])];
+    arr.sort((a, b) => {
+      const av = a[sortKey]; const bv = b[sortKey];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === "number" && typeof bv === "number") return sortDir === "asc" ? av - bv : bv - av;
+      return sortDir === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+    });
+    return arr;
+  })();
+
+  const t = (data && data.totals) || {};
+  const HeaderCell = ({ k, label, align = "right", w }) => (
+    <th
+      onClick={() => { if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc"); else { setSortKey(k); setSortDir("desc"); } }}
+      className={`p-2 text-${align} font-orbitron text-[8px] tracking-wider text-slate-400 cursor-pointer hover:text-cyan-400 select-none ${w || ""}`}
+      data-testid={`engagement-sort-${k}`}
+    >
+      {label} {sortKey === k && <span className="text-cyan-400">{sortDir === "asc" ? "▲" : "▼"}</span>}
+    </th>
+  );
+
+  const fmt = (iso) => iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+
+  const csvDownload = () => {
+    if (!data) return;
+    const rows = [["subscriber","emails_sent","delivered","delivery_rate","opened_by_to","open_rate","clicked","bounced","bounce_rate","spam_reported","last_sent_at","last_opened_at","last_to_email"]];
+    sorted.forEach(s => rows.push([
+      s.subscriber, s.emails_sent, s.delivered, s.delivery_rate, s.opened_by_to, s.open_rate, s.clicked, s.bounced, s.bounce_rate, s.spam_reported, s.last_sent_at || "", s.last_opened_at || "", s.last_to_email || "",
+    ]));
+    const csv = rows.map(r => r.map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `subscriber-engagement-${days}d.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-full max-w-[1200px] max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="engagement-modal">
+        <div className="border-b border-cyan-500/15 px-5 py-3 flex items-center justify-between bg-[rgba(6,10,20,0.95)]">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-cyan-400" />
+            <div className="font-orbitron text-xs tracking-wider text-cyan-400">SUBSCRIBER EMAIL ENGAGEMENT</div>
+            <span className="font-orbitron text-[9px] text-slate-500 ml-2">last {days} days</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <select value={days} onChange={e => setDays(parseInt(e.target.value))} className="bg-slate-900 border border-slate-700 text-cyan-300 text-[10px] font-orbitron px-2 py-1 rounded-sm focus:outline-none" data-testid="engagement-days">
+              <option value={7}>7 DAYS</option>
+              <option value={14}>14 DAYS</option>
+              <option value={30}>30 DAYS</option>
+              <option value={90}>90 DAYS</option>
+              <option value={365}>1 YEAR</option>
+            </select>
+            <button onClick={csvDownload} className="font-orbitron text-[9px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10" data-testid="engagement-export">EXPORT CSV</button>
+            <button onClick={onClose} className="text-slate-500 hover:text-white" data-testid="engagement-close"><X className="w-4 h-4" /></button>
+          </div>
+        </div>
+
+        {/* Totals strip */}
+        <div className="border-b border-slate-800/60 px-5 py-3 grid grid-cols-7 gap-3 bg-slate-950/40">
+          {[
+            { l: "SUBSCRIBERS", v: t.subscribers || 0, c: "text-cyan-400" },
+            { l: "EMAILS SENT", v: t.emails_sent || 0, c: "text-slate-200" },
+            { l: "DELIVERED", v: t.delivered || 0, c: "text-cyan-400" },
+            { l: "OPENED (TO)", v: t.opened_by_to || 0, c: "text-emerald-400" },
+            { l: "CLICKED", v: t.clicked || 0, c: "text-amber-400" },
+            { l: "BOUNCED", v: t.bounced || 0, c: "text-red-400" },
+            { l: "SPAM REPORTS", v: t.spam_reported || 0, c: "text-orange-400" },
+          ].map((m, i) => (
+            <div key={i} className="text-center">
+              <div className={`font-orbitron text-xl font-black ${m.c}`}>{m.v}</div>
+              <div className="font-orbitron text-[7px] tracking-wider text-slate-500 mt-0.5 uppercase">{m.l}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2">
+          {loading ? (
+            <div className="flex items-center justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-cyan-400" /></div>
+          ) : sorted.length === 0 ? (
+            <div className="text-center py-16 text-slate-500 font-orbitron text-[11px]">NO ENGAGEMENT DATA IN THE LAST {days} DAYS</div>
+          ) : (
+            <table className="w-full text-[11px]">
+              <thead className="sticky top-0 bg-[#0a0f1c] z-10 border-b border-slate-800">
+                <tr>
+                  <HeaderCell k="subscriber" label="SUBSCRIBER" align="left" w="w-[180px]" />
+                  <HeaderCell k="emails_sent" label="SENT" />
+                  <HeaderCell k="delivered" label="DELIV" />
+                  <HeaderCell k="delivery_rate" label="DELIV %" />
+                  <HeaderCell k="opened_by_to" label="OPENED" />
+                  <HeaderCell k="open_rate" label="OPEN %" />
+                  <HeaderCell k="clicked" label="CLICKED" />
+                  <HeaderCell k="bounced" label="BOUNCED" />
+                  <HeaderCell k="spam_reported" label="SPAM" />
+                  <HeaderCell k="last_sent_at" label="LAST SENT" align="right" />
+                  <HeaderCell k="last_opened_at" label="LAST OPENED" align="right" />
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((s) => (
+                  <tr key={s.subscriber} className="border-b border-slate-800/40 hover:bg-slate-900/40">
+                    <td className="p-2 text-cyan-300 font-medium" title={s.last_to_email}>{s.subscriber}</td>
+                    <td className="p-2 text-right font-orbitron text-slate-200">{s.emails_sent}</td>
+                    <td className="p-2 text-right font-orbitron text-cyan-400">{s.delivered}</td>
+                    <td className="p-2 text-right font-orbitron text-cyan-300/80">{s.delivery_rate}%</td>
+                    <td className={`p-2 text-right font-orbitron font-bold ${s.opened_by_to > 0 ? "text-emerald-400" : "text-slate-600"}`}>{s.opened_by_to}</td>
+                    <td className={`p-2 text-right font-orbitron ${s.open_rate >= 60 ? "text-emerald-400" : s.open_rate >= 30 ? "text-amber-400" : "text-slate-500"}`}>{s.open_rate}%</td>
+                    <td className={`p-2 text-right font-orbitron ${s.clicked > 0 ? "text-amber-400" : "text-slate-600"}`}>{s.clicked}</td>
+                    <td className={`p-2 text-right font-orbitron ${s.bounced > 0 ? "text-red-400 font-bold" : "text-slate-600"}`}>{s.bounced}</td>
+                    <td className={`p-2 text-right font-orbitron ${s.spam_reported > 0 ? "text-orange-400" : "text-slate-600"}`}>{s.spam_reported}</td>
+                    <td className="p-2 text-right text-slate-500 text-[10px] whitespace-nowrap">{fmt(s.last_sent_at)}</td>
+                    <td className="p-2 text-right text-slate-500 text-[10px] whitespace-nowrap">{fmt(s.last_opened_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="border-t border-slate-800/60 px-5 py-2 text-[9px] text-slate-500 font-orbitron tracking-wider">
+          <span className="text-cyan-400/80">OPENED</span> counts only opens by the TO recipient. Adjusted % Ready uses this metric. <span className="text-slate-600">·</span> Click any column to sort.
         </div>
       </div>
     </div>
@@ -2069,6 +2217,7 @@ export default function SupportDashboard({ user, onLogout }) {
   const [showContacts, setShowContacts] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showTrackingTest, setShowTrackingTest] = useState(false);
+  const [showEngagement, setShowEngagement] = useState(false);
   const [deviceList, setDeviceList] = useState(null);
   const [sortField, setSortField] = useState("total_issues");
   const [sortDir, setSortDir] = useState("desc");
@@ -2180,6 +2329,14 @@ export default function SupportDashboard({ user, onLogout }) {
             data-testid="test-email-btn"
           >
             <Mail className="w-3 h-3" /> TEST EMAIL
+          </button>
+          <button
+            onClick={() => setShowEngagement(true)}
+            className="font-orbitron text-[8px] px-3 py-1.5 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 flex items-center gap-1.5"
+            data-testid="engagement-btn"
+            title="Per-subscriber email engagement report (delivery, opens, bounces, etc.)"
+          >
+            <BarChart3 className="w-3 h-3" /> ENGAGEMENT
           </button>
           <button
             onClick={() => setShowHistory(true)}
@@ -2502,6 +2659,7 @@ export default function SupportDashboard({ user, onLogout }) {
       {showContacts && <ContactsModal subscribers={subscribers} onClose={() => { setShowContacts(false); fetchData(); }} />}
       {showHistory && <NotificationHistoryModal onClose={() => setShowHistory(false)} />}
       {showTrackingTest && <TrackingTestModal onClose={() => setShowTrackingTest(false)} />}
+      {showEngagement && <SubscriberEngagementModal onClose={() => setShowEngagement(false)} />}
       {deviceList && <DeviceListModal subscriber={deviceList.subscriber} issueType={deviceList.issueType} onClose={() => setDeviceList(null)} />}
       {showNotifiedAeds && <NotifiedAedsModal onClose={() => setShowNotifiedAeds(false)} onRefresh={() => { fetchNotifiedAeds(); fetchData(); }} />}
     </div>

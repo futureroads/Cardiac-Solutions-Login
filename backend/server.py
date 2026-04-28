@@ -2526,6 +2526,105 @@ async def get_di_events(hours: int = 24, current_user: dict = Depends(get_curren
             "permissions": {"email_events": email_level, "aed_resolutions": aed_level}}
 
 
+@api_router.get("/support/subscriber-engagement")
+async def subscriber_engagement(days: int = 30, current_user: dict = Depends(get_current_user)):
+    """Per-subscriber email engagement report.
+
+    Aggregates `notification_history` (excluding test emails) over the past
+    `days` (default 30, max 365) and counts:
+      - emails_sent           : total send attempts
+      - delivered             : delivered to recipient mail server
+      - opened_by_to          : DISTINCT emails the TO recipient opened
+                                  (the metric used for adjusted % ready)
+      - opens_total           : raw open events from any recipient
+      - clicked               : emails with at least one click
+      - bounced               : bounce/blocked/dropped
+      - spam_reported
+      - last_sent_at          : ISO timestamp of most recent send
+      - last_opened_at        : ISO timestamp of most recent TO-recipient open
+      - last_to_email         : last recipient address (for context)
+    """
+    days = max(1, min(int(days), 365))
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    rows: dict[str, dict] = {}
+    async for h in _db.notification_history.find(
+        {"sent_at": {"$gte": cutoff}, "is_test": {"$ne": True}},
+        {"_id": 0, "subscriber": 1, "sent_at": 1, "to_email": 1,
+         "delivered_at": 1, "open_count": 1, "click_count": 1,
+         "bounced": 1, "spam_reported": 1, "events": 1, "first_opened_at": 1},
+    ):
+        sub = h.get("subscriber") or "Unknown"
+        r = rows.setdefault(sub, {
+            "subscriber": sub,
+            "emails_sent": 0,
+            "delivered": 0,
+            "opened_by_to": 0,
+            "opens_total": 0,
+            "clicked": 0,
+            "bounced": 0,
+            "spam_reported": 0,
+            "last_sent_at": None,
+            "last_opened_at": None,
+            "last_to_email": "",
+        })
+        r["emails_sent"] += 1
+        if h.get("delivered_at"):
+            r["delivered"] += 1
+        if h.get("bounced"):
+            r["bounced"] += 1
+        if h.get("spam_reported"):
+            r["spam_reported"] += 1
+        if (h.get("click_count") or 0) > 0:
+            r["clicked"] += 1
+        r["opens_total"] += int(h.get("open_count") or 0)
+
+        # opened_by_to: did the TO recipient open this email?
+        to_email_norm = (h.get("to_email") or "").strip().lower()
+        latest_to_open = None
+        if to_email_norm:
+            for ev in (h.get("events") or []):
+                if (ev.get("event") or "").lower() != "open":
+                    continue
+                if (ev.get("email") or "").strip().lower() == to_email_norm:
+                    if not latest_to_open or (ev.get("timestamp") and ev.get("timestamp") > latest_to_open):
+                        latest_to_open = ev.get("timestamp")
+        if latest_to_open:
+            r["opened_by_to"] += 1
+            if not r["last_opened_at"] or latest_to_open > r["last_opened_at"]:
+                r["last_opened_at"] = latest_to_open
+
+        sent_at = h.get("sent_at")
+        if sent_at and (not r["last_sent_at"] or sent_at > r["last_sent_at"]):
+            r["last_sent_at"] = sent_at
+            r["last_to_email"] = h.get("to_email") or r["last_to_email"]
+
+    # Compute rates
+    items = []
+    for r in rows.values():
+        sent = r["emails_sent"] or 0
+        items.append({
+            **r,
+            "delivery_rate": round(r["delivered"] / sent * 100, 1) if sent else 0.0,
+            "open_rate": round(r["opened_by_to"] / max(r["delivered"], 1) * 100, 1) if r["delivered"] else 0.0,
+            "bounce_rate": round(r["bounced"] / sent * 100, 1) if sent else 0.0,
+        })
+    items.sort(key=lambda x: x["emails_sent"], reverse=True)
+
+    # Totals
+    totals = {
+        "subscribers": len(items),
+        "emails_sent": sum(i["emails_sent"] for i in items),
+        "delivered": sum(i["delivered"] for i in items),
+        "opened_by_to": sum(i["opened_by_to"] for i in items),
+        "opens_total": sum(i["opens_total"] for i in items),
+        "clicked": sum(i["clicked"] for i in items),
+        "bounced": sum(i["bounced"] for i in items),
+        "spam_reported": sum(i["spam_reported"] for i in items),
+    }
+    return {"days": days, "since": cutoff, "totals": totals, "subscribers": items}
+
+
 @api_router.get("/support/recently-resolved")
 async def get_recently_resolved(hours: int = 24, current_user: dict = Depends(get_current_user)):
     """Return notified AEDs that were resolved (or partially resolved) in the last N hours."""
