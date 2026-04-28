@@ -2369,6 +2369,7 @@ async def get_di_events(hours: int = 24, current_user: dict = Depends(get_curren
     perms = current_user.get("di_permissions") or {}
     email_level = (perms.get("email_events") or "details").lower()
     aed_level = (perms.get("aed_resolutions") or "details").lower()
+    engagement_level = (perms.get("engagement_summary") or "overview").lower()
     items: list[dict] = []
 
     # ---------------- Email events ----------------
@@ -2519,11 +2520,104 @@ async def get_di_events(hours: int = 24, current_user: dict = Depends(get_curren
                     "_ts": a["last_ts"] or cutoff,
                 })
 
+    # ---------------- Subscriber Engagement Summary (last 30 days) ----------------
+    if engagement_level != "none":
+        try:
+            engage_cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+            agg_e: dict[str, dict] = {}
+            async for h in _db.notification_history.find(
+                {"sent_at": {"$gte": engage_cutoff}, "is_test": {"$ne": True}},
+                {"_id": 0, "subscriber": 1, "sent_at": 1, "to_email": 1,
+                 "delivered_at": 1, "click_count": 1, "bounced": 1,
+                 "spam_reported": 1, "events": 1},
+            ):
+                sub = h.get("subscriber") or "Unknown"
+                e = agg_e.setdefault(sub, {
+                    "sent": 0, "delivered": 0, "opened_to": 0,
+                    "clicked": 0, "bounced": 0, "spam": 0, "last_ts": "",
+                })
+                e["sent"] += 1
+                if h.get("delivered_at"):
+                    e["delivered"] += 1
+                if h.get("bounced"):
+                    e["bounced"] += 1
+                if h.get("spam_reported"):
+                    e["spam"] += 1
+                if (h.get("click_count") or 0) > 0:
+                    e["clicked"] += 1
+                # Opened by TO?
+                to_email = (h.get("to_email") or "").strip().lower()
+                opened_by_to = False
+                for ev in (h.get("events") or []):
+                    if (ev.get("event") or "").lower() != "open":
+                        continue
+                    if (ev.get("email") or "").strip().lower() == to_email:
+                        opened_by_to = True
+                        break
+                if opened_by_to:
+                    e["opened_to"] += 1
+                ts = h.get("sent_at") or ""
+                if ts > e["last_ts"]:
+                    e["last_ts"] = ts
+
+            if engagement_level == "overview":
+                # One summary line per subscriber
+                for sub, e in agg_e.items():
+                    if e["sent"] == 0:
+                        continue
+                    open_pct = round(e["opened_to"] / max(e["delivered"], 1) * 100) if e["delivered"] else 0
+                    bits = [f"{e['sent']} sent"]
+                    if e["delivered"]:
+                        bits.append(f"{e['delivered']} delivered")
+                    if e["opened_to"]:
+                        bits.append(f"{e['opened_to']} opened by TO ({open_pct}%)")
+                    if e["clicked"]:
+                        bits.append(f"{e['clicked']} clicked")
+                    if e["bounced"]:
+                        bits.append(f"{e['bounced']} bounced")
+                    if e["spam"]:
+                        bits.append(f"{e['spam']} spam")
+                    etype = "ACT" if e["bounced"] or e["spam"] else "INFO" if e["opened_to"] > 0 else "WARN" if e["delivered"] and not e["opened_to"] else "SYS"
+                    items.append({
+                        "type": etype,
+                        "msg": f"ENGAGEMENT 30d — {sub}: " + ", ".join(bits) + ".",
+                        "_ts": e["last_ts"] or engage_cutoff,
+                    })
+            else:  # details — one message per metric per subscriber
+                for sub, e in agg_e.items():
+                    if e["delivered"]:
+                        items.append({"type": "SYS",
+                            "msg": f"ENGAGEMENT — {sub}: {e['delivered']} of {e['sent']} emails delivered in last 30 days.",
+                            "_ts": e["last_ts"]})
+                    if e["opened_to"]:
+                        open_pct = round(e["opened_to"] / max(e["delivered"], 1) * 100) if e["delivered"] else 0
+                        items.append({"type": "INFO",
+                            "msg": f"ENGAGEMENT — {sub}: {e['opened_to']} emails opened by the TO recipient ({open_pct}% open rate).",
+                            "_ts": e["last_ts"]})
+                    elif e["delivered"]:
+                        items.append({"type": "WARN",
+                            "msg": f"ENGAGEMENT — {sub}: {e['delivered']} delivered but ZERO opened by TO recipient. Verify primary contact is reading our emails.",
+                            "_ts": e["last_ts"]})
+                    if e["clicked"]:
+                        items.append({"type": "INFO",
+                            "msg": f"ENGAGEMENT — {sub}: {e['clicked']} emails had link clicks in last 30 days.",
+                            "_ts": e["last_ts"]})
+                    if e["bounced"]:
+                        items.append({"type": "ACT",
+                            "msg": f"ENGAGEMENT — {sub}: {e['bounced']} emails BOUNCED in last 30 days. Update contact info.",
+                            "_ts": e["last_ts"]})
+                    if e["spam"]:
+                        items.append({"type": "WARN",
+                            "msg": f"ENGAGEMENT — {sub}: {e['spam']} emails were marked SPAM in last 30 days.",
+                            "_ts": e["last_ts"]})
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[di-events] engagement summary failed: {e}")
+
     # Sort newest-first and cap
     items.sort(key=lambda x: x.get("_ts") or "", reverse=True)
     items = items[:200]
     return {"events": items, "count": len(items), "since": cutoff,
-            "permissions": {"email_events": email_level, "aed_resolutions": aed_level}}
+            "permissions": {"email_events": email_level, "aed_resolutions": aed_level, "engagement_summary": engagement_level}}
 
 
 @api_router.get("/support/subscriber-engagement")

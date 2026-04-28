@@ -53,6 +53,7 @@ const DI_EVENT_CATEGORIES = [
   { id: "camera_cellular", label: "Camera Cellular" },
   { id: "email_events", label: "Email Events (Delivered/Opened/Bounced)" },
   { id: "aed_resolutions", label: "AED Resolutions" },
+  { id: "engagement_summary", label: "Subscriber Engagement Summary" },
 ];
 const DI_LEVELS = ["details", "overview", "none"];
 const DI_LEVEL_LABELS = { details: "DETAILS", overview: "OVERVIEW", none: "HIDDEN" };
