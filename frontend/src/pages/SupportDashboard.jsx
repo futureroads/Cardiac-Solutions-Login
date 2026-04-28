@@ -1343,7 +1343,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[1100px] max-w-[95vw] max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="notification-modal">
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[1500px] max-w-[98vw] max-h-[95vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="notification-modal">
         {/* Header */}
         <div className="p-5 border-b border-cyan-500/15 flex-shrink-0">
           <div className="flex justify-between items-center">
