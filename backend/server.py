@@ -2224,7 +2224,8 @@ async def _refresh_notified_aeds_statuses():
 
 
 async def _notified_aeds_daily_loop():
-    """Run the notified AEDs refresh every 30 minutes."""
+    """Run the notified AEDs refresh every 30 minutes, then backfill any
+    email opens that arrived since the last run."""
     # Initial delay so we don't hammer Readisys at startup
     await asyncio.sleep(120)
     while True:
@@ -2232,24 +2233,26 @@ async def _notified_aeds_daily_loop():
             await _refresh_notified_aeds_statuses()
         except Exception as e:
             logger.error(f"[NOTIFIED_AEDS] Refresh loop error: {e}")
+        try:
+            res = await _backfill_email_opens_core()
+            if res.get("newly_matched_aeds", 0) > 0:
+                logger.info(
+                    f"[NOTIFIED_AEDS] Auto-backfill credited {res['newly_matched_aeds']} AEDs as opened "
+                    f"({res['current_unresolved_with_open']}/{res['current_unresolved_total']} unresolved-with-open)"
+                )
+        except Exception as e:
+            logger.error(f"[NOTIFIED_AEDS] Auto-backfill error: {e}")
         await asyncio.sleep(1800)  # 30 minutes
 
 
-@api_router.post("/support/backfill-email-opens")
-async def backfill_email_opens(current_user: dict = Depends(get_current_user)):
-    """One-time backfill: scan notification_history for records that have
-    open_count > 0 and mark all matching notified_aeds (same subscriber +
-    notification timestamp within 10 minutes) as email_opened=true.
-
-    Useful after deploying the new "OPENED-based adjusted %" logic so historical
-    opens are credited.
+async def _backfill_email_opens_core() -> dict:
+    """Scan notification_history for TO-recipient open events and mark all
+    matching notified_aeds as email_opened=true. Used by both the manual
+    backfill endpoint and the automatic 30-minute background loop.
     """
     matched = 0
     scanned = 0
 
-    # Pull all email records that have at least one open event AND whose
-    # to_email matches one of those open events (so we only credit TO opens,
-    # not CC/BCC opens).
     opened_records = []
     async for h in _db.notification_history.find(
         {"open_count": {"$gt": 0}},
@@ -2278,14 +2281,12 @@ async def backfill_email_opens(current_user: dict = Depends(get_current_user)):
         except Exception:
             return None
 
-    # Group by subscriber for fast lookup
     opens_by_sub: dict[str, list[dict]] = {}
     for h in opened_records:
         sub = h.get("subscriber")
         if sub:
             opens_by_sub.setdefault(sub, []).append(h)
 
-    # Pull all unresolved notified_aeds without email_opened set
     async for d in _db.notified_aeds.find(
         {"$or": [{"email_opened": {"$exists": False}}, {"email_opened": {"$ne": True}}]},
         {"_id": 0, "sentinel_id": 1, "subscriber": 1, "first_notified_at": 1, "notification_dates": 1},
@@ -2295,14 +2296,12 @@ async def backfill_email_opens(current_user: dict = Depends(get_current_user)):
         if not sub or not sid:
             continue
 
-        # First try direct linked_sentinel_ids match
         match = None
         for h in opens_by_sub.get(sub, []):
             if sid in (h.get("linked_sentinel_ids") or []):
                 match = h
                 break
 
-        # Fallback: time-window match against any notification_date on this AED
         if not match:
             nd_times = [
                 _parse_iso(nd.get("date"))
@@ -2330,7 +2329,6 @@ async def backfill_email_opens(current_user: dict = Depends(get_current_user)):
             )
             matched += 1
 
-    # Refresh totals
     total_unresolved = await _db.notified_aeds.count_documents({"resolved": False})
     total_unresolved_opened = await _db.notified_aeds.count_documents({"resolved": False, "email_opened": True})
 
@@ -2341,6 +2339,15 @@ async def backfill_email_opens(current_user: dict = Depends(get_current_user)):
         "current_unresolved_total": total_unresolved,
         "current_unresolved_with_open": total_unresolved_opened,
     }
+
+
+@api_router.post("/support/backfill-email-opens")
+async def backfill_email_opens(current_user: dict = Depends(get_current_user)):
+    """Manually trigger the email-opens backfill. Same logic as the automatic
+    30-minute loop — scans notification_history for TO-recipient opens and
+    marks matching notified_aeds as email_opened=true. Returns the counts.
+    """
+    return await _backfill_email_opens_core()
 
 
 @api_router.post("/support/notified-aeds/refresh")
