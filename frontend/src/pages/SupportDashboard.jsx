@@ -2463,9 +2463,26 @@ export default function SupportDashboard({ user, onLogout }) {
       });
       if (res.ok) {
         const j = await res.json();
-        toast.success(
-          `Sync complete — ${j.newly_matched_aeds || 0} AED${(j.newly_matched_aeds || 0) === 1 ? "" : "s"} now credited as opened (${j.current_unresolved_with_open}/${j.current_unresolved_total} unresolved with opens)`
-        );
+        const newly = j.newly_matched_aeds || 0;
+        const total = j.current_unresolved_total || 0;
+        const withOpen = j.current_unresolved_with_open || 0;
+        if (newly > 0) {
+          toast.success(
+            `Sync complete — ${newly} AED${newly === 1 ? "" : "s"} newly credited as opened (${withOpen}/${total} unresolved with opens)`
+          );
+        } else {
+          // No new matches — surface diagnostics so user knows why
+          const dx = j.diagnostics || {};
+          const reason = dx.candidate_aeds === 0
+            ? "All eligible AEDs are already credited"
+            : dx.to_recipient_opens === 0
+            ? `${dx.history_with_opens_total || 0} emails opened, but none by the TO recipient`
+            : dx.unmatched_no_subscriber_match > 0 && dx.unmatched_subscriber_has_opens === 0
+            ? `Opens exist but none from subscribers with unresolved AEDs`
+            : `Couldn't link any open events to AED records — see SG DEBUG`;
+          toast.info(`Sync complete — 0 new credits. ${reason}. (${withOpen}/${total} unresolved with opens)`);
+          console.log("[SYNC OPENS diagnostics]", dx);
+        }
         await fetchData();
         await fetchNotifiedAeds();
       } else {

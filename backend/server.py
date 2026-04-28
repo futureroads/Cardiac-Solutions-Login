@@ -2249,31 +2249,71 @@ async def _backfill_email_opens_core() -> dict:
     """Scan notification_history for TO-recipient open events and mark all
     matching notified_aeds as email_opened=true. Used by both the manual
     backfill endpoint and the automatic 30-minute background loop.
+
+    Returns rich diagnostic counters so callers can show users exactly why
+    matches succeeded or failed.
     """
+    diag = {
+        "history_with_opens_total": 0,        # notification_history with open_count > 0
+        "to_recipient_opens": 0,              # subset where the TO recipient is among the openers
+        "history_without_to_email": 0,        # records that lacked a usable to_email
+        "history_open_by_other_only": 0,      # opens existed but not by TO recipient
+        "history_no_events_array": 0,         # open_count > 0 but events array empty (legacy) — counted as TO open
+        "candidate_aeds": 0,                  # unresolved + email_opened != True
+        "matched_via_linked_sids": 0,
+        "matched_via_time_window": 0,
+        "unmatched_no_subscriber_match": 0,   # AED's subscriber has no opened email at all
+        "unmatched_subscriber_has_opens": 0,  # subscriber has opens but neither path matched
+    }
     matched = 0
-    scanned = 0
 
     opened_records = []
     async for h in _db.notification_history.find(
         {"open_count": {"$gt": 0}},
         {"_id": 0, "subscriber": 1, "sent_at": 1, "first_opened_at": 1,
-         "to_email": 1, "linked_sentinel_ids": 1, "events": 1},
+         "to_email": 1, "linked_sentinel_ids": 1, "events": 1, "open_count": 1},
     ):
+        diag["history_with_opens_total"] += 1
         to_email_norm = (h.get("to_email") or "").strip().lower()
+        events = h.get("events") or []
+        open_events = [e for e in events if (e.get("event") or "").lower() == "open"]
+
         opened_by_to = False
         first_to_open_ts = None
-        for ev in (h.get("events") or []):
-            if (ev.get("event") or "").lower() != "open":
-                continue
-            ev_email = (ev.get("email") or "").strip().lower()
-            if ev_email and ev_email == to_email_norm:
-                opened_by_to = True
-                if not first_to_open_ts and ev.get("timestamp"):
-                    first_to_open_ts = ev.get("timestamp")
+
+        if not to_email_norm:
+            diag["history_without_to_email"] += 1
+
+        if not open_events:
+            # Legacy record: open_count was incremented but per-event log not stored.
+            # Trust open_count and credit it as a TO-recipient open (nothing else to compare against).
+            diag["history_no_events_array"] += 1
+            opened_by_to = True
+            first_to_open_ts = h.get("first_opened_at") or h.get("sent_at")
+        else:
+            for ev in open_events:
+                ev_email = (ev.get("email") or "").strip().lower()
+                if to_email_norm and ev_email == to_email_norm:
+                    opened_by_to = True
+                    if not first_to_open_ts and ev.get("timestamp"):
+                        first_to_open_ts = ev.get("timestamp")
+            # Fallback: if to_email is missing but there's exactly one unique
+            # opener, treat it as the TO recipient.
+            if not opened_by_to and not to_email_norm:
+                unique_openers = {(e.get("email") or "").strip().lower() for e in open_events if (e.get("email") or "").strip()}
+                if len(unique_openers) == 1:
+                    opened_by_to = True
+                    for ev in open_events:
+                        if not first_to_open_ts and ev.get("timestamp"):
+                            first_to_open_ts = ev.get("timestamp")
+                            break
+
         if opened_by_to:
+            diag["to_recipient_opens"] += 1
             h["_first_to_open_ts"] = first_to_open_ts or h.get("first_opened_at") or h.get("sent_at")
             opened_records.append(h)
-    scanned = len(opened_records)
+        else:
+            diag["history_open_by_other_only"] += 1
 
     def _parse_iso(s):
         try:
@@ -2291,15 +2331,24 @@ async def _backfill_email_opens_core() -> dict:
         {"$or": [{"email_opened": {"$exists": False}}, {"email_opened": {"$ne": True}}]},
         {"_id": 0, "sentinel_id": 1, "subscriber": 1, "first_notified_at": 1, "notification_dates": 1},
     ):
+        diag["candidate_aeds"] += 1
         sub = d.get("subscriber")
         sid = d.get("sentinel_id")
         if not sub or not sid:
             continue
 
+        sub_opens = opens_by_sub.get(sub, [])
+        if not sub_opens:
+            diag["unmatched_no_subscriber_match"] += 1
+            continue
+
         match = None
-        for h in opens_by_sub.get(sub, []):
+        match_via = None
+
+        for h in sub_opens:
             if sid in (h.get("linked_sentinel_ids") or []):
                 match = h
+                match_via = "linked_sids"
                 break
 
         if not match:
@@ -2313,13 +2362,28 @@ async def _backfill_email_opens_core() -> dict:
                 if ft:
                     nd_times = [ft]
             if nd_times:
-                for h in opens_by_sub.get(sub, []):
+                for h in sub_opens:
                     t_sent = _parse_iso(h.get("sent_at"))
                     if not t_sent:
                         continue
                     if any(abs((t_sent - nt).total_seconds()) <= 600 for nt in nd_times):
                         match = h
+                        match_via = "time_window"
                         break
+
+        # Last-resort fallback: subscriber has opens but we couldn't pin a
+        # specific email — credit the AED with the most recent open from that
+        # subscriber. This handles legacy AEDs whose notification_dates pre-date
+        # the linked_sentinel_ids tracking.
+        if not match:
+            most_recent = None
+            for h in sub_opens:
+                t = _parse_iso(h.get("_first_to_open_ts") or h.get("sent_at"))
+                if t and (not most_recent or t > most_recent[0]):
+                    most_recent = (t, h)
+            if most_recent:
+                match = most_recent[1]
+                match_via = "subscriber_fallback"
 
         if match:
             opened_at = match.get("_first_to_open_ts") or match.get("first_opened_at") or match.get("sent_at")
@@ -2328,16 +2392,26 @@ async def _backfill_email_opens_core() -> dict:
                 {"$set": {"email_opened": True, "email_opened_at": opened_at}},
             )
             matched += 1
+            if match_via == "linked_sids":
+                diag["matched_via_linked_sids"] += 1
+            elif match_via == "time_window":
+                diag["matched_via_time_window"] += 1
+            else:
+                diag.setdefault("matched_via_subscriber_fallback", 0)
+                diag["matched_via_subscriber_fallback"] += 1
+        else:
+            diag["unmatched_subscriber_has_opens"] += 1
 
     total_unresolved = await _db.notified_aeds.count_documents({"resolved": False})
     total_unresolved_opened = await _db.notified_aeds.count_documents({"resolved": False, "email_opened": True})
 
     return {
         "success": True,
-        "scanned_opened_emails": scanned,
+        "scanned_opened_emails": diag["to_recipient_opens"],
         "newly_matched_aeds": matched,
         "current_unresolved_total": total_unresolved,
         "current_unresolved_with_open": total_unresolved_opened,
+        "diagnostics": diag,
     }
 
 
