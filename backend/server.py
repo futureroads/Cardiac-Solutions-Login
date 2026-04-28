@@ -2904,6 +2904,129 @@ def _verify_voice_api_key(x_voice_api_key: str | None) -> None:
         raise HTTPException(status_code=401, detail="Invalid or missing X-Voice-API-Key header")
 
 
+@api_router.get("/voice/readiness-summary")
+async def voice_readiness_summary(
+    x_voice_api_key: str | None = Header(default=None, alias="X-Voice-API-Key"),
+):
+    """Return the same fleet readiness numbers the Support Dashboard shows,
+    so external systems (voice app backend, BI tools, etc.) can stay in sync.
+
+    Auth: `X-Voice-API-Key` header (same key used by /voice/aeds-near).
+
+    Response fields:
+      total_monitored          — total AEDs in the fleet
+      total_ready              — AEDs READY per Readisys
+      total_issues             — total_monitored - total_ready
+      pct_ready                — Actual % Ready (Readisys raw)
+      prev_pct_ready           — yesterday's actual %
+      notified_aed_unresolved  — AEDs we've emailed the subscriber about
+                                  that aren't yet resolved
+      adjusted_issues          — total_issues - notified_aed_unresolved (>= 0)
+      adjusted_ready           — total_monitored - adjusted_issues
+      pct_ready_adjusted       — % ready after responsibility-shift
+      prev_pct_ready_adjusted  — yesterday's adjusted %
+      total_subscribers_with_issues
+      detailed_status_counts   — per-status counts (expired_bp, expiring_bp, ...)
+      last_updated             — ISO timestamp this summary was computed
+    """
+    _verify_voice_api_key(x_voice_api_key)
+
+    # Pull status_data — try cache first, fall back to live Readisys call
+    import httpx, time
+    status_data = _status_cache["data"] if (_status_cache["data"] and (time.time() - _status_cache["ts"]) < 300) else None
+    if not status_data:
+        try:
+            headers = _readisys_auth_headers()
+            async with httpx.AsyncClient(timeout=20) as client:
+                resp = await client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
+                if resp.status_code == 200:
+                    status_data = resp.json()
+                    _status_cache["data"] = status_data
+                    _status_cache["ts"] = time.time()
+                else:
+                    raise HTTPException(status_code=503, detail=f"Readisys unavailable (HTTP {resp.status_code})")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"Readisys fetch failed: {e}")
+
+    totals = (status_data or {}).get("totals", {}) or {}
+    dsc = totals.get("detailed_status_counts", {}) or {}
+    prev_dsc = totals.get("prev_detailed_status_counts", {}) or {}
+
+    total_monitored = totals.get("total", 0) or 0
+    total_ready = totals.get("ready", 0) or 0
+    pct_ready = totals.get("percent_ready")
+    prev_pct_ready = totals.get("prev_percent_ready")
+
+    # Count unresolved notified AEDs
+    try:
+        notified_aed_unresolved = await _db.notified_aeds.count_documents({"resolved": False})
+    except Exception:
+        notified_aed_unresolved = 0
+
+    total_issues = max(0, total_monitored - total_ready)
+    adjusted_issues = max(0, total_issues - notified_aed_unresolved)
+    adjusted_ready = total_monitored - adjusted_issues
+    pct_ready_adjusted = round(adjusted_ready / total_monitored * 100, 1) if total_monitored else None
+
+    # Yesterday's adjusted (best-effort using same notified count)
+    prev_total_ready = totals.get("prev_ready")
+    prev_pct_ready_adjusted = None
+    if prev_total_ready is not None and total_monitored:
+        prev_total_issues = max(0, total_monitored - prev_total_ready)
+        prev_adjusted_issues = max(0, prev_total_issues - notified_aed_unresolved)
+        prev_adjusted_ready = total_monitored - prev_adjusted_issues
+        prev_pct_ready_adjusted = round(prev_adjusted_ready / total_monitored * 100, 1)
+
+    # Subscribers with issues
+    subs_with_issues = 0
+    try:
+        for s in status_data.get("subscribers", []) or []:
+            if (s.get("total_issues") or 0) > 0:
+                subs_with_issues += 1
+    except Exception:
+        pass
+
+    return {
+        "total_monitored": total_monitored,
+        "total_ready": total_ready,
+        "total_issues": total_issues,
+        "pct_ready": pct_ready,
+        "prev_pct_ready": prev_pct_ready,
+        "notified_aed_unresolved": notified_aed_unresolved,
+        "adjusted_issues": adjusted_issues,
+        "adjusted_ready": adjusted_ready,
+        "pct_ready_adjusted": pct_ready_adjusted,
+        "prev_pct_ready_adjusted": prev_pct_ready_adjusted,
+        "total_subscribers_with_issues": subs_with_issues,
+        "detailed_status_counts": {
+            "expired_bp": dsc.get("expired_bp", 0),
+            "expiring_bp": dsc.get("expiring_batt_pads", 0),
+            "not_ready": dsc.get("not_ready", 0),
+            "reposition": dsc.get("reposition", 0),
+            "not_present": dsc.get("not_present", 0),
+            "lost_contact": dsc.get("lost_contact", 0),
+            "unknown": dsc.get("unknown", 0),
+        },
+        "prev_detailed_status_counts": {
+            "expired_bp": prev_dsc.get("expired_bp"),
+            "expiring_bp": prev_dsc.get("expiring_batt_pads"),
+            "not_ready": prev_dsc.get("not_ready"),
+            "reposition": prev_dsc.get("reposition"),
+            "not_present": prev_dsc.get("not_present"),
+            "lost_contact": prev_dsc.get("lost_contact"),
+            "unknown": prev_dsc.get("unknown"),
+        },
+        "calculation": {
+            "actual_formula": "pct_ready = total_ready / total_monitored × 100",
+            "adjusted_formula": "pct_ready_adjusted = (total_monitored - max(0, total_issues - notified_aed_unresolved)) / total_monitored × 100",
+            "explanation": "Adjusted readiness subtracts AEDs we've already notified the subscriber about (and the subscriber hasn't yet resolved) from the issue count, since responsibility for those devices has shifted to the subscriber.",
+        },
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @api_router.get("/voice/aeds-near")
 async def voice_aeds_near(
     location: str | None = None,
