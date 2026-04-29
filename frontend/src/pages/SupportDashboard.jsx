@@ -397,6 +397,218 @@ function TrackingTestModal({ onClose }) {
   );
 }
 
+function SubscriberDetailModal({ subscriber, onClose, onCompose }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("active");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API}/support/subscriber/${encodeURIComponent(subscriber)}/breakdown`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok && !cancelled) setData(await res.json());
+      } catch {}
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [subscriber]);
+
+  const fmt = (iso) => iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+  const fmtShort = (iso) => iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+
+  const sum = (data && data.summary) || {};
+  const tracked = (data && data.tracked_aeds) || [];
+  const history = (data && data.email_history) || [];
+
+  const unresolved = tracked.filter(t => !t.resolved);
+  const resolved = tracked.filter(t => t.resolved);
+
+  const statusColor = (s) => {
+    const k = (s || "").toUpperCase();
+    if (k.includes("EXPIRED")) return "text-red-400";
+    if (k.includes("EXPIRING")) return "text-amber-400";
+    if (k.includes("NOT READY")) return "text-orange-400";
+    if (k.includes("REPOSITION")) return "text-purple-400";
+    if (k.includes("NOT PRESENT")) return "text-sky-400";
+    if (k.includes("LOST")) return "text-red-400";
+    if (k.includes("READY")) return "text-emerald-400";
+    return "text-slate-400";
+  };
+
+  const Stat = ({ label, value, color = "text-slate-200" }) => (
+    <div className="text-center">
+      <div className={`font-orbitron text-xl font-black ${color}`}>{value}</div>
+      <div className="font-orbitron text-[7px] tracking-wider text-slate-500 mt-0.5 uppercase">{label}</div>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-full max-w-[1400px] max-h-[94vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="subscriber-detail-modal">
+        {/* Header */}
+        <div className="border-b border-cyan-500/15 px-5 py-3 flex items-center justify-between bg-[rgba(6,10,20,0.95)]">
+          <div className="flex items-center gap-3">
+            <Users className="w-4 h-4 text-cyan-400" />
+            <div>
+              <div className="font-orbitron text-sm tracking-wider text-cyan-400">{subscriber}</div>
+              <div className="font-orbitron text-[8px] text-slate-500 tracking-wider">SUBSCRIBER BREAKDOWN</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { onClose(); onCompose && onCompose(); }}
+              className="font-orbitron text-[9px] px-3 py-1.5 border border-cyan-500/40 text-cyan-400 rounded-sm hover:bg-cyan-500/10 inline-flex items-center gap-1.5"
+              data-testid="detail-compose-btn"
+            >
+              <Send className="w-3 h-3" /> COMPOSE NOTIFICATION
+            </button>
+            <button onClick={onClose} className="text-slate-500 hover:text-white" data-testid="detail-close"><X className="w-4 h-4" /></button>
+          </div>
+        </div>
+
+        {/* Summary strip */}
+        <div className="border-b border-slate-800/60 px-5 py-3 grid grid-cols-8 gap-2 bg-slate-950/40">
+          <Stat label="TRACKED AEDs" value={sum.tracked_total || 0} color="text-cyan-400" />
+          <Stat label="UNRESOLVED" value={sum.unresolved || 0} color="text-amber-400" />
+          <Stat label="STALE >14d" value={sum.stale_unresolved || 0} color={sum.stale_unresolved > 0 ? "text-red-400" : "text-slate-600"} />
+          <Stat label="RESOLVED" value={sum.resolved || 0} color="text-emerald-400" />
+          <Stat label="EMAILS OPENED" value={sum.email_opened || 0} color="text-emerald-400" />
+          <Stat label="EMAILS SENT" value={sum.emails_sent || 0} color="text-slate-300" />
+          <Stat label="OPENED EMAILS" value={sum.emails_opened || 0} color="text-emerald-400" />
+          <Stat label="BOUNCED" value={sum.emails_bounced || 0} color={sum.emails_bounced > 0 ? "text-red-400" : "text-slate-600"} />
+        </div>
+
+        {/* Tabs */}
+        <div className="border-b border-slate-800/60 px-5 flex gap-1">
+          {[
+            { k: "active", label: `ACTIVE ISSUES (${unresolved.length})` },
+            { k: "resolved", label: `RESOLVED (${resolved.length})` },
+            { k: "emails", label: `EMAIL HISTORY (${history.length})` },
+          ].map(t => (
+            <button
+              key={t.k}
+              onClick={() => setTab(t.k)}
+              className={`font-orbitron text-[10px] tracking-wider px-3 py-2 border-b-2 ${tab === t.k ? "border-cyan-400 text-cyan-400" : "border-transparent text-slate-500 hover:text-slate-300"}`}
+              data-testid={`detail-tab-${t.k}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3">
+          {loading ? (
+            <div className="flex items-center justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-cyan-400" /></div>
+          ) : tab === "active" ? (
+            unresolved.length === 0 ? (
+              <div className="text-center py-12 text-slate-500 font-orbitron text-[11px]">NO ACTIVE NOTIFIED ISSUES — all caught up</div>
+            ) : (
+              <table className="w-full text-[11px]">
+                <thead className="sticky top-0 bg-[#0a0f1c] z-10 border-b border-slate-800">
+                  <tr>
+                    <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">SENTINEL ID</th>
+                    <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">LOCATION</th>
+                    <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">ORIGINAL ISSUE</th>
+                    <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">CURRENT</th>
+                    <th className="text-right p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">FIRST NOTIFIED</th>
+                    <th className="text-right p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">LAST NOTIFIED</th>
+                    <th className="text-right p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">DAYS</th>
+                    <th className="text-center p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">EMAIL OPENED?</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unresolved.map(t => {
+                    const days = t.first_notified_at ? Math.floor((Date.now() - new Date(t.first_notified_at).getTime()) / 86400000) : null;
+                    const stale = days != null && days > 14;
+                    return (
+                      <tr key={t.sentinel_id} className={`border-b border-slate-800/40 hover:bg-slate-900/40 ${stale ? "bg-red-500/5" : ""}`}>
+                        <td className="p-2 font-orbitron text-cyan-300">{t.sentinel_id}</td>
+                        <td className="p-2 text-slate-400 max-w-[260px] truncate" title={t.location}>{t.location || "—"}</td>
+                        <td className={`p-2 font-orbitron text-[10px] ${statusColor(t.issue_type)}`}>{t.issue_type}</td>
+                        <td className={`p-2 font-orbitron text-[10px] ${statusColor(t.current_status)}`}>{t.current_status || "—"}</td>
+                        <td className="p-2 text-right text-slate-400 text-[10px]">{fmtShort(t.first_notified_at)}</td>
+                        <td className="p-2 text-right text-slate-400 text-[10px]">{fmtShort(t.last_notified_at)}</td>
+                        <td className={`p-2 text-right font-orbitron font-bold ${stale ? "text-red-400" : days > 7 ? "text-amber-400" : "text-slate-300"}`}>{days != null ? `${days}d` : "—"}</td>
+                        <td className="p-2 text-center">{t.email_opened ? <span className="text-emerald-400 font-orbitron text-[10px]" title={fmt(t.email_opened_at)}>✓ OPEN</span> : <span className="text-slate-600 font-orbitron text-[10px]">—</span>}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )
+          ) : tab === "resolved" ? (
+            resolved.length === 0 ? (
+              <div className="text-center py-12 text-slate-500 font-orbitron text-[11px]">NO RESOLVED AEDs YET</div>
+            ) : (
+              <table className="w-full text-[11px]">
+                <thead className="sticky top-0 bg-[#0a0f1c] z-10 border-b border-slate-800">
+                  <tr>
+                    <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">SENTINEL ID</th>
+                    <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">LOCATION</th>
+                    <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">ORIGINAL ISSUE</th>
+                    <th className="text-right p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">RESOLVED AT</th>
+                    <th className="text-right p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">DAYS TO RESOLVE</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resolved.map(t => {
+                    const dur = t.first_notified_at && t.resolved_at ? Math.max(0, Math.floor((new Date(t.resolved_at) - new Date(t.first_notified_at)) / 86400000)) : null;
+                    return (
+                      <tr key={t.sentinel_id} className="border-b border-slate-800/40 hover:bg-slate-900/40">
+                        <td className="p-2 font-orbitron text-cyan-300">{t.sentinel_id}</td>
+                        <td className="p-2 text-slate-400 max-w-[260px] truncate" title={t.location}>{t.location || "—"}</td>
+                        <td className={`p-2 font-orbitron text-[10px] ${statusColor(t.issue_type)}`}>{t.issue_type}</td>
+                        <td className="p-2 text-right text-emerald-400 text-[10px]">{fmtShort(t.resolved_at)}</td>
+                        <td className="p-2 text-right text-slate-300 font-orbitron">{dur != null ? `${dur}d` : "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )
+          ) : (
+            history.length === 0 ? (
+              <div className="text-center py-12 text-slate-500 font-orbitron text-[11px]">NO EMAILS SENT FOR THIS SUBSCRIBER</div>
+            ) : (
+              <table className="w-full text-[11px]">
+                <thead className="sticky top-0 bg-[#0a0f1c] z-10 border-b border-slate-800">
+                  <tr>
+                    <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">SENT AT</th>
+                    <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">TO</th>
+                    <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">SUBJECT</th>
+                    <th className="text-center p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">DELIV</th>
+                    <th className="text-center p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">OPENS</th>
+                    <th className="text-center p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">CLICKS</th>
+                    <th className="text-center p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">BOUNCE</th>
+                    <th className="text-right p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">LINKED AEDs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((h, i) => (
+                    <tr key={i} className={`border-b border-slate-800/40 hover:bg-slate-900/40 ${h.is_test ? "opacity-60" : ""}`}>
+                      <td className="p-2 text-slate-400 whitespace-nowrap text-[10px]">{fmt(h.sent_at)}</td>
+                      <td className="p-2 text-slate-300 text-[10px]">{h.to_email}</td>
+                      <td className="p-2 text-slate-300 text-[10px]">{h.subject || "—"}{h.is_test && <span className="ml-1 text-[8px] text-amber-400">[TEST]</span>}</td>
+                      <td className={`p-2 text-center font-orbitron ${h.delivered_at ? "text-cyan-400" : "text-slate-600"}`}>{h.delivered_at ? "✓" : "—"}</td>
+                      <td className={`p-2 text-center font-orbitron ${(h.open_count || 0) > 0 ? "text-emerald-400 font-bold" : "text-slate-600"}`}>{h.open_count || 0}</td>
+                      <td className={`p-2 text-center font-orbitron ${(h.click_count || 0) > 0 ? "text-amber-400 font-bold" : "text-slate-600"}`}>{h.click_count || 0}</td>
+                      <td className={`p-2 text-center font-orbitron ${h.bounced ? "text-red-400 font-bold" : "text-slate-600"}`}>{h.bounced ? "✓" : "—"}</td>
+                      <td className="p-2 text-right text-slate-400 font-orbitron">{(h.linked_sentinel_ids || []).length}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SubscriberEngagementModal({ onClose }) {
   const [data, setData] = useState(null);
   const [days, setDays] = useState(30);
@@ -2242,6 +2454,7 @@ export default function SupportDashboard({ user, onLogout }) {
   const [showHistory, setShowHistory] = useState(false);
   const [showTrackingTest, setShowTrackingTest] = useState(false);
   const [showEngagement, setShowEngagement] = useState(false);
+  const [detailSub, setDetailSub] = useState(null);  // subscriber name for SubscriberDetailModal
   const [deviceList, setDeviceList] = useState(null);
   const [sortField, setSortField] = useState("total_issues");
   const [sortDir, setSortDir] = useState("desc");
@@ -2373,6 +2586,31 @@ export default function SupportDashboard({ user, onLogout }) {
   const SortIcon = ({ field }) => {
     if (sortField !== field) return null;
     return sortDir === "desc" ? <ChevronDown className="w-3 h-3 inline ml-0.5" /> : <ChevronUp className="w-3 h-3 inline ml-0.5" />;
+  };
+
+  // Compute notification status icon for a subscriber row.
+  // Logic:
+  //   GREEN  → no active issues, OR every active issue is covered by a notification
+  //   AMBER  → some coverage but new issues exist, OR has stale (>14d unresolved) notifications
+  //   RED    → has active issues but zero notifications sent
+  //   GRAY   → clean (defensive default)
+  const getNotifyStatus = (s) => {
+    const active = s.total_issues || 0;
+    const notified = s.notified_devices?.total || 0;
+    const stale = s.stale_unresolved || 0;
+    if (active === 0 && notified === 0) {
+      return { state: "clear", color: "text-slate-500", bg: "bg-slate-700/20", border: "border-slate-700/40", label: "NO ISSUES", icon: CheckCircle2 };
+    }
+    if (active > 0 && notified === 0) {
+      return { state: "needs", color: "text-red-400", bg: "bg-red-500/15", border: "border-red-500/40", label: "NEEDS NOTIFY", icon: AlertCircle };
+    }
+    if (notified < active) {
+      return { state: "partial", color: "text-amber-400", bg: "bg-amber-500/15", border: "border-amber-500/40", label: "PARTIAL", icon: AlertTriangle };
+    }
+    if (stale > 0) {
+      return { state: "stale", color: "text-amber-400", bg: "bg-amber-500/15", border: "border-amber-500/40", label: `${stale} STALE >14d`, icon: AlertTriangle };
+    }
+    return { state: "covered", color: "text-emerald-400", bg: "bg-emerald-500/15", border: "border-emerald-500/40", label: "ALL NOTIFIED", icon: CheckCircle2 };
   };
 
   return (
@@ -2648,9 +2886,10 @@ export default function SupportDashboard({ user, onLogout }) {
                     >
                       <td className="p-3">
                         <button
-                          onClick={() => setSelectedSub(s)}
+                          onClick={() => setDetailSub(s.subscriber)}
                           className="font-orbitron text-[10px] text-white hover:text-cyan-400 transition-colors text-left"
                           data-testid={`sub-name-${s.subscriber}`}
+                          title="Click to view full breakdown of issues, notifications, and email history"
                         >
                           {s.subscriber}
                         </button>
@@ -2697,7 +2936,20 @@ export default function SupportDashboard({ user, onLogout }) {
                       </td>
                       <td className="p-3 text-center">
                         <div className="flex items-center justify-center gap-2">
-                          {s.notified && <span className="text-[7px] px-1.5 py-0.5 bg-green-500/15 text-green-400 rounded-sm font-orbitron">SENT</span>}
+                          {(() => {
+                            const ns = getNotifyStatus(s);
+                            const Icon = ns.icon;
+                            return (
+                              <div
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border ${ns.bg} ${ns.border}`}
+                                title={ns.label}
+                                data-testid={`notify-status-${s.subscriber}`}
+                              >
+                                <Icon className={`w-3 h-3 ${ns.color}`} />
+                                <span className={`font-orbitron text-[7px] tracking-wider ${ns.color}`}>{ns.label}</span>
+                              </div>
+                            );
+                          })()}
                           <button
                             onClick={() => setSelectedSub(s)}
                             className="font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 inline-flex items-center gap-1"
@@ -2737,6 +2989,16 @@ export default function SupportDashboard({ user, onLogout }) {
       {showHistory && <NotificationHistoryModal onClose={() => setShowHistory(false)} />}
       {showTrackingTest && <TrackingTestModal onClose={() => setShowTrackingTest(false)} />}
       {showEngagement && <SubscriberEngagementModal onClose={() => setShowEngagement(false)} />}
+      {detailSub && (
+        <SubscriberDetailModal
+          subscriber={detailSub}
+          onClose={() => setDetailSub(null)}
+          onCompose={() => {
+            const s = (data?.subscribers || []).find(x => x.subscriber === detailSub);
+            if (s) setSelectedSub(s);
+          }}
+        />
+      )}
       {deviceList && <DeviceListModal subscriber={deviceList.subscriber} issueType={deviceList.issueType} onClose={() => setDeviceList(null)} />}
       {showNotifiedAeds && <NotifiedAedsModal onClose={() => setShowNotifiedAeds(false)} onRefresh={() => { fetchNotifiedAeds(); fetchData(); }} />}
     </div>

@@ -1083,6 +1083,7 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
 
     # Get per-subscriber, per-issue-type notified device counts from notified_aeds
     sub_notified_map = {}  # {subscriber: {issue_type: count}}
+    sub_stale_map: dict[str, int] = {}  # {subscriber: count of unresolved notified >14d ago}
     try:
         pipeline = [
             {"$match": {"resolved": False}},
@@ -1094,6 +1095,21 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
             if sub not in sub_notified_map:
                 sub_notified_map[sub] = {}
             sub_notified_map[sub][itype] = doc["count"]
+
+        # Stale: notified >14 days ago and still unresolved
+        stale_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+        stale_pipeline = [
+            {"$match": {
+                "resolved": False,
+                "$or": [
+                    {"first_notified_at": {"$lt": stale_cutoff}},
+                    {"last_notified_at": {"$lt": stale_cutoff}},
+                ],
+            }},
+            {"$group": {"_id": "$subscriber", "count": {"$sum": 1}}},
+        ]
+        async for doc in _db.notified_aeds.aggregate(stale_pipeline):
+            sub_stale_map[doc["_id"]] = doc.get("count", 0)
     except Exception as e:
         logger.warning(f"Failed to fetch notified_aeds counts: {e}")
 
@@ -1158,6 +1174,8 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
                 "unknown": sn.get("UNKNOWN", 0),
             }
             s["notified_devices"]["total"] = sum(s["notified_devices"].values())
+            # Stale unresolved (>14d) — used by frontend for "still pending" indicator
+            s["stale_unresolved"] = sub_stale_map.get(s["subscriber"], 0)
             # Attach resolution counts (default to zeros if no entry)
             r = sub_resolved_map.get(s["subscriber"], {})
             s["resolutions"] = {
@@ -3080,6 +3098,68 @@ async def support_subscriber_devices(subscriber: str, current_user: dict = Depen
     except Exception as e:
         logger.warning(f"subscriber devices fetch error: {e}")
         return {"devices": [], "device_count": 0, "_error": str(e)}
+
+
+@api_router.get("/support/subscriber/{subscriber}/breakdown")
+async def support_subscriber_breakdown(subscriber: str, current_user: dict = Depends(get_current_user)):
+    """Comprehensive per-subscriber breakdown for the Detail modal:
+      - Tracked AEDs (notified_aeds): every device this subscriber has ever been
+        notified about, with current status, resolved flag, email-open flag, dates.
+      - Email history (notification_history): every email sent for this subscriber
+        with delivery + open + click counts.
+      - Summary counts: active issues (live), notified, stale (>14d unresolved),
+        resolved 24h/7d, opened.
+    """
+    # Tracked AEDs
+    tracked = []
+    async for d in _db.notified_aeds.find({"subscriber": subscriber}, {"_id": 0}).sort("first_notified_at", -1):
+        tracked.append(d)
+
+    # Notification history
+    history = []
+    async for h in _db.notification_history.find(
+        {"subscriber": subscriber},
+        {"_id": 0, "html_body": 0},  # exclude heavy field
+    ).sort("sent_at", -1):
+        history.append(h)
+
+    now = datetime.now(timezone.utc)
+    cutoff_14 = (now - timedelta(days=14)).isoformat()
+    cutoff_24h = (now - timedelta(hours=24)).isoformat()
+    cutoff_7d = (now - timedelta(days=7)).isoformat()
+
+    summary = {
+        "tracked_total": len(tracked),
+        "unresolved": sum(1 for t in tracked if not t.get("resolved")),
+        "resolved": sum(1 for t in tracked if t.get("resolved")),
+        "email_opened": sum(1 for t in tracked if t.get("email_opened")),
+        "stale_unresolved": sum(
+            1 for t in tracked
+            if not t.get("resolved")
+            and ((t.get("first_notified_at") or "9999") < cutoff_14
+                 or (t.get("last_notified_at") or "9999") < cutoff_14)
+        ),
+        "resolved_24h": sum(
+            1 for t in tracked
+            if (t.get("resolved") and (t.get("resolved_at") or "") >= cutoff_24h)
+            or (t.get("partially_resolved") and (t.get("partially_resolved_at") or "") >= cutoff_24h)
+        ),
+        "resolved_7d": sum(
+            1 for t in tracked
+            if (t.get("resolved") and (t.get("resolved_at") or "") >= cutoff_7d)
+            or (t.get("partially_resolved") and (t.get("partially_resolved_at") or "") >= cutoff_7d)
+        ),
+        "emails_sent": len(history),
+        "emails_opened": sum(1 for h in history if (h.get("open_count") or 0) > 0),
+        "emails_bounced": sum(1 for h in history if h.get("bounced")),
+    }
+
+    return {
+        "subscriber": subscriber,
+        "summary": summary,
+        "tracked_aeds": tracked,
+        "email_history": history,
+    }
 
 @api_router.get("/support/aed-image/{sentinel_id}")
 async def aed_image_proxy(sentinel_id: str, current_user: dict = Depends(get_current_user)):
