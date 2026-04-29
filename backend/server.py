@@ -2243,7 +2243,7 @@ async def _refresh_notified_aeds_statuses():
 
 async def _notified_aeds_daily_loop():
     """Run the notified AEDs refresh every 30 minutes, then backfill any
-    email opens that arrived since the last run."""
+    email opens / linked_sentinel_ids that arrived since the last run."""
     # Initial delay so we don't hammer Readisys at startup
     await asyncio.sleep(120)
     while True:
@@ -2260,7 +2260,107 @@ async def _notified_aeds_daily_loop():
                 )
         except Exception as e:
             logger.error(f"[NOTIFIED_AEDS] Auto-backfill error: {e}")
+        try:
+            res = await _backfill_linked_sids_core()
+            if res.get("updated_records", 0) > 0:
+                logger.info(
+                    f"[NOTIFIED_AEDS] Auto-backfill linked {res['total_sids_linked']} sentinel_ids "
+                    f"to {res['updated_records']} legacy notification_history records"
+                )
+        except Exception as e:
+            logger.error(f"[NOTIFIED_AEDS] Linked-sids backfill error: {e}")
         await asyncio.sleep(1800)  # 30 minutes
+
+
+async def _backfill_linked_sids_core() -> dict:
+    """For each notification_history record missing/empty linked_sentinel_ids,
+    find notified_aeds records for the same subscriber whose notification_dates
+    contain a timestamp within ±10 minutes of the email's sent_at, and stamp
+    those sentinel IDs back onto the email record.
+
+    Returns counters for visibility.
+    """
+    updated_records = 0
+    total_sids_linked = 0
+    scanned = 0
+
+    def _parse_iso(s):
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
+        except Exception:
+            return None
+
+    # Pull legacy emails: missing OR empty linked_sentinel_ids
+    legacy_query = {
+        "$or": [
+            {"linked_sentinel_ids": {"$exists": False}},
+            {"linked_sentinel_ids": []},
+            {"linked_sentinel_ids": None},
+        ],
+    }
+
+    # Cache notified_aeds by subscriber for fast lookup
+    by_sub: dict[str, list[dict]] = {}
+
+    async for h in _db.notification_history.find(
+        legacy_query,
+        {"_id": 1, "subscriber": 1, "sent_at": 1},
+    ):
+        scanned += 1
+        sub = h.get("subscriber")
+        sent_at = _parse_iso(h.get("sent_at"))
+        if not sub or not sent_at:
+            continue
+
+        if sub not in by_sub:
+            sub_aeds = []
+            async for d in _db.notified_aeds.find(
+                {"subscriber": sub},
+                {"_id": 0, "sentinel_id": 1, "first_notified_at": 1, "last_notified_at": 1, "notification_dates": 1},
+            ):
+                sub_aeds.append(d)
+            by_sub[sub] = sub_aeds
+
+        matched_sids: list[str] = []
+        for d in by_sub[sub]:
+            sid = d.get("sentinel_id")
+            if not sid:
+                continue
+            candidates = []
+            for nd in (d.get("notification_dates") or []):
+                t = _parse_iso(nd.get("date"))
+                if t:
+                    candidates.append(t)
+            ft = _parse_iso(d.get("first_notified_at"))
+            if ft:
+                candidates.append(ft)
+            lt = _parse_iso(d.get("last_notified_at"))
+            if lt:
+                candidates.append(lt)
+            if any(abs((sent_at - t).total_seconds()) <= 600 for t in candidates):
+                matched_sids.append(sid)
+
+        if matched_sids:
+            await _db.notification_history.update_one(
+                {"_id": h["_id"]},
+                {"$set": {"linked_sentinel_ids": matched_sids}},
+            )
+            updated_records += 1
+            total_sids_linked += len(matched_sids)
+
+    return {
+        "success": True,
+        "scanned_legacy_records": scanned,
+        "updated_records": updated_records,
+        "total_sids_linked": total_sids_linked,
+    }
+
+
+@api_router.post("/support/backfill-linked-sids")
+async def backfill_linked_sids(current_user: dict = Depends(get_current_user)):
+    """Manually trigger the linked_sentinel_ids backfill on legacy
+    notification_history records. Same logic as the auto-loop."""
+    return await _backfill_linked_sids_core()
 
 
 async def _backfill_email_opens_core() -> dict:
