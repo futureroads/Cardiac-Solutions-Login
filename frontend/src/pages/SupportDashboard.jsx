@@ -1448,7 +1448,7 @@ function StatusFeedbackModal({ device, subscriber, onClose }) {
             )}
             <div className="space-y-2 flex-1">
               <div><div className="font-orbitron text-[7px] text-slate-500 tracking-wider">SUBSCRIBER</div><div className="text-white text-xs">{subscriber}</div></div>
-              <div><div className="font-orbitron text-[7px] text-slate-500 tracking-wider">AED ID</div><div className="text-white text-xs font-bold">{device.sentinel_id}</div></div>
+              <div><div className="font-orbitron text-[7px] text-slate-500 tracking-wider">Sentinel ID</div><div className="text-white text-xs font-bold">{device.sentinel_id}</div></div>
               <div><div className="font-orbitron text-[7px] text-slate-500 tracking-wider">AED MODEL</div><div className="text-white text-xs">{device.model || "—"}</div></div>
               <div><div className="font-orbitron text-[7px] text-slate-500 tracking-wider">IMAGE DATE</div><div className="text-white text-xs">{capturedAt}</div></div>
               <div><div className="font-orbitron text-[7px] text-slate-500 tracking-wider">CURRENT STATUS</div><div className="text-red-400 text-xs font-bold">{device.detailed_status || "—"}</div></div>
