@@ -517,6 +517,7 @@ function SubscriberDetailModal({ subscriber, onClose, onCompose }) {
                     <th className="text-right p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">LAST NOTIFIED</th>
                     <th className="text-right p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">DAYS</th>
                     <th className="text-center p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">EMAIL OPENED?</th>
+                    <th className="text-center p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">ACTION</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -533,6 +534,16 @@ function SubscriberDetailModal({ subscriber, onClose, onCompose }) {
                         <td className="p-2 text-right text-slate-400 text-[10px]">{fmtShort(t.last_notified_at)}</td>
                         <td className={`p-2 text-right font-orbitron font-bold ${stale ? "text-red-400" : days > 7 ? "text-amber-400" : "text-slate-300"}`}>{days != null ? `${days}d` : "—"}</td>
                         <td className="p-2 text-center">{t.email_opened ? <span className="text-emerald-400 font-orbitron text-[10px]" title={fmt(t.email_opened_at)}>✓ OPEN</span> : <span className="text-slate-600 font-orbitron text-[10px]">—</span>}</td>
+                        <td className="p-2 text-center">
+                          <button
+                            onClick={() => { onClose(); onCompose && onCompose(t.sentinel_id); }}
+                            className="font-orbitron text-[8px] px-2 py-1 border border-cyan-500/40 text-cyan-400 rounded-sm hover:bg-cyan-500/10 inline-flex items-center gap-1"
+                            data-testid={`row-notify-${t.sentinel_id}`}
+                            title={`Send a single-AED notification for ${t.sentinel_id}`}
+                          >
+                            <Send className="w-2.5 h-2.5" /> NOTIFY
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -1214,7 +1225,7 @@ function NotificationHistoryModal({ onClose }) {
   );
 }
 
-function NotificationModal({ subscriber, contact, onClose, onSent }) {
+function NotificationModal({ subscriber, contact, onClose, onSent, targetSentinelId = null }) {
   const [toEmail, setToEmail] = useState(contact?.to_email || "");
   const baseCc = contact?.cc_email || "";
   const alwaysCc = "tprince@cardiac-solutions.net";
@@ -1241,16 +1252,20 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
         if (res.ok) {
           const data = await res.json();
           // Filter to only issue devices
-          const issueDevices = (data.devices || []).filter(d => {
+          let issueDevices = (data.devices || []).filter(d => {
             const s = (d.detailed_status || "").toUpperCase();
             return ["EXPIRED B/P", "EXPIRING BATT/PADS", "REPOSITION", "NOT READY", "NOT PRESENT", "UNKNOWN"].includes(s);
           });
+          // If targeting a single device, narrow further
+          if (targetSentinelId) {
+            issueDevices = issueDevices.filter(d => d.sentinel_id === targetSentinelId);
+          }
           setDevices(issueDevices);
         }
       } catch {}
       setLoadingDevices(false);
     })();
-  }, [subscriber]);
+  }, [subscriber, targetSentinelId]);
 
   const activeDevices = devices.filter(d => !removedDevices.has(d.sentinel_id));
 
@@ -1402,7 +1417,10 @@ function NotificationModal({ subscriber, contact, onClose, onSent }) {
         {/* Header */}
         <div className="p-5 border-b border-cyan-500/15 flex-shrink-0">
           <div className="flex justify-between items-center">
-            <h2 className="font-orbitron text-lg text-cyan-400 tracking-wider">Send notification - {subscriber}</h2>
+            <h2 className="font-orbitron text-lg text-cyan-400 tracking-wider">
+              Send notification - {subscriber}
+              {targetSentinelId && <span className="ml-2 text-[10px] px-2 py-0.5 bg-amber-500/15 text-amber-400 rounded-sm font-bold">SINGLE AED: {targetSentinelId}</span>}
+            </h2>
             <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-5 h-5" /></button>
           </div>
           {/* Email type selector */}
@@ -2455,6 +2473,7 @@ export default function SupportDashboard({ user, onLogout }) {
   const [showTrackingTest, setShowTrackingTest] = useState(false);
   const [showEngagement, setShowEngagement] = useState(false);
   const [detailSub, setDetailSub] = useState(null);  // subscriber name for SubscriberDetailModal
+  const [targetSentinelId, setTargetSentinelId] = useState(null);  // for single-AED notifications
   const [deviceList, setDeviceList] = useState(null);
   const [sortField, setSortField] = useState("total_issues");
   const [sortDir, setSortDir] = useState("desc");
@@ -2981,7 +3000,8 @@ export default function SupportDashboard({ user, onLogout }) {
         <NotificationModal
           subscriber={selectedSub.subscriber}
           contact={selectedSub.contact}
-          onClose={() => setSelectedSub(null)}
+          targetSentinelId={targetSentinelId}
+          onClose={() => { setSelectedSub(null); setTargetSentinelId(null); }}
           onSent={fetchData}
         />
       )}
@@ -2993,9 +3013,12 @@ export default function SupportDashboard({ user, onLogout }) {
         <SubscriberDetailModal
           subscriber={detailSub}
           onClose={() => setDetailSub(null)}
-          onCompose={() => {
+          onCompose={(sentinelId) => {
             const s = (data?.subscribers || []).find(x => x.subscriber === detailSub);
-            if (s) setSelectedSub(s);
+            if (s) {
+              setTargetSentinelId(sentinelId || null);
+              setSelectedSub(s);
+            }
           }}
         />
       )}
