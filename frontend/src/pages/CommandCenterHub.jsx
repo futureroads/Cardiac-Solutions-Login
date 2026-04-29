@@ -17,6 +17,7 @@ import {
   Brain,
   Building2,
   MapPin,
+  AlertCircle,
 } from "lucide-react";
 
 const ALL_MODULES = [
@@ -101,6 +102,16 @@ const ALL_MODULES = [
     route: "/backend",
     description:
       "Monitor and control backend processes, system health, database status, and server performance metrics.",
+    badgeCount: null,
+  },
+  {
+    moduleKey: "email_log",
+    title: "EMAIL LOG",
+    status: "LIVE",
+    icon: AlertCircle,
+    route: "/admin/email-errors",
+    description:
+      "Admin-only investigation tool. Inspect every notification email sent (success or failure), filter by user, and drill into errors when staff report send issues.",
     badgeCount: null,
   },
   {

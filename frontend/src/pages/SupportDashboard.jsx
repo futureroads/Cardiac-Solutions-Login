@@ -2653,6 +2653,16 @@ export default function SupportDashboard({ user, onLogout }) {
           >
             <Mail className="w-3 h-3" /> TEST EMAIL
           </button>
+          {(user?.role || "").toLowerCase() === "admin" && (
+            <button
+              onClick={() => navigate("/admin/email-errors")}
+              className="font-orbitron text-[8px] px-3 py-1.5 border border-red-500/30 text-red-400 rounded-sm hover:bg-red-500/10 flex items-center gap-1.5"
+              data-testid="email-errors-btn"
+              title="Admin only: investigate failed and successful email send attempts by user"
+            >
+              <AlertCircle className="w-3 h-3" /> EMAIL LOG
+            </button>
+          )}
           <button
             onClick={() => setShowEngagement(true)}
             className="font-orbitron text-[8px] px-3 py-1.5 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 flex items-center gap-1.5"

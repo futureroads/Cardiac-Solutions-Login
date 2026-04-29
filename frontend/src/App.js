@@ -14,6 +14,7 @@ import ServiceTickets from "./pages/ServiceTickets";
 import TechResponse from "./pages/TechResponse";
 import MapPage from "./pages/MapPage";
 import StarkDashboard from "./pages/StarkDashboard";
+import EmailActivityAdmin from "./pages/EmailActivityAdmin";
 import { Toaster } from "./components/ui/sonner";
 
 function App() {
@@ -162,6 +163,14 @@ function App() {
                 <CustomerPortal user={user} onLogout={handleLogout} /> : 
                 <Navigate to="/hub" replace />
             } 
+          />
+          <Route
+            path="/admin/email-errors"
+            element={
+              isAuthenticated && user?.role === "admin" ?
+                <EmailActivityAdmin /> :
+                <Navigate to="/hub" replace />
+            }
           />
           <Route 
             path="/service-tickets" 

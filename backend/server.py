@@ -1575,8 +1575,101 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
 
         return {"success": success, "message": f"Email {'sent' if success else 'failed'} to {to_email}"}
     except Exception as e:
-        logger.error(f"Support notification error: {e}")
+        # Persist the failure so admins can investigate. We log everything we
+        # know about the attempt, including the exception type/message.
+        logger.error(f"Support notification error: {e}", exc_info=True)
+        try:
+            notified_devices_err = data.get("devices", []) or []
+            linked_sids_err = [dev.get("sentinel_id", "") for dev in notified_devices_err if dev.get("sentinel_id")]
+            await _db.notification_history.insert_one({
+                "subscriber": subscriber,
+                "to_email": to_email,
+                "cc_email": cc_email,
+                "bcc_emails": bcc_emails,
+                "subject": subject,
+                "html_body": html_body,
+                "sent_by": current_user.get("username", ""),
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "success": False,
+                "email_response": f"EXCEPTION: {type(e).__name__}: {e}",
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "sg_message_id": "",
+                "linked_sentinel_ids": linked_sids_err,
+                "events": [],
+                "delivered_at": None,
+                "first_opened_at": None,
+                "open_count": 0,
+                "click_count": 0,
+                "bounced": False,
+                "spam_reported": False,
+            })
+        except Exception as log_err:
+            logger.error(f"Failed to log notification error to DB: {log_err}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/admin/email-activity")
+async def admin_email_activity(
+    days: int = 30,
+    user: str | None = None,
+    status: str = "all",  # "all" | "success" | "failed"
+    current_user: dict = Depends(get_current_user),
+):
+    """Admin-only: comprehensive email send activity log.
+
+    Returns every send attempt logged in `notification_history` within the
+    `days` window, with full error context for failures. Filterable by user
+    (sent_by) and status. Sorted newest-first.
+    """
+    if (current_user.get("role") or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    days = max(1, min(int(days), 365))
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    query: dict = {"sent_at": {"$gte": cutoff}}
+    if user:
+        query["sent_by"] = user
+    if status == "success":
+        query["success"] = True
+    elif status == "failed":
+        query["success"] = False
+
+    activity: list[dict] = []
+    user_counts: dict[str, dict] = {}
+    async for h in _db.notification_history.find(
+        query,
+        {"_id": 0, "html_body": 0, "events": 0},  # exclude heavy fields
+    ).sort("sent_at", -1).limit(500):
+        sent_by = h.get("sent_by") or "(unknown)"
+        ok = bool(h.get("success"))
+        if sent_by not in user_counts:
+            user_counts[sent_by] = {"total": 0, "success": 0, "failed": 0}
+        user_counts[sent_by]["total"] += 1
+        user_counts[sent_by]["success" if ok else "failed"] += 1
+        activity.append(h)
+
+    # Distinct users (for filter dropdown) — pull broader range
+    distinct_users: list[str] = await _db.notification_history.distinct(
+        "sent_by", {"sent_at": {"$gte": cutoff}}
+    )
+    distinct_users = sorted([u for u in distinct_users if u])
+
+    totals = {
+        "total": len(activity),
+        "success": sum(1 for a in activity if a.get("success")),
+        "failed": sum(1 for a in activity if not a.get("success")),
+    }
+
+    return {
+        "days": days,
+        "since": cutoff,
+        "totals": totals,
+        "activity": activity,
+        "by_user": user_counts,
+        "distinct_users": distinct_users,
+    }
 
 
 @api_router.get("/support/notification-history")
