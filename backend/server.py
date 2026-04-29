@@ -1428,6 +1428,73 @@ async def send_test_email(data: dict, current_user: dict = Depends(get_current_u
         return {"success": False, "message": str(e)}
 
 
+async def _send_send_failure_alert(*, sent_by: str, subscriber: str, to_email: str, cc_email: str, bcc_emails: str, subject: str, response_summary: str, error_type: str = "", error_message: str = "") -> None:
+    """Email the admin alert recipient when a notification send fails.
+
+    Configurable via SEND_FAILURE_ALERT_TO env var (default iq.ai.solutions@gmail.com).
+    Best-effort — logs and swallows errors so it never breaks the parent request.
+    """
+    try:
+        sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
+        sender = os.environ.get("DISPATCH_SENDER", "no-reply@cardiac-solutions.ai")
+        recipient = os.environ.get("SEND_FAILURE_ALERT_TO", "iq.ai.solutions@gmail.com")
+        if not sendgrid_key or not recipient:
+            logger.warning("[send-failure-alert] SendGrid or recipient not configured; skipping")
+            return
+
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail
+
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        body_rows = [
+            ("When", ts),
+            ("User (sent_by)", sent_by or "(unknown)"),
+            ("Subscriber", subscriber or "(none)"),
+            ("To", to_email or "(none)"),
+            ("CC", cc_email or "(none)"),
+            ("BCC", bcc_emails or "(none)"),
+            ("Subject", subject or "(none)"),
+            ("Result", response_summary or "(none)"),
+        ]
+        if error_type:
+            body_rows.append(("Error Type", error_type))
+        if error_message:
+            body_rows.append(("Error Message", error_message))
+
+        rows_html = "".join(
+            f'<tr><td style="padding:6px 12px;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:.05em;width:140px;vertical-align:top;">{label}</td>'
+            f'<td style="padding:6px 12px;color:#111827;font-size:13px;font-family:monospace;word-break:break-word;">{value}</td></tr>'
+            for label, value in body_rows
+        )
+
+        html = f"""
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;padding:24px;">
+          <div style="max-width:680px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+            <div style="background:#7f1d1d;color:#fff;padding:16px 24px;">
+              <div style="font-size:14px;font-weight:700;letter-spacing:.05em;">⚠ EMAIL SEND FAILED</div>
+              <div style="font-size:11px;opacity:.8;margin-top:2px;">Cardiac Solutions — automated diagnostic alert</div>
+            </div>
+            <table style="width:100%;border-collapse:collapse;">{rows_html}</table>
+            <div style="padding:12px 24px;background:#f3f4f6;border-top:1px solid #e5e7eb;font-size:11px;color:#6b7280;">
+              View the full log at <a href="https://cardiac-solutions.ai/admin/email-errors" style="color:#0891b2;">cardiac-solutions.ai/admin/email-errors</a> (admin login required).
+            </div>
+          </div>
+        </div>
+        """
+
+        msg = Mail(
+            from_email=f"Cardiac Solutions Alerts <{sender}>",
+            to_emails=recipient,
+            subject=f"[ALERT] Email send failed — {subscriber or to_email or 'unknown'}",
+            html_content=html,
+        )
+        sg = SendGridAPIClient(sendgrid_key)
+        sg.send(msg)
+        logger.info(f"[send-failure-alert] Alert dispatched to {recipient} (subscriber={subscriber})")
+    except Exception as e:
+        logger.warning(f"[send-failure-alert] Failed to dispatch alert: {e}")
+
+
 @api_router.post("/support/send-notification")
 async def send_support_notification(data: dict, current_user: dict = Depends(get_current_user)):
     """Send a notification email to a subscriber about their AED issues."""
@@ -1440,7 +1507,6 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
 
     if not to_email or not subject or not html_body:
         raise HTTPException(status_code=400, detail="Missing required fields: to_email, subject, html_body")
-
     sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
     sender = os.environ.get("DISPATCH_SENDER", "no-reply@cardiac-solutions.ai")
 
@@ -1498,6 +1564,21 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
             "bounced": False,
             "spam_reported": False,
         })
+
+        # Fire alert if the SendGrid call returned a non-success status
+        if not success:
+            try:
+                await _send_send_failure_alert(
+                    sent_by=current_user.get("username", ""),
+                    subscriber=subscriber,
+                    to_email=to_email,
+                    cc_email=cc_email,
+                    bcc_emails=bcc_emails,
+                    subject=subject,
+                    response_summary=f"SendGrid {resp.status_code}",
+                )
+            except Exception as ae:
+                logger.warning(f"failure-alert dispatch error: {ae}")
 
         # Track each notified AED device in notified_aeds collection
         if notified_devices and success:
@@ -1606,6 +1687,21 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
             })
         except Exception as log_err:
             logger.error(f"Failed to log notification error to DB: {log_err}")
+        # Fire alert
+        try:
+            await _send_send_failure_alert(
+                sent_by=current_user.get("username", ""),
+                subscriber=subscriber,
+                to_email=to_email,
+                cc_email=cc_email,
+                bcc_emails=bcc_emails,
+                subject=subject,
+                response_summary=f"EXCEPTION: {type(e).__name__}",
+                error_type=type(e).__name__,
+                error_message=str(e),
+            )
+        except Exception as ae:
+            logger.warning(f"failure-alert dispatch error: {ae}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
