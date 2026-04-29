@@ -560,6 +560,7 @@ function SubscriberDetailModal({ subscriber, onClose, onCompose }) {
                     <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">SENTINEL ID</th>
                     <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">LOCATION</th>
                     <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">ORIGINAL ISSUE</th>
+                    <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">CURRENT STATUS</th>
                     <th className="text-right p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">RESOLVED AT</th>
                     <th className="text-right p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">DAYS TO RESOLVE</th>
                   </tr>
@@ -572,6 +573,7 @@ function SubscriberDetailModal({ subscriber, onClose, onCompose }) {
                         <td className="p-2 font-orbitron text-cyan-300">{t.sentinel_id}</td>
                         <td className="p-2 text-slate-400 max-w-[260px] truncate" title={t.location}>{t.location || "—"}</td>
                         <td className={`p-2 font-orbitron text-[10px] ${statusColor(t.issue_type)}`}>{t.issue_type}</td>
+                        <td className={`p-2 font-orbitron text-[10px] ${statusColor(t.current_status)}`}>{t.current_status || "—"}</td>
                         <td className="p-2 text-right text-emerald-400 text-[10px]">{fmtShort(t.resolved_at)}</td>
                         <td className="p-2 text-right text-slate-300 font-orbitron">{dur != null ? `${dur}d` : "—"}</td>
                       </tr>
