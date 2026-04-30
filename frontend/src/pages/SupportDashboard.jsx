@@ -2747,9 +2747,9 @@ export default function SupportDashboard({ user, onLogout }) {
               // 7-day sparkline — color driven by net 7-day trend.
               const Sparkline = ({ series, testId }) => {
                 if (!series || series.length < 2) return null;
-                const w = 72;
-                const h = 18;
-                const pad = 2;
+                const w = 120;
+                const h = 34;
+                const pad = 3;
                 const lo = Math.min(...series);
                 const hi = Math.max(...series);
                 const range = Math.max(0.5, hi - lo);
@@ -2759,19 +2759,27 @@ export default function SupportDashboard({ user, onLogout }) {
                   const y = pad + (1 - (v - lo) / range) * (h - pad * 2);
                   return `${x.toFixed(1)},${y.toFixed(1)}`;
                 }).join(" ");
+                const areaPts = `${pad},${h - pad} ${pts} ${(w - pad).toFixed(1)},${h - pad}`;
                 const net = series[series.length - 1] - series[0];
                 const color = Math.abs(net) < 0.05 ? "#38bdf8" : net > 0 ? "#34d399" : "#f87171";
                 const tooltip = `7-day: ${series[0].toFixed(1)}% → ${series[series.length - 1].toFixed(1)}% (Δ ${net >= 0 ? "+" : ""}${net.toFixed(1)})`;
                 return (
-                  <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} className="mt-1" data-testid={testId}>
-                    <title>{tooltip}</title>
-                    <polyline fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" points={pts} />
-                    {series.map((v, i) => {
-                      const x = pad + i * step;
-                      const y = pad + (1 - (v - lo) / range) * (h - pad * 2);
-                      return <circle key={i} cx={x} cy={y} r="1" fill={color} opacity={i === series.length - 1 ? 1 : 0.45} />;
-                    })}
-                  </svg>
+                  <div className="flex flex-col items-center mt-1.5" data-testid={testId}>
+                    <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} className="block">
+                      <title>{tooltip}</title>
+                      <polygon points={areaPts} fill={color} opacity="0.12" />
+                      <polyline fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={pts} />
+                      {series.map((v, i) => {
+                        const x = pad + i * step;
+                        const y = pad + (1 - (v - lo) / range) * (h - pad * 2);
+                        const last = i === series.length - 1;
+                        return <circle key={i} cx={x} cy={y} r={last ? 2.2 : 1.3} fill={color} opacity={last ? 1 : 0.55} />;
+                      })}
+                    </svg>
+                    <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mt-0.5">
+                      7-DAY <span style={{ color }}>{net >= 0 ? "+" : ""}{net.toFixed(1)}</span>
+                    </div>
+                  </div>
                 );
               };
               const actualSeries = (readinessHistory?.points || []).map(p => p.pct_ready).filter(v => v != null);
