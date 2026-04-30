@@ -2745,11 +2745,35 @@ export default function SupportDashboard({ user, onLogout }) {
               };
 
               // 7-day sparkline — color driven by net 7-day trend.
+              // Renders even with 1 point (shows a dot + "collecting data" hint)
+              // so the UI clearly surfaces the feature state.
               const Sparkline = ({ series, testId }) => {
-                if (!series || series.length < 2) return null;
                 const w = 120;
                 const h = 34;
                 const pad = 3;
+                if (!series || series.length === 0) {
+                  return (
+                    <div className="flex flex-col items-center mt-1.5" data-testid={testId}>
+                      <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} className="block opacity-50">
+                        <line x1={pad} y1={h / 2} x2={w - pad} y2={h / 2} stroke="#475569" strokeDasharray="3 3" strokeWidth="1" />
+                      </svg>
+                      <div className="font-orbitron text-[7px] text-slate-600 tracking-wider mt-0.5">COLLECTING 7-DAY DATA</div>
+                    </div>
+                  );
+                }
+                if (series.length === 1) {
+                  const v = series[0];
+                  return (
+                    <div className="flex flex-col items-center mt-1.5" data-testid={testId}>
+                      <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} className="block">
+                        <title>Only 1 data point so far: {v.toFixed(1)}%</title>
+                        <line x1={pad} y1={h / 2} x2={w - pad} y2={h / 2} stroke="#38bdf8" strokeDasharray="2 3" strokeWidth="1" opacity="0.4" />
+                        <circle cx={w - pad} cy={h / 2} r="2.5" fill="#38bdf8" />
+                      </svg>
+                      <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mt-0.5">TODAY <span className="text-sky-400">{v.toFixed(1)}%</span></div>
+                    </div>
+                  );
+                }
                 const lo = Math.min(...series);
                 const hi = Math.max(...series);
                 const range = Math.max(0.5, hi - lo);
@@ -2762,7 +2786,7 @@ export default function SupportDashboard({ user, onLogout }) {
                 const areaPts = `${pad},${h - pad} ${pts} ${(w - pad).toFixed(1)},${h - pad}`;
                 const net = series[series.length - 1] - series[0];
                 const color = Math.abs(net) < 0.05 ? "#38bdf8" : net > 0 ? "#34d399" : "#f87171";
-                const tooltip = `7-day: ${series[0].toFixed(1)}% → ${series[series.length - 1].toFixed(1)}% (Δ ${net >= 0 ? "+" : ""}${net.toFixed(1)})`;
+                const tooltip = `${series.length}-day: ${series[0].toFixed(1)}% → ${series[series.length - 1].toFixed(1)}% (Δ ${net >= 0 ? "+" : ""}${net.toFixed(1)})`;
                 return (
                   <div className="flex flex-col items-center mt-1.5" data-testid={testId}>
                     <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} className="block">
@@ -2777,7 +2801,7 @@ export default function SupportDashboard({ user, onLogout }) {
                       })}
                     </svg>
                     <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mt-0.5">
-                      7-DAY <span style={{ color }}>{net >= 0 ? "+" : ""}{net.toFixed(1)}</span>
+                      {series.length}-DAY <span style={{ color }}>{net >= 0 ? "+" : ""}{net.toFixed(1)}</span>
                     </div>
                   </div>
                 );
