@@ -678,6 +678,45 @@ async def startup():
     asyncio.create_task(_notified_aeds_daily_loop())
     # Backfill notified AEDs from historical notification data
     asyncio.create_task(_backfill_notified_aeds())
+    # Backfill readiness_daily from pct_ready_history on first boot after deploy
+    asyncio.create_task(_one_shot_readiness_daily_backfill())
+
+
+async def _one_shot_readiness_daily_backfill():
+    """If readiness_daily is (nearly) empty, populate it from the older
+    pct_ready_history collection so sparklines have data to render on fresh
+    deploys. Runs once per process start."""
+    try:
+        await asyncio.sleep(30)
+        if _db is None:
+            return
+        cnt = await _db.readiness_daily.count_documents({})
+        if cnt >= 3:
+            return  # already seeded/accumulating
+        copied = 0
+        async for h in _db.pct_ready_history.find({}, {"_id": 0, "date": 1, "percent_ready": 1}):
+            date = h.get("date")
+            pct = h.get("percent_ready")
+            if not date or pct is None:
+                continue
+            existing = await _db.readiness_daily.find_one({"date": date}, {"_id": 0})
+            if existing:
+                continue
+            await _db.readiness_daily.update_one(
+                {"date": date},
+                {"$set": {
+                    "date": date,
+                    "pct_ready": round(float(pct), 1),
+                    "pct_ready_adjusted": round(float(pct), 1),
+                    "backfilled_from": "pct_ready_history",
+                }},
+                upsert=True,
+            )
+            copied += 1
+        if copied:
+            logger.info(f"[readiness-daily] Backfilled {copied} legacy points from pct_ready_history")
+    except Exception as e:
+        logger.warning(f"[readiness-daily] backfill error: {e}")
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     global _mongo_client, _db
@@ -4884,6 +4923,34 @@ async def send_overview_email(current_user: dict = Depends(get_current_user)):
 
 
 # ==================== Status Overview (proxied from Readisys) ====================
+
+@api_router.post("/support/backfill-readiness-daily")
+async def backfill_readiness_daily(current_user: dict = Depends(get_current_user)):
+    """Backfill the readiness_daily collection from the older pct_ready_history
+    collection so sparklines can render immediately on fresh deploys."""
+    copied = 0
+    async for h in _db.pct_ready_history.find({}, {"_id": 0, "date": 1, "percent_ready": 1}):
+        date = h.get("date")
+        pct = h.get("percent_ready")
+        if not date or pct is None:
+            continue
+        existing = await _db.readiness_daily.find_one({"date": date}, {"_id": 0})
+        if existing:
+            continue
+        await _db.readiness_daily.update_one(
+            {"date": date},
+            {"$set": {
+                "date": date,
+                "pct_ready": round(float(pct), 1),
+                "pct_ready_adjusted": round(float(pct), 1),  # historical fallback
+                "backfilled_from": "pct_ready_history",
+            }},
+            upsert=True,
+        )
+        copied += 1
+    total = await _db.readiness_daily.count_documents({})
+    return {"success": True, "copied": copied, "total_daily_points": total}
+
 
 @api_router.get("/support/readiness-history")
 async def support_readiness_history(days: int = 7, current_user: dict = Depends(get_current_user)):
