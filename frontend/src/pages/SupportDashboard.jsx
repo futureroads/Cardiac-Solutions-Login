@@ -2486,6 +2486,7 @@ export default function SupportDashboard({ user, onLogout }) {
   const [refreshingAeds, setRefreshingAeds] = useState(false);
   const [showNotifiedAeds, setShowNotifiedAeds] = useState(false);
   const [buildVersion, setBuildVersion] = useState("");
+  const [readinessHistory, setReadinessHistory] = useState(null);
 
   const token = localStorage.getItem("token") || "";
 
@@ -2508,7 +2509,16 @@ export default function SupportDashboard({ user, onLogout }) {
     } catch {}
   }, [token]);
 
-  useEffect(() => { fetchData(); fetchNotifiedAeds(); }, [fetchData, fetchNotifiedAeds]);
+  const fetchReadinessHistory = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/support/readiness-history?days=7`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setReadinessHistory(await res.json());
+    } catch {}
+  }, [token]);
+
+  useEffect(() => { fetchData(); fetchNotifiedAeds(); fetchReadinessHistory(); }, [fetchData, fetchNotifiedAeds, fetchReadinessHistory]);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/version`).then(r => r.json()).then(d => { if (d?.version) setBuildVersion(d.version); }).catch(() => {});
@@ -2714,14 +2724,14 @@ export default function SupportDashboard({ user, onLogout }) {
               const na = notifiedAeds;
               const hasData = r.total_monitored > 0 || (na && na.total_tracked > 0);
               if (!hasData) return null;
-              // Trend arrow per user spec: UP arrow = RED, DOWN arrow = GREEN, flat = BLUE line.
+              // Trend arrow: UP arrow = GREEN (readiness improved, good),
+              // DOWN arrow = RED (readiness dropped, bad), flat = BLUE line.
               const Trend = ({ current, prev, testId }) => {
                 if (prev == null || current == null) return null;
                 const diff = Math.round((current - prev) * 10) / 10;
                 const abs = Math.abs(diff);
                 const tooltip = `Yesterday: ${prev.toFixed(1)}% · Δ ${diff > 0 ? "+" : ""}${diff.toFixed(1)}`;
                 if (abs < 0.05) {
-                  // flat — blue horizontal line
                   return (
                     <span className="inline-flex items-center ml-1.5" title={tooltip} data-testid={testId}>
                       <svg viewBox="0 0 14 14" width="14" height="14" className="text-sky-400"><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
@@ -2729,10 +2739,43 @@ export default function SupportDashboard({ user, onLogout }) {
                   );
                 }
                 if (diff > 0) {
-                  return <ChevronUp className="inline-block w-4 h-4 text-red-400 ml-1" title={tooltip} data-testid={testId} />;
+                  return <ChevronUp className="inline-block w-4 h-4 text-emerald-400 ml-1" title={tooltip} data-testid={testId} />;
                 }
-                return <ChevronDown className="inline-block w-4 h-4 text-emerald-400 ml-1" title={tooltip} data-testid={testId} />;
+                return <ChevronDown className="inline-block w-4 h-4 text-red-400 ml-1" title={tooltip} data-testid={testId} />;
               };
+
+              // 7-day sparkline — color driven by net 7-day trend.
+              const Sparkline = ({ series, testId }) => {
+                if (!series || series.length < 2) return null;
+                const w = 72;
+                const h = 18;
+                const pad = 2;
+                const lo = Math.min(...series);
+                const hi = Math.max(...series);
+                const range = Math.max(0.5, hi - lo);
+                const step = (w - pad * 2) / (series.length - 1);
+                const pts = series.map((v, i) => {
+                  const x = pad + i * step;
+                  const y = pad + (1 - (v - lo) / range) * (h - pad * 2);
+                  return `${x.toFixed(1)},${y.toFixed(1)}`;
+                }).join(" ");
+                const net = series[series.length - 1] - series[0];
+                const color = Math.abs(net) < 0.05 ? "#38bdf8" : net > 0 ? "#34d399" : "#f87171";
+                const tooltip = `7-day: ${series[0].toFixed(1)}% → ${series[series.length - 1].toFixed(1)}% (Δ ${net >= 0 ? "+" : ""}${net.toFixed(1)})`;
+                return (
+                  <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} className="mt-1" data-testid={testId}>
+                    <title>{tooltip}</title>
+                    <polyline fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" points={pts} />
+                    {series.map((v, i) => {
+                      const x = pad + i * step;
+                      const y = pad + (1 - (v - lo) / range) * (h - pad * 2);
+                      return <circle key={i} cx={x} cy={y} r="1" fill={color} opacity={i === series.length - 1 ? 1 : 0.45} />;
+                    })}
+                  </svg>
+                );
+              };
+              const actualSeries = (readinessHistory?.points || []).map(p => p.pct_ready).filter(v => v != null);
+              const adjustedSeries = (readinessHistory?.points || []).map(p => p.pct_ready_adjusted).filter(v => v != null);
               return (
                 <div className="mb-6 border border-cyan-500/20 rounded-sm bg-[rgba(10,15,28,0.9)] overflow-hidden" data-testid="notified-aeds-card">
                   <div
@@ -2757,6 +2800,7 @@ export default function SupportDashboard({ user, onLogout }) {
                             {Number(r.pct_ready || 0).toFixed(1)}%
                             <Trend current={r.pct_ready} prev={r.prev_pct_ready} testId="trend-actual" />
                           </div>
+                          <Sparkline series={actualSeries} testId="spark-actual" />
                         </div>
                         <div className="text-center">
                           <div className="font-orbitron text-[7px] text-green-400 tracking-wider mb-1">ADJUSTED READY</div>
@@ -2764,6 +2808,7 @@ export default function SupportDashboard({ user, onLogout }) {
                             {Number(r.pct_ready_adjusted || 0).toFixed(1)}%
                             <Trend current={r.pct_ready_adjusted} prev={r.prev_pct_ready_adjusted} testId="trend-adjusted" />
                           </div>
+                          <Sparkline series={adjustedSeries} testId="spark-adjusted" />
                         </div>
                         <div className="text-center">
                           <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mb-1">SUBSCRIBER PENDING</div>

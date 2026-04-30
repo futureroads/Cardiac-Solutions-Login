@@ -1208,8 +1208,7 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
                 "captured_at": datetime.now(timezone.utc).isoformat(),
             }},
             upsert=True,
-        )
-        # Fetch yesterday's, falling back to most recent prior snapshot
+        )        # Fetch yesterday's, falling back to most recent prior snapshot
         prev_doc = await _db.support_daily_snapshots.find_one({"date": yesterday_key})
         if not prev_doc:
             prev_doc = await _db.support_daily_snapshots.find_one(
@@ -1271,6 +1270,21 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
     prev_adjusted_ready = prev_total - prev_adjusted_issues if prev_total > prev_adjusted_issues else prev_total
     prev_pct_ready_adjusted = round((prev_adjusted_ready / prev_total) * 100, 1) if prev_total and prev_ready else None
     prev_pct_ready = round((prev_ready / prev_total) * 100, 1) if prev_total and prev_ready else None
+
+    # Daily snapshot of the readiness percentages for sparklines.
+    try:
+        await _db.readiness_daily.update_one(
+            {"date": today_key},
+            {"$set": {
+                "date": today_key,
+                "pct_ready": pct_ready,
+                "pct_ready_adjusted": pct_ready_adjusted,
+                "captured_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+    except Exception as e:
+        logger.warning(f"readiness-daily snapshot failed: {e}")
 
     return {
         "subscribers": subscribers,
@@ -4870,6 +4884,20 @@ async def send_overview_email(current_user: dict = Depends(get_current_user)):
 
 
 # ==================== Status Overview (proxied from Readisys) ====================
+
+@api_router.get("/support/readiness-history")
+async def support_readiness_history(days: int = 7, current_user: dict = Depends(get_current_user)):
+    """Return the last N days of pct_ready + pct_ready_adjusted snapshots for sparklines."""
+    days = max(1, min(int(days), 60))
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    points = []
+    async for d in _db.readiness_daily.find(
+        {"date": {"$gte": cutoff}},
+        {"_id": 0, "date": 1, "pct_ready": 1, "pct_ready_adjusted": 1},
+    ).sort("date", 1):
+        points.append(d)
+    return {"days": days, "points": points}
+
 
 async def _track_pct_ready(status_data: dict) -> str:
     """Store today's percent_ready and compare with yesterday. Returns 'up', 'down', or 'stable'."""
