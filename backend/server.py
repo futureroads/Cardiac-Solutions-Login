@@ -2458,7 +2458,77 @@ async def _notified_aeds_daily_loop():
                 )
         except Exception as e:
             logger.error(f"[NOTIFIED_AEDS] Linked-sids backfill error: {e}")
+        try:
+            res = await _backfill_delivered_from_opens_core()
+            if res.get("updated", 0) > 0:
+                logger.info(
+                    f"[NOTIFIED_AEDS] Auto-backfill inferred delivered_at on "
+                    f"{res['updated']} legacy records (had opens/clicks without delivered event)"
+                )
+        except Exception as e:
+            logger.error(f"[NOTIFIED_AEDS] Delivered-inference backfill error: {e}")
         await asyncio.sleep(1800)  # 30 minutes
+
+
+async def _backfill_delivered_from_opens_core() -> dict:
+    """For notification_history records that have open_count>0 or click_count>0
+    but no delivered_at set, stamp delivered_at with the earliest known open/click
+    timestamp (or sent_at as a floor). Ensures DELIV >= OPEN in engagement stats.
+    """
+    updated = 0
+    scanned = 0
+
+    def _parse(s):
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
+        except Exception:
+            return None
+
+    query = {
+        "$and": [
+            {"$or": [{"open_count": {"$gt": 0}}, {"click_count": {"$gt": 0}}]},
+            {"$or": [
+                {"delivered_at": {"$exists": False}},
+                {"delivered_at": None},
+                {"delivered_at": ""},
+            ]},
+        ],
+    }
+
+    async for h in _db.notification_history.find(
+        query,
+        {"_id": 1, "sent_at": 1, "first_opened_at": 1, "events": 1},
+    ):
+        scanned += 1
+        candidates: list[datetime] = []
+        for ev in (h.get("events") or []):
+            et = (ev.get("event") or "").lower()
+            if et in ("delivered", "open", "click"):
+                t = _parse(ev.get("timestamp"))
+                if t:
+                    candidates.append(t)
+        fo = _parse(h.get("first_opened_at"))
+        if fo:
+            candidates.append(fo)
+        sent_at_t = _parse(h.get("sent_at"))
+        if sent_at_t:
+            candidates.append(sent_at_t)
+        if not candidates:
+            continue
+        inferred = min(candidates).isoformat()
+        await _db.notification_history.update_one(
+            {"_id": h["_id"]},
+            {"$set": {"delivered_at": inferred, "delivered_inferred": True}},
+        )
+        updated += 1
+
+    return {"success": True, "scanned": scanned, "updated": updated}
+
+
+@api_router.post("/support/backfill-delivered-from-opens")
+async def backfill_delivered_from_opens(current_user: dict = Depends(get_current_user)):
+    """Manually trigger the delivered-inference backfill."""
+    return await _backfill_delivered_from_opens_core()
 
 
 async def _backfill_linked_sids_core() -> dict:
@@ -3087,9 +3157,15 @@ async def subscriber_engagement(days: int = 30, current_user: dict = Depends(get
     items = []
     for r in rows.values():
         sent = r["emails_sent"] or 0
+        # SAFETY GUARD: if a record was opened/clicked but didn't receive a
+        # `delivered` webhook event, logically it was delivered. Infer that
+        # here so DELIV can never be less than OPEN in reports. The backfill
+        # loop also writes this back to storage over time.
+        delivered_effective = max(r["delivered"], r["opened_by_to"], r["clicked"])
         items.append({
             **r,
-            "delivery_rate": round(r["delivered"] / sent * 100, 1) if sent else 0.0,
+            "delivered": delivered_effective,
+            "delivery_rate": round(delivered_effective / sent * 100, 1) if sent else 0.0,
             "open_rate": round(r["opened_by_to"] / sent * 100, 1) if sent else 0.0,
             "bounce_rate": round(r["bounced"] / sent * 100, 1) if sent else 0.0,
         })
