@@ -2714,6 +2714,25 @@ export default function SupportDashboard({ user, onLogout }) {
               const na = notifiedAeds;
               const hasData = r.total_monitored > 0 || (na && na.total_tracked > 0);
               if (!hasData) return null;
+              // Trend arrow per user spec: UP arrow = RED, DOWN arrow = GREEN, flat = BLUE line.
+              const Trend = ({ current, prev, testId }) => {
+                if (prev == null || current == null) return null;
+                const diff = Math.round((current - prev) * 10) / 10;
+                const abs = Math.abs(diff);
+                const tooltip = `Yesterday: ${prev.toFixed(1)}% · Δ ${diff > 0 ? "+" : ""}${diff.toFixed(1)}`;
+                if (abs < 0.05) {
+                  // flat — blue horizontal line
+                  return (
+                    <span className="inline-flex items-center ml-1.5" title={tooltip} data-testid={testId}>
+                      <svg viewBox="0 0 14 14" width="14" height="14" className="text-sky-400"><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                    </span>
+                  );
+                }
+                if (diff > 0) {
+                  return <ChevronUp className="inline-block w-4 h-4 text-red-400 ml-1" title={tooltip} data-testid={testId} />;
+                }
+                return <ChevronDown className="inline-block w-4 h-4 text-emerald-400 ml-1" title={tooltip} data-testid={testId} />;
+              };
               return (
                 <div className="mb-6 border border-cyan-500/20 rounded-sm bg-[rgba(10,15,28,0.9)] overflow-hidden" data-testid="notified-aeds-card">
                   <div
@@ -2734,14 +2753,16 @@ export default function SupportDashboard({ user, onLogout }) {
                       <div className="flex items-center gap-6">
                         <div className="text-center">
                           <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mb-1">ACTUAL READY</div>
-                          <div className="font-orbitron text-lg font-black" style={{ color: (r.pct_ready || 0) >= 90 ? "#22c55e" : (r.pct_ready || 0) >= 70 ? "#f59e0b" : "#ef4444" }}>
+                          <div className="font-orbitron text-lg font-black inline-flex items-center" style={{ color: (r.pct_ready || 0) >= 90 ? "#22c55e" : (r.pct_ready || 0) >= 70 ? "#f59e0b" : "#ef4444" }}>
                             {Number(r.pct_ready || 0).toFixed(1)}%
+                            <Trend current={r.pct_ready} prev={r.prev_pct_ready} testId="trend-actual" />
                           </div>
                         </div>
                         <div className="text-center">
                           <div className="font-orbitron text-[7px] text-green-400 tracking-wider mb-1">ADJUSTED READY</div>
-                          <div className="font-orbitron text-lg font-black text-green-400">
+                          <div className="font-orbitron text-lg font-black text-green-400 inline-flex items-center">
                             {Number(r.pct_ready_adjusted || 0).toFixed(1)}%
+                            <Trend current={r.pct_ready_adjusted} prev={r.prev_pct_ready_adjusted} testId="trend-adjusted" />
                           </div>
                         </div>
                         <div className="text-center">

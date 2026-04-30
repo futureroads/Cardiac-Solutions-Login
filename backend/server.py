@@ -1270,6 +1270,7 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
     prev_adjusted_issues = max(0, prev_issues - notified_aed_unresolved)
     prev_adjusted_ready = prev_total - prev_adjusted_issues if prev_total > prev_adjusted_issues else prev_total
     prev_pct_ready_adjusted = round((prev_adjusted_ready / prev_total) * 100, 1) if prev_total and prev_ready else None
+    prev_pct_ready = round((prev_ready / prev_total) * 100, 1) if prev_total and prev_ready else None
 
     return {
         "subscribers": subscribers,
@@ -1297,6 +1298,7 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
             "total_ready": total_ready,
             "total_issues": total_issues_fleet,
             "pct_ready": pct_ready,
+            "prev_pct_ready": prev_pct_ready,
             "notified_aed_unresolved": notified_aed_unresolved,
             "notified_aed_unresolved_total": notified_aed_unresolved_total,
             "adjusted_issues": adjusted_issues,
