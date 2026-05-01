@@ -595,8 +595,8 @@ export default function StarkDashboard({ user, onLogout }) {
                         title="Click to expand 30-day readiness trend"
                         data-testid="stark-trend-expand"
                       >
-                        {renderSpark(adjSeries, "ADJUSTED", "stark-spark-adjusted")}
                         {renderSpark(actSeries, "ACTUAL", "stark-spark-actual")}
+                        {renderSpark(adjSeries, "ADJUSTED", "stark-spark-adjusted")}
                       </button>
                     );
                   })()}
