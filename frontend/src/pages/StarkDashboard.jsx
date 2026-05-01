@@ -77,6 +77,7 @@ export default function StarkDashboard({ user, onLogout }) {
   const [ticketCounts, setTicketCounts] = useState(null);
   // Readiness data (actual + adjusted from support dashboard-data)
   const [readiness, setReadiness] = useState(null);
+  const [readinessHistory, setReadinessHistory] = useState(null);
   const [supportData, setSupportData] = useState(null);
   // Notifications sent today
   const [notifToday, setNotifToday] = useState(0);
@@ -171,6 +172,13 @@ export default function StarkDashboard({ user, onLogout }) {
       }
     };
     fetchSupportData();
+    const fetchReadinessHistory = async () => {
+      try {
+        const res = await fetch(`${API}/support/readiness-history?days=7`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) setReadinessHistory(await res.json());
+      } catch {}
+    };
+    fetchReadinessHistory();
     const i = setInterval(fetchSupportData, 300000);
     return () => clearInterval(i);
   }, [token]);
@@ -524,6 +532,67 @@ export default function StarkDashboard({ user, onLogout }) {
                   {/* Actual (smaller, subdued) */}
                   <div className="font-orbitron text-[13px] font-bold text-slate-400 mt-1">{pctActual}%</div>
                   <div className="font-orbitron text-[7px] text-slate-500 tracking-[0.2em]">ACTUAL READY</div>
+                  {(() => {
+                    const pts = readinessHistory?.points || [];
+                    const adjSeries = pts.map(p => p.pct_ready_adjusted).filter(v => v != null);
+                    const actSeries = pts.map(p => p.pct_ready).filter(v => v != null);
+                    const renderSpark = (series, label, dataTestId) => {
+                      const w = 130;
+                      const h = 28;
+                      const pad = 3;
+                      if (!series || series.length === 0) return null;
+                      if (series.length === 1) {
+                        const v = series[0];
+                        return (
+                          <div className="flex flex-col items-center mt-1" data-testid={dataTestId}>
+                            <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h}>
+                              <line x1={pad} y1={h / 2} x2={w - pad} y2={h / 2} stroke="#38bdf8" strokeDasharray="2 3" strokeWidth="1" opacity="0.4" />
+                              <circle cx={w - pad} cy={h / 2} r="2.5" fill="#38bdf8" />
+                            </svg>
+                            <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mt-0.5">{label} <span className="text-sky-400">{v.toFixed(1)}%</span></div>
+                          </div>
+                        );
+                      }
+                      const lo = Math.min(...series);
+                      const hi = Math.max(...series);
+                      const range = Math.max(0.5, hi - lo);
+                      const step = (w - pad * 2) / (series.length - 1);
+                      const sPts = series.map((v, i) => {
+                        const x = pad + i * step;
+                        const y = pad + (1 - (v - lo) / range) * (h - pad * 2);
+                        return `${x.toFixed(1)},${y.toFixed(1)}`;
+                      }).join(" ");
+                      const areaPts = `${pad},${h - pad} ${sPts} ${(w - pad).toFixed(1)},${h - pad}`;
+                      const net = series[series.length - 1] - series[0];
+                      const color = Math.abs(net) < 0.05 ? "#38bdf8" : net > 0 ? "#34d399" : "#f87171";
+                      const tooltip = `${series.length}-day: ${series[0].toFixed(1)}% → ${series[series.length - 1].toFixed(1)}% (Δ ${net >= 0 ? "+" : ""}${net.toFixed(1)})`;
+                      return (
+                        <div className="flex flex-col items-center mt-1" data-testid={dataTestId}>
+                          <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h}>
+                            <title>{tooltip}</title>
+                            <polygon points={areaPts} fill={color} opacity="0.14" />
+                            <polyline fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" points={sPts} />
+                            {series.map((v, i) => {
+                              const x = pad + i * step;
+                              const y = pad + (1 - (v - lo) / range) * (h - pad * 2);
+                              const last = i === series.length - 1;
+                              return <circle key={i} cx={x} cy={y} r={last ? 2 : 1.2} fill={color} opacity={last ? 1 : 0.55} />;
+                            })}
+                          </svg>
+                          <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mt-0.5">
+                            {label} <span style={{ color }}>{net >= 0 ? "+" : ""}{net.toFixed(1)}</span>
+                          </div>
+                        </div>
+                      );
+                    };
+                    if (adjSeries.length === 0 && actSeries.length === 0) return null;
+                    return (
+                      <div className="flex items-start justify-center gap-3 mt-2">
+                        {renderSpark(adjSeries, "ADJ 7-DAY", "stark-spark-adjusted")}
+                        {renderSpark(actSeries, "ACT 7-DAY", "stark-spark-actual")}
+                      </div>
+                    );
+                  })()}
                   <div className="font-orbitron text-[9px] text-cyan-400/70 tracking-wider mt-2">{stats.total.toLocaleString()} TOTAL AEDs</div>
                   {lastUpdated && <div className="font-orbitron text-[8px] text-cyan-500/50 tracking-wider mt-1">Last Updated: {lastUpdated}</div>}
                 </>
