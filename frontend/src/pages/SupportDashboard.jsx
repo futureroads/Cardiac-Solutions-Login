@@ -5,7 +5,7 @@ import {
   AlertTriangle, Clock, ChevronDown, ChevronUp, Mail,
   Users, Activity, Shield, History, Battery, Wifi,
   StickyNote, ZoomIn, ChevronLeft, Edit3, RefreshCw,
-  CheckCircle2, AlertCircle, BarChart3,
+  CheckCircle2, AlertCircle, BarChart3, Pencil, Save, Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 import API_BASE from "@/apiBase";
@@ -1263,6 +1263,39 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
             issueDevices = issueDevices.filter(d => d.sentinel_id === targetSentinelId);
           }
           setDevices(issueDevices);
+
+          // Fetch ALL detail-message templates and pre-fill customDetails for each device
+          // using best-match (subscriber+model > subscriber > model > ALL/ALL)
+          try {
+            const tres = await fetch(`${API}/support/detail-messages`, { headers: { Authorization: `Bearer ${token}` } });
+            if (tres.ok) {
+              const tdata = await tres.json();
+              const templates = tdata.items || [];
+              const score = (t, sub, mod) => {
+                let s = 0;
+                if (t.subscriber === sub && sub !== "ALL") s += 4;
+                if (t.model === mod && mod !== "ALL") s += 2;
+                return s;
+              };
+              const prefill = {};
+              for (const d of issueDevices) {
+                const status = (d.detailed_status || "").toUpperCase();
+                const mod = d.model || "";
+                const matches = templates.filter(t =>
+                  t.status === status &&
+                  (t.subscriber === subscriber || t.subscriber === "ALL") &&
+                  (t.model === mod || t.model === "ALL")
+                );
+                if (matches.length) {
+                  matches.sort((a, b) => score(b, subscriber, mod) - score(a, subscriber, mod));
+                  prefill[d.sentinel_id] = matches[0].message;
+                }
+              }
+              if (Object.keys(prefill).length) {
+                setCustomDetails(prev => ({ ...prefill, ...prev }));
+              }
+            }
+          } catch {}
         }
       } catch {}
       setLoadingDevices(false);
@@ -2102,6 +2135,209 @@ function DeviceListModal({ subscriber, issueType, onClose }) {
   );
 }
 
+function DetailMessagesModal({ subscribers, onClose }) {
+  const [items, setItems] = useState([]);
+  const [models, setModels] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // null | { id?, status, subscriber, model, message }
+  const [saving, setSaving] = useState(false);
+
+  const STATUSES = ["EXPIRED B/P", "EXPIRING BATT/PADS", "REPOSITION", "NOT READY", "NOT PRESENT", "UNKNOWN"];
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const [a, b] = await Promise.all([
+        fetch(`${API}/support/detail-messages`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API}/support/aed-models`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (a.ok) setItems((await a.json()).items || []);
+      if (b.ok) setModels((await b.json()).models || []);
+    } catch {}
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const save = async () => {
+    if (!editing) return;
+    if (!editing.status || !(editing.message || "").trim()) {
+      toast.error("Status and message are required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API}/support/detail-messages`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(editing),
+      });
+      if (res.ok) {
+        toast.success("Saved");
+        setEditing(null);
+        await load();
+      } else {
+        const j = await res.json().catch(() => ({}));
+        toast.error(j.detail || "Save failed");
+      }
+    } catch {
+      toast.error("Network error");
+    }
+    setSaving(false);
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm("Delete this template?")) return;
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API}/support/detail-messages/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        toast.success("Deleted");
+        await load();
+      } else {
+        toast.error("Delete failed");
+      }
+    } catch {
+      toast.error("Network error");
+    }
+  };
+
+  const subOptions = ["ALL", ...((subscribers || []).map(s => s.subscriber).filter(Boolean).sort())];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-full max-w-[1100px] max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="detail-messages-modal">
+        <div className="border-b border-cyan-500/15 px-5 py-3 flex items-center justify-between bg-[rgba(6,10,20,0.95)]">
+          <div className="flex items-center gap-3">
+            <Mail className="w-4 h-4 text-cyan-400" />
+            <div>
+              <div className="font-orbitron text-sm tracking-wider text-cyan-400">DETAIL MESSAGES</div>
+              <div className="font-orbitron text-[8px] text-slate-500 tracking-wider">DEFAULT TEXT FOR THE "DETAILS" COLUMN IN NOTIFICATION EMAILS</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {!editing && (
+              <button
+                onClick={() => setEditing({ status: "REPOSITION", subscriber: "ALL", model: "ALL", message: "" })}
+                className="font-orbitron text-[9px] px-3 py-1.5 border border-emerald-500/40 text-emerald-400 rounded-sm hover:bg-emerald-500/10 inline-flex items-center gap-1.5"
+                data-testid="add-detail-msg-btn"
+              >
+                <Plus className="w-3 h-3" /> ADD MESSAGE
+              </button>
+            )}
+            <button onClick={onClose} className="text-slate-500 hover:text-white" data-testid="dm-close"><X className="w-4 h-4" /></button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          {editing ? (
+            <div className="space-y-4 max-w-[760px] mx-auto" data-testid="detail-msg-form">
+              <div className="font-orbitron text-[10px] text-cyan-400 tracking-wider">{editing.id ? "EDIT" : "NEW"} TEMPLATE</div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="font-orbitron text-[8px] text-slate-500 tracking-wider mb-1 block">STATUS *</label>
+                  <select
+                    value={editing.status}
+                    onChange={e => setEditing({ ...editing, status: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 text-white text-[11px] font-orbitron px-2 py-2 rounded-sm focus:outline-none focus:border-cyan-500/40"
+                    data-testid="dm-status"
+                  >
+                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-orbitron text-[8px] text-slate-500 tracking-wider mb-1 block">SUBSCRIBER</label>
+                  <select
+                    value={editing.subscriber}
+                    onChange={e => setEditing({ ...editing, subscriber: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 text-white text-[11px] font-orbitron px-2 py-2 rounded-sm focus:outline-none focus:border-cyan-500/40"
+                    data-testid="dm-subscriber"
+                  >
+                    {subOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-orbitron text-[8px] text-slate-500 tracking-wider mb-1 block">AED MODEL</label>
+                  <select
+                    value={editing.model}
+                    onChange={e => setEditing({ ...editing, model: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 text-white text-[11px] font-orbitron px-2 py-2 rounded-sm focus:outline-none focus:border-cyan-500/40"
+                    data-testid="dm-model"
+                  >
+                    <option value="ALL">ALL</option>
+                    {models.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="font-orbitron text-[8px] text-slate-500 tracking-wider mb-1 block">DETAILS TEXT *</label>
+                <textarea
+                  rows={5}
+                  value={editing.message}
+                  onChange={e => setEditing({ ...editing, message: e.target.value })}
+                  placeholder="e.g. Please reposition this AED to be visible from at least 3 meters away and unobstructed by furniture."
+                  className="w-full bg-slate-900 border border-slate-700 text-white text-[11px] px-3 py-2 rounded-sm focus:outline-none focus:border-cyan-500/40"
+                  data-testid="dm-message"
+                />
+              </div>
+              <div className="flex items-center gap-2 justify-end pt-2">
+                <button onClick={() => setEditing(null)} className="font-orbitron text-[9px] px-3 py-1.5 border border-slate-600 text-slate-300 rounded-sm hover:bg-slate-800" data-testid="dm-cancel">CANCEL</button>
+                <button onClick={save} disabled={saving} className="font-orbitron text-[9px] px-3 py-1.5 border border-emerald-500/40 text-emerald-400 rounded-sm hover:bg-emerald-500/10 disabled:opacity-50 inline-flex items-center gap-1.5" data-testid="dm-save">
+                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} SAVE
+                </button>
+              </div>
+              <div className="text-[10px] text-slate-500 leading-relaxed pt-3 border-t border-slate-800/60">
+                <strong className="text-cyan-400/80">HOW IT WORKS:</strong> When Mark composes a notification email, each AED row's "Details" column is auto-filled with the most specific template that matches the device's status, subscriber, and model. Specificity ranking: subscriber+model &gt; subscriber-only &gt; model-only &gt; ALL/ALL.
+              </div>
+            </div>
+          ) : loading ? (
+            <div className="flex items-center justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-cyan-400" /></div>
+          ) : items.length === 0 ? (
+            <div className="text-center py-16 text-slate-500 font-orbitron text-[11px]">
+              NO DETAIL MESSAGES YET<br />
+              <span className="text-[10px] text-slate-600 normal-case mt-2 block">Click ADD MESSAGE to create your first template.</span>
+            </div>
+          ) : (
+            <table className="w-full text-[11px]">
+              <thead className="border-b border-slate-800">
+                <tr>
+                  <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">STATUS</th>
+                  <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">SUBSCRIBER</th>
+                  <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">MODEL</th>
+                  <th className="text-left p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">DETAILS TEXT</th>
+                  <th className="text-right p-2 font-orbitron text-[8px] text-slate-400 tracking-wider">UPDATED</th>
+                  <th className="text-center p-2 font-orbitron text-[8px] text-slate-400 tracking-wider w-24">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(t => (
+                  <tr key={t.id} className="border-b border-slate-800/40 hover:bg-slate-900/40">
+                    <td className="p-2 font-orbitron text-[10px] text-cyan-300">{t.status}</td>
+                    <td className="p-2 text-slate-300">{t.subscriber}</td>
+                    <td className="p-2 text-slate-300">{t.model}</td>
+                    <td className="p-2 text-slate-200 max-w-[420px] truncate" title={t.message}>{t.message}</td>
+                    <td className="p-2 text-right text-slate-500 text-[10px] whitespace-nowrap">{t.updated_at ? new Date(t.updated_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}</td>
+                    <td className="p-2 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => setEditing(t)} className="text-cyan-400 hover:text-cyan-300 p-1" title="Edit" data-testid={`dm-edit-${t.id}`}><Pencil className="w-3 h-3" /></button>
+                        <button onClick={() => remove(t.id)} className="text-red-400 hover:text-red-300 p-1" title="Delete" data-testid={`dm-delete-${t.id}`}><Trash2 className="w-3 h-3" /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ContactsModal({ subscribers, onClose }) {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2471,6 +2707,8 @@ export default function SupportDashboard({ user, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [selectedSub, setSelectedSub] = useState(null);
   const [showContacts, setShowContacts] = useState(false);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showDetailMessages, setShowDetailMessages] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showTrackingTest, setShowTrackingTest] = useState(false);
   const [showEngagement, setShowEngagement] = useState(false);
@@ -2690,13 +2928,36 @@ export default function SupportDashboard({ user, onLogout }) {
           >
             <History className="w-3 h-3" /> HISTORY
           </button>
-          <button
-            onClick={() => setShowContacts(true)}
-            className="font-orbitron text-[8px] px-3 py-1.5 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 flex items-center gap-1.5"
-            data-testid="contacts-btn"
-          >
-            <Settings className="w-3 h-3" /> CONTACTS
-          </button>
+          <div className="relative" data-testid="settings-dropdown">
+            <button
+              onClick={() => setShowSettingsMenu(v => !v)}
+              className="font-orbitron text-[8px] px-3 py-1.5 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 flex items-center gap-1.5"
+              data-testid="settings-btn"
+            >
+              <Settings className="w-3 h-3" /> SETTINGS
+            </button>
+            {showSettingsMenu && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setShowSettingsMenu(false)} />
+                <div className="absolute right-0 top-full mt-1 z-40 bg-[#0a0f1c] border border-cyan-500/30 rounded-sm shadow-lg overflow-hidden min-w-[200px]">
+                  <button
+                    onClick={() => { setShowSettingsMenu(false); setShowContacts(true); }}
+                    className="w-full text-left font-orbitron text-[10px] px-4 py-2.5 text-slate-300 hover:bg-cyan-500/10 hover:text-cyan-400 flex items-center gap-2 border-b border-slate-800/60"
+                    data-testid="settings-contacts"
+                  >
+                    <Users className="w-3 h-3" /> CONTACTS
+                  </button>
+                  <button
+                    onClick={() => { setShowSettingsMenu(false); setShowDetailMessages(true); }}
+                    className="w-full text-left font-orbitron text-[10px] px-4 py-2.5 text-slate-300 hover:bg-cyan-500/10 hover:text-cyan-400 flex items-center gap-2"
+                    data-testid="settings-detail-messages"
+                  >
+                    <Mail className="w-3 h-3" /> DETAIL MESSAGES
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -3116,6 +3377,7 @@ export default function SupportDashboard({ user, onLogout }) {
         />
       )}
       {showContacts && <ContactsModal subscribers={subscribers} onClose={() => { setShowContacts(false); fetchData(); }} />}
+      {showDetailMessages && <DetailMessagesModal subscribers={subscribers} onClose={() => setShowDetailMessages(false)} />}
       {showHistory && <NotificationHistoryModal onClose={() => setShowHistory(false)} />}
       {showTrackingTest && <TrackingTestModal onClose={() => setShowTrackingTest(false)} />}
       {showEngagement && <SubscriberEngagementModal onClose={() => setShowEngagement(false)} />}

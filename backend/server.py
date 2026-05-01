@@ -3413,7 +3413,152 @@ async def aed_status_feedback_external(data: dict, current_user: dict = Depends(
 
 
 
+@api_router.get("/support/aed-models")
+async def list_aed_models(current_user: dict = Depends(get_current_user)):
+    """Return distinct AED model names found across all subscriber devices.
+    Used by the Detail Messages settings page model dropdown.
+    Combines current Readisys models with any models saved on existing detail-message templates.
+    """
+    models: set[str] = set()
+    try:
+        for d in await _db.notified_aeds.distinct("model"):
+            if isinstance(d, str) and d.strip():
+                models.add(d.strip())
+    except Exception:
+        pass
+    try:
+        for m in await _db.detail_messages.distinct("model"):
+            if isinstance(m, str) and m.strip() and m.strip().upper() != "ALL":
+                models.add(m.strip())
+    except Exception:
+        pass
+    # Always include common AED models so the dropdown is useful even on a fresh DB
+    common = {
+        "HeartSine 360P", "HeartSine 350P", "HeartSine 450P",
+        "Philips HeartStart FRx", "Philips HeartStart OnSite",
+        "ZOLL AED Plus", "ZOLL AED 3", "ZOLL AED Pro",
+        "Defibtech Lifeline", "Defibtech Lifeline VIEW",
+        "Cardiac Science Powerheart G5", "Cardiac Science Powerheart G3",
+        "Stryker LIFEPAK CR2", "Stryker LIFEPAK 1000",
+    }
+    return {"models": sorted(models | common)}
+
+
+@api_router.get("/support/detail-messages")
+async def list_detail_messages(current_user: dict = Depends(get_current_user)):
+    """Return all detail-message templates ordered by specificity (most specific first)."""
+    items = []
+    async for d in _db.detail_messages.find({}, {"_id": 0}).sort("updated_at", -1):
+        items.append(d)
+    return {"items": items}
+
+
+@api_router.post("/support/detail-messages")
+async def upsert_detail_message(data: dict, current_user: dict = Depends(get_current_user)):
+    """Create a new detail-message template OR update an existing one (when `id` provided).
+    Required: status, message. Optional: subscriber (default "ALL"), model (default "ALL").
+    """
+    import uuid
+    status = (data.get("status") or "").strip().upper()
+    message = (data.get("message") or "").strip()
+    subscriber = (data.get("subscriber") or "ALL").strip() or "ALL"
+    model = (data.get("model") or "ALL").strip() or "ALL"
+    if not status or not message:
+        raise HTTPException(status_code=400, detail="status and message are required")
+
+    item_id = data.get("id") or str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    username = current_user.get("username", "")
+
+    update_doc = {
+        "id": item_id,
+        "status": status,
+        "subscriber": subscriber,
+        "model": model,
+        "message": message,
+        "updated_at": now,
+        "updated_by": username,
+    }
+    existing = await _db.detail_messages.find_one({"id": item_id})
+    if not existing:
+        update_doc["created_at"] = now
+        update_doc["created_by"] = username
+
+    await _db.detail_messages.update_one(
+        {"id": item_id},
+        {"$set": update_doc},
+        upsert=True,
+    )
+    saved = await _db.detail_messages.find_one({"id": item_id}, {"_id": 0})
+    return saved
+
+
+@api_router.delete("/support/detail-messages/{item_id}")
+async def delete_detail_message(item_id: str, current_user: dict = Depends(get_current_user)):
+    res = await _db.detail_messages.delete_one({"id": item_id})
+    return {"deleted": res.deleted_count}
+
+
+@api_router.get("/support/detail-messages/lookup")
+async def lookup_detail_message(
+    status: str,
+    subscriber: str = "ALL",
+    model: str = "ALL",
+    current_user: dict = Depends(get_current_user),
+):
+    """Return the best-matching message for (status, subscriber, model).
+    Specificity ranking (highest first):
+      1. exact subscriber + exact model
+      2. exact subscriber + ALL model
+      3. ALL subscriber + exact model
+      4. ALL subscriber + ALL model
+    Returns 404 if nothing matches.
+    """
+    status = (status or "").strip().upper()
+    subscriber = (subscriber or "ALL").strip() or "ALL"
+    model = (model or "ALL").strip() or "ALL"
+    candidates = await _db.detail_messages.find(
+        {"status": status},
+        {"_id": 0},
+    ).to_list(length=500)
+    if not candidates:
+        raise HTTPException(status_code=404, detail="no template")
+
+    def score(t):
+        s = 0
+        if t.get("subscriber") == subscriber and subscriber != "ALL":
+            s += 4
+        if t.get("model") == model and model != "ALL":
+            s += 2
+        if t.get("subscriber") == "ALL" and subscriber != "ALL":
+            s += 0  # neutral fallback
+        if t.get("model") == "ALL" and model != "ALL":
+            s += 0
+        return s
+
+    matches = []
+    for t in candidates:
+        sub_ok = t.get("subscriber") == subscriber or t.get("subscriber") == "ALL"
+        mod_ok = t.get("model") == model or t.get("model") == "ALL"
+        if sub_ok and mod_ok:
+            matches.append(t)
+    if not matches:
+        raise HTTPException(status_code=404, detail="no template")
+    matches.sort(key=score, reverse=True)
+    return matches[0]
+
+
 @api_router.get("/support/device-notes/{sentinel_id}")
+async def get_device_notes(sentinel_id: str, current_user: dict = Depends(get_current_user)):
+    """Get notes for a specific device."""
+    doc = await _db.device_notes.find_one({"sentinel_id": sentinel_id}, {"_id": 0})
+    return doc or {"sentinel_id": sentinel_id, "notes": ""}
+
+
+@api_router.put("/support/device-notes/{sentinel_id}")
+async def save_device_notes_route(sentinel_id: str, data: dict, current_user: dict = Depends(get_current_user)):
+    return await save_device_notes(sentinel_id, data, current_user)
+
 
 @api_router.get("/support/device-detail/{subscriber}/{sentinel_id}")
 async def get_device_detail(subscriber: str, sentinel_id: str, current_user: dict = Depends(get_current_user)):
@@ -3444,13 +3589,7 @@ async def get_device_detail(subscriber: str, sentinel_id: str, current_user: dic
         return {"sentinel_id": sentinel_id, "_error": str(e)}
 
 
-async def get_device_notes(sentinel_id: str, current_user: dict = Depends(get_current_user)):
-    """Get notes for a specific device."""
-    doc = await _db.device_notes.find_one({"sentinel_id": sentinel_id}, {"_id": 0})
-    return doc or {"sentinel_id": sentinel_id, "notes": ""}
 
-
-@api_router.put("/support/device-notes/{sentinel_id}")
 async def save_device_notes(sentinel_id: str, data: dict, current_user: dict = Depends(get_current_user)):
     """Save or update notes for a device. Also forwards to Readisys internal-comments API."""
     subscriber = data.get("subscriber", "")
