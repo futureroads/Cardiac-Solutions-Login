@@ -5093,7 +5093,9 @@ async def backfill_readiness_daily(current_user: dict = Depends(get_current_user
 
 @api_router.get("/support/readiness-history")
 async def support_readiness_history(days: int = 7, current_user: dict = Depends(get_current_user)):
-    """Return the last N days of pct_ready + pct_ready_adjusted snapshots for sparklines."""
+    """Return the last N days of pct_ready + pct_ready_adjusted snapshots for sparklines.
+    Also computes per-day notified/resolved counts from notified_aeds for trend analysis.
+    """
     days = max(1, min(int(days), 60))
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
     points = []
@@ -5102,6 +5104,24 @@ async def support_readiness_history(days: int = 7, current_user: dict = Depends(
         {"_id": 0, "date": 1, "pct_ready": 1, "pct_ready_adjusted": 1},
     ).sort("date", 1):
         points.append(d)
+
+    # Per-day notified + resolved counts from notified_aeds
+    by_day_notified: dict[str, int] = {}
+    by_day_resolved: dict[str, int] = {}
+    async for r in _db.notified_aeds.aggregate([
+        {"$match": {"first_notified_at": {"$gte": cutoff + "T00:00:00"}}},
+        {"$group": {"_id": {"$substr": ["$first_notified_at", 0, 10]}, "n": {"$sum": 1}}},
+    ]):
+        by_day_notified[r["_id"]] = r["n"]
+    async for r in _db.notified_aeds.aggregate([
+        {"$match": {"resolved": True, "resolved_at": {"$gte": cutoff + "T00:00:00"}}},
+        {"$group": {"_id": {"$substr": ["$resolved_at", 0, 10]}, "n": {"$sum": 1}}},
+    ]):
+        by_day_resolved[r["_id"]] = r["n"]
+    for p in points:
+        p["notified_count"] = by_day_notified.get(p["date"], 0)
+        p["resolved_count"] = by_day_resolved.get(p["date"], 0)
+
     return {"days": days, "points": points}
 
 

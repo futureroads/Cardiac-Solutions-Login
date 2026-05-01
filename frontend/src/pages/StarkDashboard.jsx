@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoogleMap, useJsApiLoader, Marker, OverlayView } from "@react-google-maps/api";
-import { Loader2, Play, Pause, Maximize2, Minimize2, MapPin, LogOut, Mic, AlertTriangle, RefreshCw } from "lucide-react";
+import { Loader2, Play, Pause, Maximize2, Minimize2, MapPin, LogOut, Mic, AlertTriangle, RefreshCw, Activity, X } from "lucide-react";
 import { getLedColor, LED_STYLES, useServiceStatuses } from "@/data/serviceStatuses";
 import { ReadinessBreakdownModal } from "@/components/ReadinessBreakdownModal";
 import API_BASE from "@/apiBase";
@@ -78,6 +78,7 @@ export default function StarkDashboard({ user, onLogout }) {
   // Readiness data (actual + adjusted from support dashboard-data)
   const [readiness, setReadiness] = useState(null);
   const [readinessHistory, setReadinessHistory] = useState(null);
+  const [showTrendModal, setShowTrendModal] = useState(false);
   const [supportData, setSupportData] = useState(null);
   // Notifications sent today
   const [notifToday, setNotifToday] = useState(0);
@@ -587,10 +588,16 @@ export default function StarkDashboard({ user, onLogout }) {
                     };
                     if (adjSeries.length === 0 && actSeries.length === 0) return null;
                     return (
-                      <div className="flex items-start justify-center gap-3 mt-2">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setShowTrendModal(true); }}
+                        className="flex items-start justify-center gap-3 mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                        title="Click to expand 30-day readiness trend"
+                        data-testid="stark-trend-expand"
+                      >
                         {renderSpark(adjSeries, "ADJ 7-DAY", "stark-spark-adjusted")}
                         {renderSpark(actSeries, "ACT 7-DAY", "stark-spark-actual")}
-                      </div>
+                      </button>
                     );
                   })()}
                   <div className="font-orbitron text-[9px] text-cyan-400/70 tracking-wider mt-2">{stats.total.toLocaleString()} TOTAL AEDs</div>
@@ -853,6 +860,188 @@ export default function StarkDashboard({ user, onLogout }) {
       `}</style>
 
       {showReadinessBreakdown && <ReadinessBreakdownModal onClose={() => setShowReadinessBreakdown(false)} onDataLoaded={(r) => setReadiness(r)} />}
+      {showTrendModal && <ReadinessTrendModal token={token} onClose={() => setShowTrendModal(false)} />}
+    </div>
+  );
+}
+
+function ReadinessTrendModal({ token, onClose }) {
+  const [data, setData] = useState(null);
+  const [days, setDays] = useState(30);
+  const [hover, setHover] = useState(null); // index of hovered point
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`${API}/support/readiness-history?days=${days}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok && !cancelled) setData(await res.json());
+      } catch {}
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [days, token]);
+
+  const points = data?.points || [];
+  const W = 1100;
+  const H = 360;
+  const padL = 50, padR = 20, padT = 30, padB = 60;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+
+  const allVals = points.flatMap(p => [p.pct_ready, p.pct_ready_adjusted]).filter(v => v != null);
+  const lo = allVals.length ? Math.floor(Math.min(...allVals) - 2) : 0;
+  const hi = allVals.length ? Math.ceil(Math.max(...allVals) + 2) : 100;
+  const range = Math.max(1, hi - lo);
+  const xAt = (i) => points.length === 1 ? padL + innerW / 2 : padL + (i / (points.length - 1)) * innerW;
+  const yAt = (v) => padT + (1 - (v - lo) / range) * innerH;
+
+  const buildLine = (key) => points.map((p, i) => p[key] != null ? `${xAt(i)},${yAt(p[key])}` : null).filter(Boolean).join(" ");
+  const adjLine = buildLine("pct_ready_adjusted");
+  const actLine = buildLine("pct_ready");
+
+  const yTicks = [];
+  for (let i = 0; i <= 4; i++) yTicks.push(lo + (range * i) / 4);
+
+  const fmtDate = (s) => {
+    if (!s) return "";
+    const [, m, d] = s.split("-");
+    return `${parseInt(m, 10)}/${parseInt(d, 10)}`;
+  };
+  const xTickEvery = points.length <= 14 ? 1 : points.length <= 30 ? 3 : 5;
+
+  const hoverPt = hover != null && points[hover] ? points[hover] : null;
+  const netAdj = points.length >= 2 && points[0].pct_ready_adjusted != null && points[points.length - 1].pct_ready_adjusted != null
+    ? points[points.length - 1].pct_ready_adjusted - points[0].pct_ready_adjusted : null;
+  const netAct = points.length >= 2 && points[0].pct_ready != null && points[points.length - 1].pct_ready != null
+    ? points[points.length - 1].pct_ready - points[0].pct_ready : null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-full max-w-[1240px] max-h-[94vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="trend-modal">
+        <div className="border-b border-cyan-500/15 px-5 py-3 flex items-center justify-between bg-[rgba(6,10,20,0.95)]">
+          <div className="flex items-center gap-3">
+            <Activity className="w-4 h-4 text-cyan-400" />
+            <div>
+              <div className="font-orbitron text-sm tracking-wider text-cyan-400">READINESS TREND — {days} DAYS</div>
+              <div className="font-orbitron text-[8px] text-slate-500 tracking-wider">ADJUSTED vs ACTUAL · daily snapshots · hover any day for details</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {[7, 14, 30, 60].map(n => (
+              <button
+                key={n}
+                onClick={() => setDays(n)}
+                className={`font-orbitron text-[9px] px-2 py-1 rounded-sm border ${days === n ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-400" : "border-slate-700 text-slate-400 hover:border-slate-500"}`}
+                data-testid={`trend-days-${n}`}
+              >
+                {n}D
+              </button>
+            ))}
+            <button onClick={onClose} className="text-slate-500 hover:text-white ml-2"><X className="w-4 h-4" /></button>
+          </div>
+        </div>
+
+        <div className="border-b border-slate-800/60 px-5 py-3 grid grid-cols-4 gap-3 bg-slate-950/40">
+          <div className="text-center">
+            <div className="font-orbitron text-2xl font-black text-emerald-400">{points.length ? `${(points[points.length - 1].pct_ready_adjusted ?? 0).toFixed(1)}%` : "—"}</div>
+            <div className="font-orbitron text-[8px] tracking-wider text-slate-500 uppercase mt-0.5">CURRENT ADJUSTED</div>
+          </div>
+          <div className="text-center">
+            <div className="font-orbitron text-2xl font-black text-slate-300">{points.length ? `${(points[points.length - 1].pct_ready ?? 0).toFixed(1)}%` : "—"}</div>
+            <div className="font-orbitron text-[8px] tracking-wider text-slate-500 uppercase mt-0.5">CURRENT ACTUAL</div>
+          </div>
+          <div className="text-center">
+            <div className={`font-orbitron text-2xl font-black ${netAdj == null ? "text-slate-600" : Math.abs(netAdj) < 0.05 ? "text-sky-400" : netAdj > 0 ? "text-emerald-400" : "text-red-400"}`}>
+              {netAdj == null ? "—" : `${netAdj >= 0 ? "+" : ""}${netAdj.toFixed(1)}`}
+            </div>
+            <div className="font-orbitron text-[8px] tracking-wider text-slate-500 uppercase mt-0.5">{days}-DAY ADJ Δ</div>
+          </div>
+          <div className="text-center">
+            <div className={`font-orbitron text-2xl font-black ${netAct == null ? "text-slate-600" : Math.abs(netAct) < 0.05 ? "text-sky-400" : netAct > 0 ? "text-emerald-400" : "text-red-400"}`}>
+              {netAct == null ? "—" : `${netAct >= 0 ? "+" : ""}${netAct.toFixed(1)}`}
+            </div>
+            <div className="font-orbitron text-[8px] tracking-wider text-slate-500 uppercase mt-0.5">{days}-DAY ACT Δ</div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto p-5">
+          {loading ? (
+            <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-cyan-400" /></div>
+          ) : points.length === 0 ? (
+            <div className="text-center py-20 text-slate-500 font-orbitron text-[11px]">NO DATA YET FOR THE SELECTED WINDOW</div>
+          ) : (
+            <>
+              <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: "440px" }} onMouseLeave={() => setHover(null)}>
+                {yTicks.map((tv, i) => (
+                  <g key={i}>
+                    <line x1={padL} y1={yAt(tv)} x2={W - padR} y2={yAt(tv)} stroke="#1e293b" strokeWidth="0.5" strokeDasharray="3 4" />
+                    <text x={padL - 8} y={yAt(tv) + 3} textAnchor="end" fill="#64748b" fontSize="10" fontFamily="Orbitron, monospace">{tv.toFixed(0)}%</text>
+                  </g>
+                ))}
+                {points.map((p, i) => i % xTickEvery === 0 ? (
+                  <g key={i}>
+                    <line x1={xAt(i)} y1={padT + innerH} x2={xAt(i)} y2={padT + innerH + 4} stroke="#475569" strokeWidth="0.5" />
+                    <text x={xAt(i)} y={padT + innerH + 16} textAnchor="middle" fill="#64748b" fontSize="9" fontFamily="Orbitron, monospace">{fmtDate(p.date)}</text>
+                  </g>
+                ) : null)}
+                {actLine && <polyline fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 3" points={actLine} />}
+                {adjLine && <polyline fill="none" stroke="#22c55e" strokeWidth="2.2" points={adjLine} />}
+                {points.map((p, i) => (
+                  <g key={i}>
+                    {p.pct_ready != null && <circle cx={xAt(i)} cy={yAt(p.pct_ready)} r="2" fill="#94a3b8" />}
+                    {p.pct_ready_adjusted != null && <circle cx={xAt(i)} cy={yAt(p.pct_ready_adjusted)} r="2.5" fill="#22c55e" />}
+                    <rect x={xAt(i) - innerW / points.length / 2} y={padT} width={Math.max(8, innerW / points.length)} height={innerH} fill="transparent" onMouseEnter={() => setHover(i)} style={{ cursor: "crosshair" }} />
+                  </g>
+                ))}
+                {hover != null && points[hover] && (
+                  <line x1={xAt(hover)} y1={padT} x2={xAt(hover)} y2={padT + innerH} stroke="#06b6d4" strokeWidth="1" strokeDasharray="2 3" opacity="0.8" />
+                )}
+                {/* Legend */}
+                <g transform={`translate(${padL + 6}, ${padT + 6})`}>
+                  <rect width="180" height="38" fill="#020617" stroke="#1e293b" strokeWidth="0.5" rx="2" opacity="0.92" />
+                  <line x1="10" y1="14" x2="30" y2="14" stroke="#22c55e" strokeWidth="2.2" />
+                  <text x="36" y="17" fill="#22c55e" fontSize="10" fontFamily="Orbitron, monospace">ADJUSTED %</text>
+                  <line x1="10" y1="28" x2="30" y2="28" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 3" />
+                  <text x="36" y="31" fill="#94a3b8" fontSize="10" fontFamily="Orbitron, monospace">ACTUAL %</text>
+                </g>
+              </svg>
+
+              {/* Hover panel */}
+              <div className="mt-3 grid grid-cols-5 gap-3 text-center">
+                {hoverPt ? (
+                  <>
+                    <div className="border border-cyan-500/30 bg-cyan-500/5 rounded-sm p-2">
+                      <div className="font-orbitron text-[9px] text-cyan-400">{fmtDate(hoverPt.date)} · {hoverPt.date.slice(0, 4)}</div>
+                      <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mt-1">SELECTED DAY</div>
+                    </div>
+                    <div className="border border-emerald-500/30 bg-emerald-500/5 rounded-sm p-2">
+                      <div className="font-orbitron text-base font-bold text-emerald-400">{hoverPt.pct_ready_adjusted != null ? `${hoverPt.pct_ready_adjusted.toFixed(1)}%` : "—"}</div>
+                      <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mt-1">ADJUSTED</div>
+                    </div>
+                    <div className="border border-slate-500/30 bg-slate-500/5 rounded-sm p-2">
+                      <div className="font-orbitron text-base font-bold text-slate-300">{hoverPt.pct_ready != null ? `${hoverPt.pct_ready.toFixed(1)}%` : "—"}</div>
+                      <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mt-1">ACTUAL</div>
+                    </div>
+                    <div className="border border-cyan-500/30 bg-cyan-500/5 rounded-sm p-2">
+                      <div className="font-orbitron text-base font-bold text-cyan-400">{hoverPt.notified_count || 0}</div>
+                      <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mt-1">AEDs NOTIFIED</div>
+                    </div>
+                    <div className="border border-emerald-500/30 bg-emerald-500/5 rounded-sm p-2">
+                      <div className="font-orbitron text-base font-bold text-emerald-400">{hoverPt.resolved_count || 0}</div>
+                      <div className="font-orbitron text-[7px] text-slate-500 tracking-wider mt-1">AEDs RESOLVED</div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="col-span-5 text-center font-orbitron text-[10px] text-slate-500 tracking-wider py-3">HOVER ANY DAY ON THE CHART TO SEE DETAILS</div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
