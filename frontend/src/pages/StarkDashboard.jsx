@@ -110,16 +110,19 @@ export default function StarkDashboard({ user, onLogout }) {
 
   // AEDA tool: "show_aeds_on_map" — driven by voice commands like
   // "show me where Georgia Power's AEDs are"
+  const aliasMapRef = useRef({});
   const handleAedaShowAedsOnMap = useCallback((subscriberName) => {
-    const wanted = (subscriberName || "").trim().toLowerCase();
-    // Fuzzy match against the dropdown list — fall back to "all" if unknown
-    const match = aedSubscribersList.find(s =>
-      s.toLowerCase() === wanted ||
-      s.toLowerCase().includes(wanted) ||
-      wanted.includes(s.toLowerCase())
-    );
-    const resolved = match || (wanted && wanted !== "all" ? subscriberName : "all");
-    console.log(`[AEDA tool] show_aeds_on_map -> subscriber="${subscriberName}" resolved="${resolved}"`);
+    const raw = (subscriberName || "").trim();
+    const lower = raw.toLowerCase();
+    // Apply alias map first (e.g., "Franklin County Sheriff" -> "County of Franklin")
+    const aliasHit = aliasMapRef.current[lower];
+    const aliased = aliasHit || raw;
+    // Fuzzy match against the actual dropdown list
+    const list = aedSubscribersList || [];
+    const exact = list.find(s => s.toLowerCase() === aliased.toLowerCase());
+    const partial = !exact && list.find(s => s.toLowerCase().includes(aliased.toLowerCase()) || aliased.toLowerCase().includes(s.toLowerCase()));
+    const resolved = exact || partial || (lower === "all" ? "all" : aliased);
+    console.log(`[AEDA tool] show_aeds_on_map raw="${raw}" alias="${aliasHit||'(none)'}" -> resolved="${resolved}" (list size=${list.length})`);
     setMapMode("aeds");
     setAedSubscriber(resolved);
     setMapFullscreen(true);
@@ -168,7 +171,10 @@ export default function StarkDashboard({ user, onLogout }) {
       try {
         const sessionJson = await sessionRes.clone().json();
         briefingText = sessionJson?.aeda_briefing || "";
-        console.log("[AEDA] session OK, briefing length:", briefingText.length);
+        if (sessionJson?.aeda_aliases && typeof sessionJson.aeda_aliases === "object") {
+          aliasMapRef.current = sessionJson.aeda_aliases;
+        }
+        console.log("[AEDA] session OK, briefing length:", briefingText.length, "aliases:", Object.keys(aliasMapRef.current || {}).length);
       } catch {}
 
       // 2) Create WebRTC peer connection + remote audio sink

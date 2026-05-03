@@ -5236,6 +5236,16 @@ _status_cache = {"data": None, "ts": 0}
 # Cached per-subscriber summary populated by /api/support/dashboard-data so AEDA
 # can answer "how is GPC doing?" without re-fanning out per-subscriber API calls.
 _aeda_sub_cache = {"subs": [], "ts": 0}
+
+# Friendly aliases the operator may say out loud → canonical subscriber name.
+# Both AEDA's briefing and the frontend map-tool resolver consume this list.
+SUBSCRIBER_ALIASES = {
+    "franklin county sheriff": "County of Franklin",
+    "franklin county": "County of Franklin",
+    "georgia power company": "Georgia Power",
+    "g p c": "GPC",
+    "g.p.c.": "GPC",
+}
 _bp_cache = {"data": None, "ts": 0}
 
 @api_router.get("/status-overview")
@@ -6174,12 +6184,18 @@ async def _build_aeda_fleet_briefing() -> str:
         if known_subs:
             lines.append("")
             lines.append(f"KNOWN SUBSCRIBERS (use exact spelling for tool calls): {', '.join(known_subs)}")
+        # Alias table — operator's spoken name → canonical subscriber name
+        if SUBSCRIBER_ALIASES:
+            lines.append("")
+            lines.append("SUBSCRIBER ALIASES (when the operator says the LEFT side, treat it as the RIGHT side for both questions and tool calls):")
+            for spoken, canonical in SUBSCRIBER_ALIASES.items():
+                lines.append(f'   "{spoken}" -> "{canonical}"')
         lines.append("")
         lines.append("SUBSCRIBER STATUS ANSWER TEMPLATE (use when operator asks 'how is {subscriber} doing?', 'status of {subscriber}', etc):")
         lines.append('   "{subscriber} is at X percent ready. They have M total AEDs, with N active issues: [list issue types and counts]."')
-        lines.append("If the operator asks about a subscriber not in the list above, say you don't see active data for them in this session and suggest they open the Support Dashboard.")
+        lines.append("If the operator asks about a subscriber not in the list above (and not in aliases), say you don't see active data for them in this session and suggest they open the Support Dashboard.")
         lines.append("")
-        lines.append("MAP COMMAND: If the operator asks to 'show me where [subscriber]'s AEDs are', 'find [subscriber] on the map', 'pull up [subscriber] on the map', or similar, CALL the show_aeds_on_map tool with the matched subscriber name. Briefly acknowledge verbally (e.g., 'Pulling up Georgia Power on the map now.'). Match the operator's spoken name to the closest known subscriber above — e.g., 'Georgia Power' matches 'GPC' if that's the only match.")
+        lines.append("MAP COMMAND (CRITICAL — YOU MUST CALL THE TOOL): When the operator asks to 'show', 'pull up', 'find', 'display', or 'open' a subscriber on the map, you MUST call the show_aeds_on_map tool with the canonical subscriber name. Do NOT just describe what you would do — actually invoke the tool. After invoking, acknowledge briefly (e.g., 'Pulling up Georgia Power on the map now.'). Apply SUBSCRIBER ALIASES first to resolve the operator's spoken name to a canonical name (e.g., 'Franklin County Sheriff' -> tool argument 'County of Franklin').")
         return "\n".join(lines)
     except Exception as e:
         print(f"[AEDA-Brief] build error: {e}", flush=True)
@@ -6254,6 +6270,7 @@ async def aeda_realtime_session():
                 # Attach the live fleet briefing so the client can push it as a
                 # conversation history item once the WebRTC data channel opens.
                 data["aeda_briefing"] = briefing
+                data["aeda_aliases"] = SUBSCRIBER_ALIASES
                 return data
     except HTTPException:
         raise
