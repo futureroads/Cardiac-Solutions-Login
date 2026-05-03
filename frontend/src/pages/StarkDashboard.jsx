@@ -114,10 +114,8 @@ export default function StarkDashboard({ user, onLogout }) {
   const handleAedaShowAedsOnMap = useCallback((subscriberName) => {
     const raw = (subscriberName || "").trim();
     const lower = raw.toLowerCase();
-    // Apply alias map first (e.g., "Franklin County Sheriff" -> "County of Franklin")
     const aliasHit = aliasMapRef.current[lower];
     const aliased = aliasHit || raw;
-    // aedSubscribersList items are {subscriber, aed_count} — extract names
     const names = (aedSubscribersList || []).map(s => typeof s === "string" ? s : (s?.subscriber || "")).filter(Boolean);
     const exact = names.find(n => n.toLowerCase() === aliased.toLowerCase());
     const partial = !exact && names.find(n => n.toLowerCase().includes(aliased.toLowerCase()) || aliased.toLowerCase().includes(n.toLowerCase()));
@@ -130,6 +128,64 @@ export default function StarkDashboard({ user, onLogout }) {
     setHoveredId(null);
     return { ok: true, resolved_subscriber: resolved, requested: subscriberName };
   }, [aedSubscribersList]);
+
+  // AEDA tool: "find_aeds_near_location" — driven by "are there any AEDs near
+  // Waycross, Georgia?" type queries
+  const handleAedaFindNearLocation = useCallback(async (location, radiusMiles = 10) => {
+    console.log(`[AEDA tool] find_aeds_near_location location="${location}" radius=${radiusMiles}`);
+    try {
+      const params = new URLSearchParams({ location, radius_miles: String(radiusMiles), limit: "5" });
+      const res = await fetch(`${API}/aeda/aeds-near?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        const t = await res.text();
+        console.error("[AEDA tool] aeds-near HTTP", res.status, t);
+        return { ok: false, error: `lookup failed (${res.status})` };
+      }
+      const data = await res.json();
+      console.log("[AEDA tool] aeds-near result:", data);
+      if (!data.ok || data.count === 0) {
+        return { ok: false, voice_answer: data.voice_answer || `No AEDs found near ${location}.`, count: 0 };
+      }
+      // Drive the map: switch to AEDs mode, show all subscribers, zoom to query
+      setMapMode("aeds");
+      setAedSubscriber("all");
+      setMapFullscreen(true);
+      // Fly the map to the query coords + open the closest AED popup
+      const top = data.aeds[0];
+      setTimeout(() => {
+        try {
+          if (mapRef.current && window.google) {
+            mapRef.current.panTo({ lat: data.query_lat, lng: data.query_lng });
+            mapRef.current.setZoom(11);
+          }
+        } catch (e) { console.warn("[AEDA tool] map pan failed", e); }
+        // The popup key format is `aed-${sentinel_id}-${index}`; defer until aedPins
+        // re-loads after subscriber switch. The pinSelector effect below handles it.
+        if (top?.sentinel_id) pendingSelectAedRef.current = top.sentinel_id;
+      }, 600);
+      return {
+        ok: true,
+        voice_answer: data.voice_answer,
+        count: data.count,
+        closest: top,
+      };
+    } catch (e) {
+      console.error("[AEDA tool] aeds-near exception:", e);
+      return { ok: false, error: e.message || String(e) };
+    }
+  }, [token]);
+
+  // Pending sentinel ID to auto-select once aedPins are loaded for that area
+  const pendingSelectAedRef = useRef(null);
+  useEffect(() => {
+    const sid = pendingSelectAedRef.current;
+    if (!sid || !aedPins?.length) return;
+    const idx = aedPins.findIndex(p => p.sentinel_id === sid);
+    if (idx >= 0) {
+      setSelectedId(`aed-${sid}-${idx}`);
+      pendingSelectAedRef.current = null;
+    }
+  }, [aedPins]);
 
   // AEDA Realtime Voice (OpenAI Realtime API over WebRTC)
   const stopAeda = useCallback(() => {
@@ -304,7 +360,7 @@ export default function StarkDashboard({ user, onLogout }) {
           }));
         } catch (e) { console.error("[AEDA] greet send failed", e); }
       };
-      dc.onmessage = (e) => {
+      dc.onmessage = async (e) => {
         try {
           const evt = JSON.parse(e.data);
           // Firehose log — every event type OpenAI sends us (helps diagnose turn-taking)
@@ -338,27 +394,35 @@ export default function StarkDashboard({ user, onLogout }) {
             // fire the handler directly without waiting for AEDA's tool call.
             try {
               const t = txt.toLowerCase();
-              const wantsMap = /(show|pull up|find|display|open|where|locate|locations? for)\b.*\b(map|aeds?)\b/i.test(t)
-                || /\b(map|aeds?)\b.*\b(for|of)\b/i.test(t)
-                || /show me where .*(aeds?|map)/i.test(t);
-              if (wantsMap) {
-                // Try to extract subscriber name — match against known list + aliases
-                const knownNames = (aedSubscribersList || []).map(s => typeof s === "string" ? s : (s?.subscriber || "")).filter(Boolean);
-                const aliasEntries = Object.entries(aliasMapRef.current || {});
-                const findMatch = () => {
-                  for (const [spoken, canonical] of aliasEntries) {
-                    if (t.includes(spoken)) return canonical;
+              // Detect "near <location>" intent first (most specific)
+              const nearMatch = t.match(/\b(near|around|by|in|close to)\s+([a-z0-9 ,.'-]{3,80})\??\s*$/i);
+              const aedKeyword = /\baeds?\b|\bdefibrillator/i.test(t);
+              if (nearMatch && aedKeyword) {
+                const loc = nearMatch[2].trim().replace(/\.$/, "");
+                console.log(`[AEDA fallback] location intent detected -> "${loc}"`);
+                handleAedaFindNearLocation(loc, 10);
+              } else {
+                const wantsMap = /(show|pull up|find|display|open|where|locate|locations? for)\b.*\b(map|aeds?)\b/i.test(t)
+                  || /\b(map|aeds?)\b.*\b(for|of)\b/i.test(t)
+                  || /show me where .*(aeds?|map)/i.test(t);
+                if (wantsMap) {
+                  const knownNames = (aedSubscribersList || []).map(s => typeof s === "string" ? s : (s?.subscriber || "")).filter(Boolean);
+                  const aliasEntries = Object.entries(aliasMapRef.current || {});
+                  const findMatch = () => {
+                    for (const [spoken, canonical] of aliasEntries) {
+                      if (t.includes(spoken)) return canonical;
+                    }
+                    for (const name of knownNames) {
+                      if (t.includes(name.toLowerCase())) return name;
+                    }
+                    return null;
+                  };
+                  const matched = findMatch();
+                  console.log(`[AEDA fallback] map intent detected, knownNames=${knownNames.length}, matched=`, matched);
+                  if (matched) {
+                    console.log(`[AEDA fallback] triggering map handler for "${matched}"`);
+                    handleAedaShowAedsOnMap(matched);
                   }
-                  for (const name of knownNames) {
-                    if (t.includes(name.toLowerCase())) return name;
-                  }
-                  return null;
-                };
-                const matched = findMatch();
-                console.log(`[AEDA fallback] map intent detected, knownNames=${knownNames.length}, matched=`, matched);
-                if (matched) {
-                  console.log(`[AEDA fallback] triggering map handler for "${matched}"`);
-                  handleAedaShowAedsOnMap(matched);
                 }
               }
             } catch (e) { console.warn("[AEDA fallback] match err", e); }
@@ -379,6 +443,8 @@ export default function StarkDashboard({ user, onLogout }) {
             let result = { ok: false, error: "unknown tool" };
             if (name === "show_aeds_on_map") {
               result = handleAedaShowAedsOnMap(args.subscriber || "all");
+            } else if (name === "find_aeds_near_location") {
+              result = await handleAedaFindNearLocation(args.location || "", args.radius_miles || 10);
             }
             // Return the tool output so AEDA can continue her response
             try {
@@ -427,7 +493,7 @@ export default function StarkDashboard({ user, onLogout }) {
       setVoiceError(err.message || String(err));
       stopAeda();
     }
-  }, [isListening, stopAeda, handleAedaShowAedsOnMap, freshUser]);
+  }, [isListening, stopAeda, handleAedaShowAedsOnMap, handleAedaFindNearLocation, freshUser]);
 
   // Clean up on unmount
   useEffect(() => () => stopAeda(), [stopAeda]);

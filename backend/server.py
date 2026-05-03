@@ -4459,6 +4459,114 @@ async def voice_aeds_near(
     }
 
 
+@api_router.get("/aeda/aeds-near")
+async def aeda_aeds_near(
+    location: str | None = None,
+    radius_miles: float = 10.0,
+    limit: int = 5,
+    current_user: dict = Depends(get_current_user),
+):
+    """JWT-authenticated wrapper around /api/voice/aeds-near so AEDA can be
+    invoked from the browser without exposing the voice API key."""
+    radius_miles = max(0.1, min(float(radius_miles), 500.0))
+    limit = max(1, min(int(limit), 50))
+    if not location:
+        raise HTTPException(status_code=400, detail="'location' is required")
+
+    g = await _geocode_text(location)
+    if not g:
+        return {
+            "ok": False, "reason": "geocode_failed",
+            "query": location,
+            "voice_answer": f"I couldn't find a location matching {location}.",
+            "aeds": [], "count": 0,
+        }
+    query_lat, query_lng, formatted = g["lat"], g["lng"], g["formatted"]
+
+    cursor = _db.subscriber_map_locations.find(
+        {"latitude": {"$ne": None}, "longitude": {"$ne": None}},
+        {"_id": 0},
+    )
+    all_aeds = [doc async for doc in cursor]
+    nearby: list[dict] = []
+    for a in all_aeds:
+        try:
+            dist = _haversine_miles(query_lat, query_lng, float(a["latitude"]), float(a["longitude"]))
+        except Exception:
+            continue
+        if dist <= radius_miles:
+            nearby.append({**a, "_distance": dist})
+    nearby.sort(key=lambda x: x["_distance"])
+    nearby = nearby[:limit]
+
+    # Pull live status only for the closest AED's subscriber (fast, single call)
+    import httpx, urllib.parse
+    status_map: dict[str, dict[str, str]] = {}
+    if nearby:
+        sub_name = nearby[0].get("subscriber") or ""
+        if sub_name:
+            try:
+                async with httpx.AsyncClient(timeout=12) as client:
+                    enc = urllib.parse.quote(sub_name)
+                    resp = await client.get(
+                        f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc}/devices?limit=500",
+                        headers=_readisys_auth_headers(),
+                    )
+                    if resp.status_code == 200:
+                        devs = resp.json().get("devices", []) or []
+                        status_map[sub_name] = {
+                            d.get("sentinel_id", ""): (d.get("detailed_status") or "").strip().upper()
+                            for d in devs if d.get("sentinel_id")
+                        }
+            except Exception as e:
+                logger.warning(f"[aeda/aeds-near] status fetch failed: {e}")
+                status_map[sub_name] = {}
+
+    results = []
+    for a in nearby:
+        sub = a.get("subscriber") or ""
+        sid = a.get("sentinel_id") or ""
+        status = status_map.get(sub, {}).get(sid) or "UNKNOWN"
+        distance = round(float(a["_distance"]), 2)
+        results.append({
+            "sentinel_id": sid,
+            "subscriber": sub,
+            "status": status,
+            "site": a.get("site") or "",
+            "building": a.get("building") or "",
+            "placement_location": a.get("placement_location") or "",
+            "address": a.get("formatted_address") or a.get("clean_address") or "",
+            "latitude": a.get("latitude"),
+            "longitude": a.get("longitude"),
+            "distance_miles": distance,
+        })
+
+    if not results:
+        voice_answer = f"There are no AEDs within {int(radius_miles)} miles of {formatted}."
+    else:
+        top = results[0]
+        loc_phrase = top["address"] or top["site"] or top["subscriber"]
+        status_phrase = _status_human(top["status"])
+        voice_answer = (
+            f"I found {len(results)} AED{'s' if len(results) != 1 else ''} within "
+            f"{int(radius_miles)} miles of {formatted}. The closest is at "
+            f"{top['subscriber']} — {loc_phrase}, about {top['distance_miles']} miles away, "
+            f"currently {status_phrase}."
+        )
+
+    return {
+        "ok": True,
+        "query": location,
+        "query_lat": query_lat,
+        "query_lng": query_lng,
+        "query_formatted": formatted,
+        "radius_miles": radius_miles,
+        "count": len(results),
+        "voice_answer": voice_answer,
+        "aeds": results,
+    }
+
+
 @api_router.get("/support/image-download")
 async def image_download_proxy(url: str, current_user: dict = Depends(get_current_user)):
     """Proxy to download an AED image from Readisys S3 with auth."""
@@ -6201,6 +6309,8 @@ async def _build_aeda_fleet_briefing() -> str:
         lines.append("If the operator asks about a subscriber not in the list above (and not in aliases), say you don't see active data for them in this session and suggest they open the Support Dashboard.")
         lines.append("")
         lines.append("MAP COMMAND (CRITICAL — YOU MUST CALL THE TOOL): When the operator asks to 'show', 'pull up', 'find', 'display', or 'open' a subscriber on the map, you MUST call the show_aeds_on_map tool with the canonical subscriber name. Do NOT just describe what you would do — actually invoke the tool. After invoking, acknowledge briefly (e.g., 'Pulling up Georgia Power on the map now.'). Apply SUBSCRIBER ALIASES first to resolve the operator's spoken name to a canonical name (e.g., 'Franklin County Sheriff' -> tool argument 'County of Franklin').")
+        lines.append("")
+        lines.append("LOCATION COMMAND (CRITICAL — YOU MUST CALL THE TOOL): When the operator asks ANY question about AEDs near a geographic place (any city, town, ZIP, address, or landmark — e.g., 'Are there any AEDs near Waycross, Georgia?', 'Show me AEDs near Atlanta', 'Any AEDs in Macon?'), you MUST call the find_aeds_near_location tool with the spoken location string and an optional radius_miles. After the tool returns, READ THE voice_answer FROM ITS RESULT VERBATIM. Do not invent locations. The frontend will zoom the map to that place and open the closest AED's info popup automatically.")
         return "\n".join(lines)
     except Exception as e:
         print(f"[AEDA-Brief] build error: {e}", flush=True)
@@ -6260,7 +6370,26 @@ async def aeda_realtime_session():
                                 },
                                 "required": ["subscriber"],
                             },
-                        }
+                        },
+                        {
+                            "type": "function",
+                            "name": "find_aeds_near_location",
+                            "description": "Find AEDs near a specific geographic location (city, address, ZIP code, etc.). Call this when the operator asks 'are there any AEDs near [location]?', 'show me AEDs near [location]', 'find AEDs in/around [location]', or similar. The frontend will geocode the location, zoom the map there, drop a marker, and open the closest AED's popup automatically. Use this for ANY location-based query, including small towns the system may not have heard of.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "location": {
+                                        "type": "string",
+                                        "description": "Free-text location: city, address, ZIP, or landmark (e.g. 'Waycross, GA', '30501', 'Atlanta airport').",
+                                    },
+                                    "radius_miles": {
+                                        "type": "number",
+                                        "description": "Search radius in miles. Default 10. Use 25 for sparser areas.",
+                                    },
+                                },
+                                "required": ["location"],
+                            },
+                        },
                     ],
                     "tool_choice": "auto",
                 },
