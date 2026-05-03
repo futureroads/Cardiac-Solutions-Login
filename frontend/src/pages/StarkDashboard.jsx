@@ -339,11 +339,11 @@ export default function StarkDashboard({ user, onLogout }) {
               input_audio_transcription: { model: "whisper-1" },
               turn_detection: {
                 type: "server_vad",
-                threshold: 0.5,
+                threshold: 0.75,
                 prefix_padding_ms: 300,
-                silence_duration_ms: 500,
+                silence_duration_ms: 700,
                 create_response: true,
-                interrupt_response: true,
+                interrupt_response: false,
               },
             },
           }));
@@ -468,9 +468,14 @@ export default function StarkDashboard({ user, onLogout }) {
           } else if (evt.type === "response.audio.delta" || evt.type === "output_audio_buffer.started" || evt.type === "response.output_audio.delta") {
             setIsSpeaking(true);
             isSpeakingRef.current = true;
+            // Mute mic while AEDA is speaking so background noise / her own
+            // audio doesn't trip server VAD and cut her off.
+            try { micStreamRef.current?.getAudioTracks()?.forEach(t => { t.enabled = false; }); } catch {}
           } else if (evt.type === "response.done" || evt.type === "output_audio_buffer.stopped" || evt.type === "response.audio.done") {
             setIsSpeaking(false);
             isSpeakingRef.current = false;
+            // Re-enable mic once AEDA finishes speaking
+            try { micStreamRef.current?.getAudioTracks()?.forEach(t => { t.enabled = true; }); } catch {}
           } else if (evt.type === "response.function_call_arguments.done") {
             // AEDA invoked a tool — route by name
             const name = evt.name;

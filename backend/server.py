@@ -6326,13 +6326,16 @@ async def aeda_realtime_session():
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
     try:
-        # Always refresh fleet briefing cache for every session so AEDA's numbers
-        # match the live dashboard (no 5-min staleness).
-        try:
-            await asyncio.wait_for(_support_dashboard_data_core(), timeout=10)
-            logger.info(f"[AEDA-Cache] refreshed for session ({len(_aeda_sub_cache.get('subs', []))} subs)")
-        except Exception as e:
-            logger.warning(f"[AEDA-Cache] on-demand refresh failed: {e}")
+        # Use the warmer-maintained cache (refreshed every 5 min in background).
+        # Doing a synchronous full refresh here adds 10+ seconds of mic-click
+        # latency. If cache is empty (cold boot), kick a refresh in the
+        # background and proceed with whatever we have.
+        if not _aeda_sub_cache.get("subs"):
+            try:
+                asyncio.create_task(_support_dashboard_data_core())
+                logger.info("[AEDA-Cache] cold cache — kicked background refresh")
+            except Exception as e:
+                logger.warning(f"[AEDA-Cache] background refresh kick failed: {e}")
 
         # Build live fleet briefing (pushed as a conversation item by the
         # client after the WebRTC data channel opens — keeps session
@@ -6352,11 +6355,11 @@ async def aeda_realtime_session():
                     "input_audio_transcription": {"model": "whisper-1"},
                     "turn_detection": {
                         "type": "server_vad",
-                        "threshold": 0.5,
+                        "threshold": 0.75,
                         "prefix_padding_ms": 300,
-                        "silence_duration_ms": 400,
+                        "silence_duration_ms": 700,
                         "create_response": True,
-                        "interrupt_response": True,
+                        "interrupt_response": False,
                     },
                     "tools": [
                         {
