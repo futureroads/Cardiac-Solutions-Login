@@ -38,16 +38,20 @@ export default function StarkDashboard({ user, onLogout }) {
   const [freshUser, setFreshUser] = useState(user);
 
   // Voice state (OpenAI Realtime — AEDA)
-  const [isListening, setIsListening] = useState(false);   // session active (mic open)
-  const [isSpeaking, setIsSpeaking] = useState(false);     // AEDA currently speaking
-  const [isHearingUser, setIsHearingUser] = useState(false); // user voice being detected (VAD)
-  const [lastHeardText, setLastHeardText] = useState("");  // transcript of user's last utterance
-  const [voiceError, setVoiceError] = useState("");        // visible error status
+  const [isListening, setIsListening] = useState(false);    // session active (mic open)
+  const [isSpeaking, setIsSpeaking] = useState(false);      // AEDA currently speaking
+  const [isHearingUser, setIsHearingUser] = useState(false); // OpenAI server-VAD reports speech
+  const [micLevel, setMicLevel] = useState(0);              // local browser mic amplitude 0–100
+  const [lastHeardText, setLastHeardText] = useState("");   // Whisper transcript
+  const [voiceError, setVoiceError] = useState("");         // visible error status
   const pcRef = useRef(null);
   const micStreamRef = useRef(null);
   const audioElRef = useRef(null);
   const dcRef = useRef(null);
   const isSpeakingRef = useRef(false);
+  const audioCtxRef = useRef(null);
+  const analyserRef = useRef(null);
+  const rafRef = useRef(null);
 
   // Map state
   const [mapSubs, setMapSubs] = useState([]);
@@ -113,13 +117,19 @@ export default function StarkDashboard({ user, onLogout }) {
     } catch {}
     try { micStreamRef.current?.getTracks()?.forEach((t) => t.stop()); } catch {}
     try { if (audioElRef.current) { audioElRef.current.srcObject = null; audioElRef.current.remove(); } } catch {}
+    try { if (rafRef.current) cancelAnimationFrame(rafRef.current); } catch {}
+    try { audioCtxRef.current?.close(); } catch {}
     pcRef.current = null;
     dcRef.current = null;
     micStreamRef.current = null;
     audioElRef.current = null;
+    audioCtxRef.current = null;
+    analyserRef.current = null;
+    rafRef.current = null;
     setIsListening(false);
     setIsSpeaking(false);
     setIsHearingUser(false);
+    setMicLevel(0);
   }, []);
 
   const startAeda = useCallback(async () => {
@@ -169,6 +179,32 @@ export default function StarkDashboard({ user, onLogout }) {
       console.log("[AEDA] mic OK — tracks:", audioTracks.map(t => ({ label: t.label, enabled: t.enabled, muted: t.muted, readyState: t.readyState })));
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
       console.log("[AEDA] mic OK, negotiating…");
+
+      // Local mic level meter — drives the visual "HEARING YOU" bars even if
+      // OpenAI's server VAD is silent, so we can isolate mic vs. wire issues.
+      try {
+        const ACtx = window.AudioContext || window.webkitAudioContext;
+        const ctx = new ACtx();
+        audioCtxRef.current = ctx;
+        const src = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.4;
+        src.connect(analyser);
+        analyserRef.current = analyser;
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+        const tick = () => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteFrequencyData(buf);
+          let sum = 0;
+          for (let i = 0; i < buf.length; i++) sum += buf[i];
+          const avg = sum / buf.length; // 0–255
+          const level = Math.min(100, Math.round((avg / 80) * 100)); // scale to 0–100
+          setMicLevel(level);
+          rafRef.current = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch (e) { console.warn("[AEDA] audio meter init failed", e); }
 
       // 4) Data channel for realtime events (speech start/stop, etc.)
       const dc = pc.createDataChannel("oai-events");
@@ -986,35 +1022,47 @@ export default function StarkDashboard({ user, onLogout }) {
             <div className="panel-glow" />
             <div className="plabel">Voice Query</div>
             <div className="flex items-center justify-center gap-[10px] py-[8px]">
-              <div className="flex items-center gap-[2px] h-[18px]">
-                {[4,8,12,8,14,10,16,12,8,5].map((h, i) => (
-                  <div
-                    key={i}
-                    className={`w-[2px] rounded-sm ${
-                      isHearingUser ? "bg-green-400 animate-voice-wave" :
-                      isSpeaking ? "bg-cyan-400 animate-voice-wave" :
-                      isListening ? "bg-red-500 animate-voice-wave" :
-                      "bg-cyan-500/30"
-                    }`}
-                    style={{ height: h, animationDelay: `${i*0.1}s` }}
-                  />
-                ))}
+              <div className="flex items-end gap-[2px] h-[18px]" data-testid="stark-voice-meter">
+                {[0,1,2,3,4,5,6,7,8,9].map((i) => {
+                  // Each bar lights progressively as mic level climbs 0-100
+                  const activeThreshold = (i + 1) * 10; // 10, 20, 30, …, 100
+                  const active = micLevel >= activeThreshold;
+                  const color = !isListening ? "bg-cyan-500/30"
+                    : active ? (micLevel > 40 ? "bg-green-400" : "bg-yellow-400")
+                    : "bg-cyan-500/20";
+                  return (
+                    <div
+                      key={i}
+                      className={`w-[3px] rounded-sm transition-colors duration-75 ${color}`}
+                      style={{ height: 4 + i * 1.5 }}
+                    />
+                  );
+                })}
               </div>
               <button onClick={startAeda} data-testid="stark-voice-mic-btn" title={isListening ? "End AEDA session" : "Start AEDA voice session"} className={`w-[36px] h-[36px] rounded-full border flex items-center justify-center transition-all ${
-                isHearingUser ? "border-green-400 bg-green-500/10 shadow-[0_0_16px_rgba(74,222,128,0.55)]" :
+                micLevel > 20 ? "border-green-400 bg-green-500/10 shadow-[0_0_16px_rgba(74,222,128,0.55)]" :
                 isListening ? "border-red-500 bg-red-500/10 animate-mic-pulse" :
                 "border-cyan-500/50 bg-[rgba(0,40,70,0.8)] hover:border-cyan-400 hover:shadow-[0_0_16px_rgba(0,212,255,0.35)]"
               }`}>
-                <Mic className={`w-[14px] h-[14px] ${isHearingUser ? "text-green-400" : isListening ? "text-red-500" : "text-cyan-400"}`} />
+                <Mic className={`w-[14px] h-[14px] ${micLevel > 20 ? "text-green-400" : isListening ? "text-red-500" : "text-cyan-400"}`} />
               </button>
               <div className={`font-orbitron text-[7px] font-bold tracking-[0.18em] ${
-                isHearingUser ? "text-green-400 animate-blink" :
+                micLevel > 20 ? "text-green-400 animate-blink" :
                 isListening ? "text-red-500 animate-blink" :
                 "text-cyan-500/60"
               }`} data-testid="stark-voice-status">
-                {isHearingUser ? "HEARING YOU" : isSpeaking ? "SPEAKING" : isListening ? "LISTENING" : "READY"}
+                {micLevel > 20 ? "HEARING YOU" : isSpeaking ? "SPEAKING" : isListening ? "LISTENING" : "READY"}
               </div>
             </div>
+            {isListening ? (
+              <div className="px-[10px] pb-[4px] flex items-center gap-[6px]">
+                <div className="text-[8px] text-cyan-500/70 font-mono tracking-wider">MIC</div>
+                <div className="flex-1 h-[3px] bg-cyan-900/40 rounded overflow-hidden">
+                  <div className={`h-full transition-all duration-75 ${micLevel > 40 ? "bg-green-400" : micLevel > 10 ? "bg-yellow-400" : "bg-cyan-500/40"}`} style={{ width: `${micLevel}%` }} />
+                </div>
+                <div className="text-[8px] text-cyan-300/80 font-mono w-[24px] text-right">{micLevel}</div>
+              </div>
+            ) : null}
             {lastHeardText ? (
               <div className="px-[10px] pb-[4px] text-[9px] text-green-300/80 font-mono truncate" title={lastHeardText} data-testid="stark-voice-heard">
                 &ldquo;{lastHeardText}&rdquo;
