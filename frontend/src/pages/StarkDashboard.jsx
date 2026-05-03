@@ -287,7 +287,14 @@ export default function StarkDashboard({ user, onLogout }) {
         try {
           const hour = new Date().getHours();
           const partOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
-          const greeting = `Good ${partOfDay}, my name is Aid-uh, how can I help you?`;
+          // Greet user by first name unless their username is "stark" (generic test account)
+          const username = (freshUser?.username || "").toLowerCase();
+          const displayName = (freshUser?.name || freshUser?.username || "").trim();
+          const firstName = displayName.split(/\s+/)[0] || "";
+          const personalize = username && username !== "stark" && firstName;
+          const greeting = personalize
+            ? `Good ${partOfDay}, ${firstName}, my name is Aid-uh, how can I help you?`
+            : `Good ${partOfDay}, my name is Aid-uh, how can I help you?`;
           dc.send(JSON.stringify({
             type: "response.create",
             response: {
@@ -327,6 +334,33 @@ export default function StarkDashboard({ user, onLogout }) {
             const txt = evt.transcript || "";
             console.log("[AEDA] heard user:", txt);
             setLastHeardText(txt);
+            // Backup map-trigger: if the operator clearly asked to see a subscriber on the map,
+            // fire the handler directly without waiting for AEDA's tool call.
+            try {
+              const t = txt.toLowerCase();
+              const wantsMap = /(show|pull up|find|display|open|where|locate|locations? for)\b.*\b(map|aeds?)\b/i.test(t)
+                || /\b(map|aeds?)\b.*\b(for|of)\b/i.test(t)
+                || /show me where .*(aeds?|map)/i.test(t);
+              if (wantsMap) {
+                // Try to extract subscriber name — match against known list + aliases
+                const knownList = aedSubscribersList || [];
+                const aliasEntries = Object.entries(aliasMapRef.current || {});
+                const findMatch = () => {
+                  for (const [spoken, canonical] of aliasEntries) {
+                    if (t.includes(spoken)) return canonical;
+                  }
+                  for (const name of knownList) {
+                    if (t.includes(name.toLowerCase())) return name;
+                  }
+                  return null;
+                };
+                const matched = findMatch();
+                if (matched) {
+                  console.log(`[AEDA fallback] user asked for map of "${matched}" — triggering handler directly`);
+                  handleAedaShowAedsOnMap(matched);
+                }
+              }
+            } catch (e) { console.warn("[AEDA fallback] match err", e); }
           } else if (evt.type === "response.created") {
             console.log("[AEDA] response.created");
           } else if (evt.type === "response.audio.delta" || evt.type === "output_audio_buffer.started" || evt.type === "response.output_audio.delta") {
@@ -392,7 +426,7 @@ export default function StarkDashboard({ user, onLogout }) {
       setVoiceError(err.message || String(err));
       stopAeda();
     }
-  }, [isListening, stopAeda, handleAedaShowAedsOnMap]);
+  }, [isListening, stopAeda, handleAedaShowAedsOnMap, freshUser]);
 
   // Clean up on unmount
   useEffect(() => () => stopAeda(), [stopAeda]);

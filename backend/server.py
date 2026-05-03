@@ -6073,18 +6073,18 @@ async def _build_aeda_fleet_briefing() -> str:
             trend_summary = "System trend is flat compared to yesterday — no change in either actual or adjusted readiness."
         else:
             parts = []
-            if actual_dir == "flat":
-                parts.append("actual readiness is flat")
-            elif actual_dir == "unknown":
-                parts.append("actual readiness trend is unavailable")
-            else:
-                parts.append(f"actual readiness is {actual_dir} {actual_delta} percent")
             if adj_dir == "flat":
                 parts.append("adjusted readiness is flat")
             elif adj_dir == "unknown":
                 parts.append("adjusted readiness trend is unavailable")
             else:
                 parts.append(f"adjusted readiness is {adj_dir} {adj_delta} percent")
+            if actual_dir == "flat":
+                parts.append("actual readiness is flat")
+            elif actual_dir == "unknown":
+                parts.append("actual readiness trend is unavailable")
+            else:
+                parts.append(f"actual readiness is {actual_dir} {actual_delta} percent")
             trend_summary = "System trend versus yesterday: " + ", and ".join(parts) + "."
 
         # Per-subscriber readiness from the support-dashboard cache (populated
@@ -6161,8 +6161,8 @@ async def _build_aeda_fleet_briefing() -> str:
             f"- Adjusted Percent Ready: {pct_ready_adjusted}% (yesterday: {prev_pct_ready_adjusted if prev_pct_ready_adjusted is not None else 'unknown'}%)",
             f"- {trend_summary}",
             "",
-            "SYSTEM STATUS ANSWER TEMPLATE (use this exact phrasing when the operator asks for 'system status', 'status report', 'readiness', or 'how are we doing'):",
-            f'   "Percent Ready is {pct_ready} percent. Adjusted Percent Ready is {pct_ready_adjusted} percent. {trend_summary}"',
+            "SYSTEM STATUS ANSWER TEMPLATE (use this exact phrasing when the operator asks for 'system status', 'system ready', 'status report', 'readiness', or 'how are we doing'). ALWAYS lead with the ADJUSTED number — that is the headline number shown on the dashboard:",
+            f'   "Adjusted Percent Ready is {pct_ready_adjusted} percent. Actual Percent Ready is {pct_ready} percent. {trend_summary}"',
             "",
             f"- AEDs ready: {total_ready}",
             f"- Total active issues: {total_issues}",
@@ -6208,16 +6208,13 @@ async def aeda_realtime_session():
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
     try:
-        # Refresh fleet briefing cache if it's stale (>10 min) so AEDA always
-        # has up-to-date per-subscriber data even if the warmer hasn't fired yet.
-        import time as _time_s
-        cache_age = _time_s.time() - _aeda_sub_cache.get("ts", 0)
-        if not _aeda_sub_cache.get("subs") or cache_age > 600:
-            try:
-                await asyncio.wait_for(_support_dashboard_data_core(), timeout=8)
-                logger.info(f"[AEDA-Cache] refreshed on-demand for session ({len(_aeda_sub_cache.get('subs', []))} subs)")
-            except Exception as e:
-                logger.warning(f"[AEDA-Cache] on-demand refresh failed: {e}")
+        # Always refresh fleet briefing cache for every session so AEDA's numbers
+        # match the live dashboard (no 5-min staleness).
+        try:
+            await asyncio.wait_for(_support_dashboard_data_core(), timeout=10)
+            logger.info(f"[AEDA-Cache] refreshed for session ({len(_aeda_sub_cache.get('subs', []))} subs)")
+        except Exception as e:
+            logger.warning(f"[AEDA-Cache] on-demand refresh failed: {e}")
 
         # Build live fleet briefing (pushed as a conversation item by the
         # client after the WebRTC data channel opens — keeps session
