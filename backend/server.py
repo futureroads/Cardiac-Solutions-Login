@@ -681,6 +681,26 @@ async def startup():
     asyncio.create_task(_backfill_notified_aeds())
     # Backfill readiness_daily from pct_ready_history on first boot after deploy
     asyncio.create_task(_one_shot_readiness_daily_backfill())
+    # Keep AEDA's per-subscriber briefing cache warm so voice sessions always
+    # have fresh fleet data available
+    asyncio.create_task(_aeda_sub_cache_warmer())
+
+
+async def _aeda_sub_cache_warmer():
+    """Periodically refresh _aeda_sub_cache by running the support dashboard
+    aggregation, so AEDA's voice briefing always has per-subscriber readiness.
+    First run is delayed 8s to let Readisys caches warm first; then every 5 min.
+    """
+    import asyncio as _a
+    await _a.sleep(8)
+    while True:
+        try:
+            await _support_dashboard_data_core()
+            n = len(_aeda_sub_cache.get("subs", []))
+            logger.info(f"[AEDA-Cache] warmer refreshed {n} subscribers")
+        except Exception as e:
+            logger.warning(f"[AEDA-Cache] warmer error: {e}")
+        await _a.sleep(300)
 
 
 async def _one_shot_readiness_daily_backfill():
@@ -1020,6 +1040,12 @@ async def upsert_subscriber_contact(subscriber_name: str, data: dict, current_us
 @api_router.get("/support/dashboard-data")
 async def support_dashboard_data(current_user: dict = Depends(get_current_user)):
     """Aggregate subscriber device data for the Support Dashboard using voice APIs."""
+    return await _support_dashboard_data_core()
+
+
+async def _support_dashboard_data_core():
+    """Internal version of /api/support/dashboard-data that can be called by
+    background warmers (AEDA cache refresh) without requiring auth."""
     import httpx, time, asyncio, urllib.parse
     headers = _readisys_auth_headers()
     now = time.time()
@@ -6157,6 +6183,17 @@ async def aeda_realtime_session():
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
     try:
+        # Refresh fleet briefing cache if it's stale (>10 min) so AEDA always
+        # has up-to-date per-subscriber data even if the warmer hasn't fired yet.
+        import time as _time_s
+        cache_age = _time_s.time() - _aeda_sub_cache.get("ts", 0)
+        if not _aeda_sub_cache.get("subs") or cache_age > 600:
+            try:
+                await asyncio.wait_for(_support_dashboard_data_core(), timeout=8)
+                logger.info(f"[AEDA-Cache] refreshed on-demand for session ({len(_aeda_sub_cache.get('subs', []))} subs)")
+            except Exception as e:
+                logger.warning(f"[AEDA-Cache] on-demand refresh failed: {e}")
+
         # Pull live fleet briefing so AEDA can answer real questions this session
         briefing = await _build_aeda_fleet_briefing()
         full_instructions = AEDA_INSTRUCTIONS + "\n\n" + briefing
