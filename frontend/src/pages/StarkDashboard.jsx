@@ -142,11 +142,17 @@ export default function StarkDashboard({ user, onLogout }) {
       const dc = pc.createDataChannel("oai-events");
       dcRef.current = dc;
       dc.onopen = () => {
-        // Nudge AEDA to greet first
+        // Force AEDA to open with a specific greeting based on local time of day
         try {
+          const hour = new Date().getHours();
+          const partOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+          const greeting = `Good ${partOfDay}, my name is AEDA, how can I help you?`;
           dc.send(JSON.stringify({
             type: "response.create",
-            response: { modalities: ["audio", "text"], instructions: "Greet the operator briefly as AEDA, then wait for their question." }
+            response: {
+              modalities: ["audio", "text"],
+              instructions: `Say exactly this, verbatim, in your natural voice, then stop and wait for the user: "${greeting}"`,
+            },
           }));
         } catch {}
       };
