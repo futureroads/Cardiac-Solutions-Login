@@ -2962,22 +2962,32 @@ async def get_di_events(hours: int = 24, current_user: dict = Depends(get_curren
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[di-events] notification_history scan failed: {e}")
 
-        # Overview mode: emit one summary line per subscriber
+        # Overview mode: ONE rolled-up summary across all subscribers
         if email_level == "overview":
+            tot = {"delivered": 0, "opened": 0, "clicked": 0, "bounced": 0, "spam": 0, "last_ts": "", "subs": 0}
             for sub, a in agg.items():
-                bits = []
-                if a["delivered"]: bits.append(f"{a['delivered']} delivered")
-                if a["opened"]:    bits.append(f"{a['opened']} opened")
-                if a["clicked"]:   bits.append(f"{a['clicked']} clicked")
-                if a["bounced"]:   bits.append(f"{a['bounced']} bounced")
-                if a["spam"]:      bits.append(f"{a['spam']} spam-reported")
-                if not bits:
+                if not (a["delivered"] or a["opened"] or a["clicked"] or a["bounced"] or a["spam"]):
                     continue
-                etype = "ACT" if a["bounced"] or a["spam"] else "INFO" if (a["opened"] or a["clicked"]) else "SYS"
+                tot["subs"] += 1
+                tot["delivered"] += a["delivered"]
+                tot["opened"] += a["opened"]
+                tot["clicked"] += a["clicked"]
+                tot["bounced"] += a["bounced"]
+                tot["spam"] += a["spam"]
+                if a["last_ts"] > tot["last_ts"]:
+                    tot["last_ts"] = a["last_ts"]
+            if tot["subs"]:
+                bits = []
+                if tot["delivered"]: bits.append(f"{tot['delivered']} delivered")
+                if tot["opened"]:    bits.append(f"{tot['opened']} opened")
+                if tot["clicked"]:   bits.append(f"{tot['clicked']} clicked")
+                if tot["bounced"]:   bits.append(f"{tot['bounced']} bounced")
+                if tot["spam"]:      bits.append(f"{tot['spam']} spam-reported")
+                etype = "ACT" if tot["bounced"] or tot["spam"] else "INFO" if (tot["opened"] or tot["clicked"]) else "SYS"
                 items.append({
                     "type": etype,
-                    "msg": f"EMAILS — {sub}: " + ", ".join(bits) + " in last 24h.",
-                    "_ts": a["last_ts"] or cutoff,
+                    "msg": f"EMAILS 24h — across {tot['subs']} subscribers: " + ", ".join(bits) + ".",
+                    "_ts": tot["last_ts"] or cutoff,
                 })
 
     # ---------------- AED resolutions ----------------
@@ -3021,16 +3031,20 @@ async def get_di_events(hours: int = 24, current_user: dict = Depends(get_curren
             logger.warning(f"[di-events] notified_aeds scan failed: {e}")
 
         if aed_level == "overview":
-            for sub, a in agg_r.items():
+            tot_resolved = sum(a["resolved"] for a in agg_r.values())
+            tot_partial = sum(a["partial"] for a in agg_r.values())
+            sub_count = sum(1 for a in agg_r.values() if a["resolved"] or a["partial"])
+            last_ts = max((a["last_ts"] for a in agg_r.values() if a["last_ts"]), default=cutoff)
+            if tot_resolved or tot_partial:
                 bits = []
-                if a["resolved"]: bits.append(f"{a['resolved']} fully resolved")
-                if a["partial"]:  bits.append(f"{a['partial']} partially resolved")
-                if not bits:
-                    continue
+                if tot_resolved:
+                    bits.append(f"{tot_resolved} fully resolved")
+                if tot_partial:
+                    bits.append(f"{tot_partial} partially resolved")
                 items.append({
                     "type": "INFO",
-                    "msg": f"AED RESOLUTIONS — {sub}: " + ", ".join(bits) + " in last 24h.",
-                    "_ts": a["last_ts"] or cutoff,
+                    "msg": f"AED RESOLUTIONS 24h — across {sub_count} subscribers: " + ", ".join(bits) + ".",
+                    "_ts": last_ts,
                 })
 
     # ---------------- Subscriber Engagement Summary (last 30 days) ----------------
@@ -3074,27 +3088,38 @@ async def get_di_events(hours: int = 24, current_user: dict = Depends(get_curren
                     e["last_ts"] = ts
 
             if engagement_level == "overview":
-                # One summary line per subscriber
+                # ONE rolled-up summary across all subscribers
+                tot = {"subs": 0, "sent": 0, "delivered": 0, "opened_to": 0, "clicked": 0, "bounced": 0, "spam": 0, "last_ts": ""}
                 for sub, e in agg_e.items():
                     if e["sent"] == 0:
                         continue
-                    open_pct = round(e["opened_to"] / e["sent"] * 100) if e["sent"] else 0
-                    bits = [f"{e['sent']} sent"]
-                    if e["delivered"]:
-                        bits.append(f"{e['delivered']} delivered")
-                    if e["opened_to"]:
-                        bits.append(f"{e['opened_to']} opened by TO ({open_pct}%)")
-                    if e["clicked"]:
-                        bits.append(f"{e['clicked']} clicked")
-                    if e["bounced"]:
-                        bits.append(f"{e['bounced']} bounced")
-                    if e["spam"]:
-                        bits.append(f"{e['spam']} spam")
-                    etype = "ACT" if e["bounced"] or e["spam"] else "INFO" if e["opened_to"] > 0 else "WARN" if e["delivered"] and not e["opened_to"] else "SYS"
+                    tot["subs"] += 1
+                    tot["sent"] += e["sent"]
+                    tot["delivered"] += e["delivered"]
+                    tot["opened_to"] += e["opened_to"]
+                    tot["clicked"] += e["clicked"]
+                    tot["bounced"] += e["bounced"]
+                    tot["spam"] += e["spam"]
+                    if e["last_ts"] > tot["last_ts"]:
+                        tot["last_ts"] = e["last_ts"]
+                if tot["sent"]:
+                    open_pct = round(tot["opened_to"] / tot["sent"] * 100)
+                    bits = [f"{tot['sent']} sent across {tot['subs']} subscribers"]
+                    if tot["delivered"]:
+                        bits.append(f"{tot['delivered']} delivered")
+                    if tot["opened_to"]:
+                        bits.append(f"{tot['opened_to']} opened by TO ({open_pct}%)")
+                    if tot["clicked"]:
+                        bits.append(f"{tot['clicked']} clicked")
+                    if tot["bounced"]:
+                        bits.append(f"{tot['bounced']} bounced")
+                    if tot["spam"]:
+                        bits.append(f"{tot['spam']} spam")
+                    etype = "ACT" if tot["bounced"] or tot["spam"] else "INFO" if tot["opened_to"] > 0 else "WARN" if tot["delivered"] and not tot["opened_to"] else "SYS"
                     items.append({
                         "type": etype,
-                        "msg": f"ENGAGEMENT 30d — {sub}: " + ", ".join(bits) + ".",
-                        "_ts": e["last_ts"] or engage_cutoff,
+                        "msg": f"ENGAGEMENT 30d — " + ", ".join(bits) + ".",
+                        "_ts": tot["last_ts"] or engage_cutoff,
                     })
             else:  # details — one message per metric per subscriber
                 for sub, e in agg_e.items():
