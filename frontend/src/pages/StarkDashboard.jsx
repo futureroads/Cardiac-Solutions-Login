@@ -131,6 +131,7 @@ export default function StarkDashboard({ user, onLogout }) {
 
   // AEDA tool: "find_aeds_near_location" — driven by "are there any AEDs near
   // Waycross, Georgia?" type queries
+  const pendingMapPanRef = useRef(null); // { lat, lng, zoom, sentinel_id }
   const handleAedaFindNearLocation = useCallback(async (location, radiusMiles = 10) => {
     console.log(`[AEDA tool] find_aeds_near_location location="${location}" radius=${radiusMiles}`);
     try {
@@ -146,28 +147,31 @@ export default function StarkDashboard({ user, onLogout }) {
       if (!data.ok || data.count === 0) {
         return { ok: false, voice_answer: data.voice_answer || `No AEDs found near ${location}.`, count: 0 };
       }
-      // Drive the map: switch to AEDs mode, show all subscribers, zoom to query
+      // Drive the map: switch to AEDs mode, show all subscribers, zoom to query.
+      // Queue the pan so it runs AFTER the new aedPins arrive (see effect below).
+      pendingMapPanRef.current = {
+        lat: data.query_lat,
+        lng: data.query_lng,
+        zoom: 11,
+        sentinel_id: data.aeds[0]?.sentinel_id || null,
+      };
       setMapMode("aeds");
       setAedSubscriber("all");
       setMapFullscreen(true);
-      // Fly the map to the query coords + open the closest AED popup
-      const top = data.aeds[0];
+      // If we're already in AEDs/all mode the useEffect won't refetch — pan immediately
       setTimeout(() => {
-        try {
-          if (mapRef.current && window.google) {
-            mapRef.current.panTo({ lat: data.query_lat, lng: data.query_lng });
-            mapRef.current.setZoom(11);
-          }
-        } catch (e) { console.warn("[AEDA tool] map pan failed", e); }
-        // The popup key format is `aed-${sentinel_id}-${index}`; defer until aedPins
-        // re-loads after subscriber switch. The pinSelector effect below handles it.
-        if (top?.sentinel_id) pendingSelectAedRef.current = top.sentinel_id;
-      }, 600);
+        if (pendingMapPanRef.current && mapRef.current && window.google) {
+          try {
+            mapRef.current.panTo({ lat: pendingMapPanRef.current.lat, lng: pendingMapPanRef.current.lng });
+            mapRef.current.setZoom(pendingMapPanRef.current.zoom);
+          } catch (e) { console.warn("[AEDA tool] map pan failed", e); }
+        }
+      }, 250);
       return {
         ok: true,
         voice_answer: data.voice_answer,
         count: data.count,
-        closest: top,
+        closest: data.aeds[0],
       };
     } catch (e) {
       console.error("[AEDA tool] aeds-near exception:", e);
@@ -178,12 +182,29 @@ export default function StarkDashboard({ user, onLogout }) {
   // Pending sentinel ID to auto-select once aedPins are loaded for that area
   const pendingSelectAedRef = useRef(null);
   useEffect(() => {
-    const sid = pendingSelectAedRef.current;
-    if (!sid || !aedPins?.length) return;
-    const idx = aedPins.findIndex(p => p.sentinel_id === sid);
-    if (idx >= 0) {
-      setSelectedId(`aed-${sid}-${idx}`);
+    // Whenever new aedPins arrive, if a pan was queued, perform it AND select the closest AED
+    const pending = pendingMapPanRef.current;
+    if (pending && aedPins?.length && mapRef.current && window.google) {
+      try {
+        mapRef.current.panTo({ lat: pending.lat, lng: pending.lng });
+        mapRef.current.setZoom(pending.zoom);
+      } catch (e) { console.warn("[AEDA tool] post-load pan failed", e); }
+      if (pending.sentinel_id) {
+        const idx = aedPins.findIndex(p => p.sentinel_id === pending.sentinel_id);
+        if (idx >= 0) setSelectedId(`aed-${pending.sentinel_id}-${idx}`);
+      }
+      pendingMapPanRef.current = null;
       pendingSelectAedRef.current = null;
+    } else {
+      // Legacy single-select hook (kept for show_aeds_on_map flows)
+      const sid = pendingSelectAedRef.current;
+      if (sid && aedPins?.length) {
+        const idx = aedPins.findIndex(p => p.sentinel_id === sid);
+        if (idx >= 0) {
+          setSelectedId(`aed-${sid}-${idx}`);
+          pendingSelectAedRef.current = null;
+        }
+      }
     }
   }, [aedPins]);
 
@@ -394,13 +415,14 @@ export default function StarkDashboard({ user, onLogout }) {
             // fire the handler directly without waiting for AEDA's tool call.
             try {
               const t = txt.toLowerCase();
-              // Detect "near <location>" intent first (most specific)
-              const nearMatch = t.match(/\b(near|around|by|in|close to)\s+([a-z0-9 ,.'-]{3,80})\??\s*$/i);
-              const aedKeyword = /\baeds?\b|\bdefibrillator/i.test(t);
-              if (nearMatch && aedKeyword) {
-                const loc = nearMatch[2].trim().replace(/\.$/, "");
+              // Detect "near <location>" intent first (most specific). Don't require
+              // the word "AED" because once we're in an AEDA conversation, the
+              // operator typically drops "AED" in follow-ups (e.g., "any near Macon?").
+              const nearMatch = t.match(/\b(near|around|by|in|close to|in the area of|surrounding)\s+([a-z0-9 ,.'-]{3,80})\??\s*$/i);
+              if (nearMatch) {
+                const loc = nearMatch[2].trim().replace(/[.?]$/, "");
                 console.log(`[AEDA fallback] location intent detected -> "${loc}"`);
-                handleAedaFindNearLocation(loc, 10);
+                handleAedaFindNearLocation(loc, 25);
               } else {
                 const wantsMap = /(show|pull up|find|display|open|where|locate|locations? for)\b.*\b(map|aeds?)\b/i.test(t)
                   || /\b(map|aeds?)\b.*\b(for|of)\b/i.test(t)
@@ -669,13 +691,18 @@ export default function StarkDashboard({ user, onLogout }) {
     service: totals.not_ready || 0, dispatch: 0, alerts: (totals.lost_contact || 0) + (totals.not_ready || 0),
     pendingNotifs: 48, sentToday: 0, devicesAffected: totals.total || 0,
   };
-  const pctReady = totals.percent_ready != null ? Number(totals.percent_ready).toFixed(1) : "—";
-  const pctAdjusted = readiness?.pct_ready_adjusted != null ? Number(readiness.pct_ready_adjusted).toFixed(1) : pctReady;
-  const pctActual = readiness?.pct_ready != null ? Number(readiness.pct_ready).toFixed(1) : pctReady;
+  // Show "—" placeholder until /api/support/dashboard-data has loaded the
+  // accurate readiness numbers (totals.percent_ready from raw Readisys is
+  // ~90.8% but the dashboard's adjusted is ~86% — avoid showing the wrong
+  // number for a few seconds during the initial load).
+  const readinessLoaded = readiness != null;
+  const pctAdjusted = readinessLoaded && readiness.pct_ready_adjusted != null ? Number(readiness.pct_ready_adjusted).toFixed(1) : "—";
+  const pctActual = readinessLoaded && readiness.pct_ready != null ? Number(readiness.pct_ready).toFixed(1) : "—";
 
-  // Gauge angles: 0% = -90deg (left), 100% = 90deg (right)
-  const adjustedVal = readiness?.pct_ready_adjusted ?? totals.percent_ready ?? 0;
-  const actualVal = readiness?.pct_ready ?? totals.percent_ready ?? 0;
+  // Gauge angles: 0% = -90deg (left), 100% = 90deg (right). Hold needle at 0
+  // until accurate data arrives.
+  const adjustedVal = readinessLoaded ? (readiness.pct_ready_adjusted ?? 0) : 0;
+  const actualVal = readinessLoaded ? (readiness.pct_ready ?? 0) : 0;
   const gaugeAngleAdjusted = -90 + (adjustedVal / 100) * 180;
   const gaugeAngleActual = -90 + (actualVal / 100) * 180;
 
