@@ -40,6 +40,7 @@ export default function StarkDashboard({ user, onLogout }) {
   // Voice state (OpenAI Realtime — AEDA)
   const [isListening, setIsListening] = useState(false); // session active (mic open)
   const [isSpeaking, setIsSpeaking] = useState(false);   // AEDA currently speaking
+  const [voiceError, setVoiceError] = useState("");      // visible error status
   const pcRef = useRef(null);
   const micStreamRef = useRef(null);
   const audioElRef = useRef(null);
@@ -119,10 +120,17 @@ export default function StarkDashboard({ user, onLogout }) {
 
   const startAeda = useCallback(async () => {
     if (isListening) { stopAeda(); return; }
+    setVoiceError("");
+    console.log("[AEDA] start: requesting session…");
     try {
       // 1) Ephemeral session (server-side) — validates OPENAI_API_KEY, returns client_secret
       const sessionRes = await fetch(`${API}/realtime/session`, { method: "POST" });
-      if (!sessionRes.ok) throw new Error(`session ${sessionRes.status}`);
+      if (!sessionRes.ok) {
+        const t = await sessionRes.text();
+        console.error("[AEDA] session error", sessionRes.status, t);
+        throw new Error(`session ${sessionRes.status}: ${t.slice(0, 120)}`);
+      }
+      console.log("[AEDA] session OK, requesting mic…");
 
       // 2) Create WebRTC peer connection + remote audio sink
       const pc = new RTCPeerConnection();
@@ -131,17 +139,30 @@ export default function StarkDashboard({ user, onLogout }) {
       audioEl.autoplay = true;
       document.body.appendChild(audioEl);
       audioElRef.current = audioEl;
-      pc.ontrack = (e) => { audioEl.srcObject = e.streams[0]; };
+      pc.ontrack = (e) => {
+        console.log("[AEDA] ontrack: remote audio attached");
+        audioEl.srcObject = e.streams[0];
+      };
+      pc.oniceconnectionstatechange = () => console.log("[AEDA] ICE:", pc.iceConnectionState);
+      pc.onconnectionstatechange = () => console.log("[AEDA] PC:", pc.connectionState);
 
       // 3) Local mic
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (micErr) {
+        console.error("[AEDA] mic denied/unavailable:", micErr);
+        throw new Error(`Mic blocked: ${micErr.name || micErr.message || "permission denied"}`);
+      }
       micStreamRef.current = stream;
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      console.log("[AEDA] mic OK, negotiating…");
 
       // 4) Data channel for realtime events (speech start/stop, etc.)
       const dc = pc.createDataChannel("oai-events");
       dcRef.current = dc;
       dc.onopen = () => {
+        console.log("[AEDA] data channel open — sending greeting trigger");
         // Force AEDA to open with a specific greeting based on local time of day
         try {
           const hour = new Date().getHours();
@@ -154,7 +175,7 @@ export default function StarkDashboard({ user, onLogout }) {
               instructions: `Say exactly this, verbatim, in your natural voice, then stop and wait for the user: "${greeting}"`,
             },
           }));
-        } catch {}
+        } catch (e) { console.error("[AEDA] greet send failed", e); }
       };
       dc.onmessage = (e) => {
         try {
@@ -163,6 +184,9 @@ export default function StarkDashboard({ user, onLogout }) {
             setIsSpeaking(true);
           } else if (evt.type === "response.done" || evt.type === "output_audio_buffer.stopped" || evt.type === "response.audio.done") {
             setIsSpeaking(false);
+          } else if (evt.type === "error") {
+            console.error("[AEDA] realtime error event:", evt);
+            setVoiceError(`AEDA: ${evt.error?.message || "error"}`);
           }
         } catch {}
       };
@@ -176,12 +200,18 @@ export default function StarkDashboard({ user, onLogout }) {
         headers: { "Content-Type": "application/sdp" },
         body: offer.sdp,
       });
-      if (!negRes.ok) throw new Error(`negotiate ${negRes.status}`);
+      if (!negRes.ok) {
+        const t = await negRes.text();
+        console.error("[AEDA] negotiate error", negRes.status, t);
+        throw new Error(`negotiate ${negRes.status}: ${t.slice(0, 120)}`);
+      }
       const { sdp: answerSdp } = await negRes.json();
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
       setIsListening(true);
+      console.log("[AEDA] connected");
     } catch (err) {
       console.error("[AEDA] startAeda failed:", err);
+      setVoiceError(err.message || String(err));
       stopAeda();
     }
   }, [isListening, stopAeda]);
@@ -903,6 +933,11 @@ export default function StarkDashboard({ user, onLogout }) {
                 {isSpeaking ? "SPEAKING" : isListening ? "LISTENING" : "READY"}
               </div>
             </div>
+            {voiceError ? (
+              <div className="px-[10px] pb-[6px] text-[9px] text-red-400 font-mono break-words" data-testid="stark-voice-error" title={voiceError}>
+                {voiceError}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
