@@ -124,6 +124,14 @@ function App() {
                 <Navigate to="/" replace />
             } 
           />
+          <Route
+            path="/support-dashboard"
+            element={
+              isAuthenticated ?
+                <SupportDashboard user={user} onLogout={handleLogout} /> :
+                <Navigate to="/" replace />
+            }
+          />
           <Route 
             path="/user-access" 
             element={

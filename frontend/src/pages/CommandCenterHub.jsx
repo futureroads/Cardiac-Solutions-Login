@@ -18,6 +18,7 @@ import {
   Building2,
   MapPin,
   AlertCircle,
+  LifeBuoy,
 } from "lucide-react";
 
 const ALL_MODULES = [
@@ -52,6 +53,16 @@ const ALL_MODULES = [
     externalUrl: null,
     description:
       "Field technician dispatch, ticket lifecycle management, and AED service workflow from open to confirmed.",
+    badgeCount: null,
+  },
+  {
+    moduleKey: "support_dashboard",
+    title: "SUPPORT DASHBOARD",
+    status: "LIVE",
+    icon: LifeBuoy,
+    route: "/support-dashboard",
+    description:
+      "Subscriber support workspace. Notify subscribers, track readiness, manage detail templates, and review email engagement.",
     badgeCount: null,
   },
   {

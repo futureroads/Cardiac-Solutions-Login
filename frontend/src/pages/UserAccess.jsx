@@ -24,6 +24,7 @@ const MODULE_OPTIONS = [
   { id: "notifications", title: "Notifications" },
   { id: "service_tickets", title: "Service Tickets" },
   { id: "dashboard", title: "Dashboard" },
+  { id: "support_dashboard", title: "Support Dashboard" },
   { id: "survival_path", title: "Survival Path" },
   { id: "user_access", title: "User Access" },
   { id: "backend", title: "Backend" },
