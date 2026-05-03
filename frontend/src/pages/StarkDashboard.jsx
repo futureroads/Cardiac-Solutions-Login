@@ -38,13 +38,16 @@ export default function StarkDashboard({ user, onLogout }) {
   const [freshUser, setFreshUser] = useState(user);
 
   // Voice state (OpenAI Realtime — AEDA)
-  const [isListening, setIsListening] = useState(false); // session active (mic open)
-  const [isSpeaking, setIsSpeaking] = useState(false);   // AEDA currently speaking
-  const [voiceError, setVoiceError] = useState("");      // visible error status
+  const [isListening, setIsListening] = useState(false);   // session active (mic open)
+  const [isSpeaking, setIsSpeaking] = useState(false);     // AEDA currently speaking
+  const [isHearingUser, setIsHearingUser] = useState(false); // user voice being detected (VAD)
+  const [lastHeardText, setLastHeardText] = useState("");  // transcript of user's last utterance
+  const [voiceError, setVoiceError] = useState("");        // visible error status
   const pcRef = useRef(null);
   const micStreamRef = useRef(null);
   const audioElRef = useRef(null);
   const dcRef = useRef(null);
+  const isSpeakingRef = useRef(false);
 
   // Map state
   const [mapSubs, setMapSubs] = useState([]);
@@ -116,6 +119,7 @@ export default function StarkDashboard({ user, onLogout }) {
     audioElRef.current = null;
     setIsListening(false);
     setIsSpeaking(false);
+    setIsHearingUser(false);
   }, []);
 
   const startAeda = useCallback(async () => {
@@ -168,12 +172,31 @@ export default function StarkDashboard({ user, onLogout }) {
       const dc = pc.createDataChannel("oai-events");
       dcRef.current = dc;
       dc.onopen = () => {
-        console.log("[AEDA] data channel open — sending greeting trigger");
-        // Force AEDA to open with a specific greeting based on local time of day
+        console.log("[AEDA] data channel open — configuring session + sending greeting");
+        try {
+          // 1) Push proper session config via data channel (REST endpoint silently
+          //    drops input_audio_transcription and some VAD params).
+          dc.send(JSON.stringify({
+            type: "session.update",
+            session: {
+              modalities: ["audio", "text"],
+              input_audio_transcription: { model: "whisper-1" },
+              turn_detection: {
+                type: "server_vad",
+                threshold: 0.5,
+                prefix_padding_ms: 300,
+                silence_duration_ms: 500,
+                create_response: true,
+                interrupt_response: true,
+              },
+            },
+          }));
+        } catch (e) { console.error("[AEDA] session.update failed", e); }
+
+        // 2) Force AEDA to open with a specific greeting based on local time of day
         try {
           const hour = new Date().getHours();
           const partOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
-          // Phonetic spelling so the TTS says "AID-A" (not "ee-duh" or "ay-uh")
           const greeting = `Good ${partOfDay}, my name is Aid-uh, how can I help you?`;
           dc.send(JSON.stringify({
             type: "response.create",
@@ -190,16 +213,34 @@ export default function StarkDashboard({ user, onLogout }) {
           // Useful diagnostics for turn-taking
           if (evt.type === "input_audio_buffer.speech_started") {
             console.log("[AEDA] user started speaking");
+            setIsHearingUser(true);
           } else if (evt.type === "input_audio_buffer.speech_stopped") {
             console.log("[AEDA] user stopped speaking");
+            setIsHearingUser(false);
           } else if (evt.type === "input_audio_buffer.committed") {
             console.log("[AEDA] user turn committed -> expecting response");
+            // Safety net: if no response.created arrives within 800ms, force one
+            const dcRef2 = dcRef.current;
+            setTimeout(() => {
+              try {
+                if (!isSpeakingRef.current && dcRef2 && dcRef2.readyState === "open") {
+                  console.log("[AEDA] no auto-response detected — forcing response.create");
+                  dcRef2.send(JSON.stringify({ type: "response.create", response: { modalities: ["audio", "text"] } }));
+                }
+              } catch {}
+            }, 800);
+          } else if (evt.type === "conversation.item.input_audio_transcription.completed") {
+            const txt = evt.transcript || "";
+            console.log("[AEDA] heard user:", txt);
+            setLastHeardText(txt);
           } else if (evt.type === "response.created") {
             console.log("[AEDA] response.created");
           } else if (evt.type === "response.audio.delta" || evt.type === "output_audio_buffer.started" || evt.type === "response.output_audio.delta") {
             setIsSpeaking(true);
+            isSpeakingRef.current = true;
           } else if (evt.type === "response.done" || evt.type === "output_audio_buffer.stopped" || evt.type === "response.audio.done") {
             setIsSpeaking(false);
+            isSpeakingRef.current = false;
           } else if (evt.type === "error") {
             console.error("[AEDA] realtime error event:", evt);
             setVoiceError(`AEDA: ${evt.error?.message || "error"}`);
@@ -937,18 +978,40 @@ export default function StarkDashboard({ user, onLogout }) {
             <div className="panel-glow" />
             <div className="plabel">Voice Query</div>
             <div className="flex items-center justify-center gap-[10px] py-[8px]">
-              <div className="flex items-center gap-[2px] h-[16px]">
+              <div className="flex items-center gap-[2px] h-[18px]">
                 {[4,8,12,8,14,10,16,12,8,5].map((h, i) => (
-                  <div key={i} className={`w-[2px] rounded-sm ${isListening ? "bg-red-500 animate-voice-wave" : "bg-cyan-500/30"}`} style={{ height: h, animationDelay: `${i*0.1}s` }} />
+                  <div
+                    key={i}
+                    className={`w-[2px] rounded-sm ${
+                      isHearingUser ? "bg-green-400 animate-voice-wave" :
+                      isSpeaking ? "bg-cyan-400 animate-voice-wave" :
+                      isListening ? "bg-red-500 animate-voice-wave" :
+                      "bg-cyan-500/30"
+                    }`}
+                    style={{ height: h, animationDelay: `${i*0.1}s` }}
+                  />
                 ))}
               </div>
-              <button onClick={startAeda} data-testid="stark-voice-mic-btn" title={isListening ? "End AEDA session" : "Start AEDA voice session"} className={`w-[36px] h-[36px] rounded-full border flex items-center justify-center transition-all ${isListening ? "border-red-500 bg-red-500/10 animate-mic-pulse" : "border-cyan-500/50 bg-[rgba(0,40,70,0.8)] hover:border-cyan-400 hover:shadow-[0_0_16px_rgba(0,212,255,0.35)]"}`}>
-                <Mic className={`w-[14px] h-[14px] ${isListening ? "text-red-500" : "text-cyan-400"}`} />
+              <button onClick={startAeda} data-testid="stark-voice-mic-btn" title={isListening ? "End AEDA session" : "Start AEDA voice session"} className={`w-[36px] h-[36px] rounded-full border flex items-center justify-center transition-all ${
+                isHearingUser ? "border-green-400 bg-green-500/10 shadow-[0_0_16px_rgba(74,222,128,0.55)]" :
+                isListening ? "border-red-500 bg-red-500/10 animate-mic-pulse" :
+                "border-cyan-500/50 bg-[rgba(0,40,70,0.8)] hover:border-cyan-400 hover:shadow-[0_0_16px_rgba(0,212,255,0.35)]"
+              }`}>
+                <Mic className={`w-[14px] h-[14px] ${isHearingUser ? "text-green-400" : isListening ? "text-red-500" : "text-cyan-400"}`} />
               </button>
-              <div className={`font-orbitron text-[7px] font-bold tracking-[0.18em] ${isListening ? "text-red-500 animate-blink" : "text-cyan-500/60"}`}>
-                {isSpeaking ? "SPEAKING" : isListening ? "LISTENING" : "READY"}
+              <div className={`font-orbitron text-[7px] font-bold tracking-[0.18em] ${
+                isHearingUser ? "text-green-400 animate-blink" :
+                isListening ? "text-red-500 animate-blink" :
+                "text-cyan-500/60"
+              }`} data-testid="stark-voice-status">
+                {isHearingUser ? "HEARING YOU" : isSpeaking ? "SPEAKING" : isListening ? "LISTENING" : "READY"}
               </div>
             </div>
+            {lastHeardText ? (
+              <div className="px-[10px] pb-[4px] text-[9px] text-green-300/80 font-mono truncate" title={lastHeardText} data-testid="stark-voice-heard">
+                &ldquo;{lastHeardText}&rdquo;
+              </div>
+            ) : null}
             {voiceError ? (
               <div className="px-[10px] pb-[6px] text-[9px] text-red-400 font-mono break-words" data-testid="stark-voice-error" title={voiceError}>
                 {voiceError}
