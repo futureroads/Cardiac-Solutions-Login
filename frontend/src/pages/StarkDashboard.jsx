@@ -146,10 +146,16 @@ export default function StarkDashboard({ user, onLogout }) {
       pc.oniceconnectionstatechange = () => console.log("[AEDA] ICE:", pc.iceConnectionState);
       pc.onconnectionstatechange = () => console.log("[AEDA] PC:", pc.connectionState);
 
-      // 3) Local mic
+      // 3) Local mic (with echo cancellation so AEDA's output doesn't bleed back in)
       let stream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
       } catch (micErr) {
         console.error("[AEDA] mic denied/unavailable:", micErr);
         throw new Error(`Mic blocked: ${micErr.name || micErr.message || "permission denied"}`);
@@ -167,12 +173,13 @@ export default function StarkDashboard({ user, onLogout }) {
         try {
           const hour = new Date().getHours();
           const partOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
-          const greeting = `Good ${partOfDay}, my name is AEDA, how can I help you?`;
+          // Phonetic spelling so the TTS says "AID-A" (not "ee-duh" or "ay-uh")
+          const greeting = `Good ${partOfDay}, my name is Aid-uh, how can I help you?`;
           dc.send(JSON.stringify({
             type: "response.create",
             response: {
               modalities: ["audio", "text"],
-              instructions: `Say exactly this, verbatim, in your natural voice, then stop and wait for the user: "${greeting}"`,
+              instructions: `Say exactly this, verbatim, in your natural voice, then stop and wait for the user's question: "${greeting}". Your name is pronounced "AID-uh" (rhymes with "aided"). Always pronounce it that way.`,
             },
           }));
         } catch (e) { console.error("[AEDA] greet send failed", e); }
@@ -180,7 +187,16 @@ export default function StarkDashboard({ user, onLogout }) {
       dc.onmessage = (e) => {
         try {
           const evt = JSON.parse(e.data);
-          if (evt.type === "response.audio.delta" || evt.type === "output_audio_buffer.started" || evt.type === "response.output_audio.delta") {
+          // Useful diagnostics for turn-taking
+          if (evt.type === "input_audio_buffer.speech_started") {
+            console.log("[AEDA] user started speaking");
+          } else if (evt.type === "input_audio_buffer.speech_stopped") {
+            console.log("[AEDA] user stopped speaking");
+          } else if (evt.type === "input_audio_buffer.committed") {
+            console.log("[AEDA] user turn committed -> expecting response");
+          } else if (evt.type === "response.created") {
+            console.log("[AEDA] response.created");
+          } else if (evt.type === "response.audio.delta" || evt.type === "output_audio_buffer.started" || evt.type === "response.output_audio.delta") {
             setIsSpeaking(true);
           } else if (evt.type === "response.done" || evt.type === "output_audio_buffer.stopped" || evt.type === "response.audio.done") {
             setIsSpeaking(false);
