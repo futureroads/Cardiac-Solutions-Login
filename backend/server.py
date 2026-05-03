@@ -6031,11 +6031,16 @@ async def _build_aeda_fleet_briefing() -> str:
 
         totals = (status_data or {}).get("totals", {}) or {}
         dsc = totals.get("detailed_status_counts", {}) or {}
+        prev_dsc = totals.get("prev_detailed_status_counts", {}) or {}
         total_monitored = totals.get("total", 0) or 0
-        total_ready = totals.get("ready", 0) or 0
-        pct_ready = totals.get("percent_ready")
-        prev_pct_ready = totals.get("prev_percent_ready")
-        prev_total_ready = totals.get("prev_ready")
+        # Match the dashboard's calculation EXACTLY: use detailed_status_counts.ready,
+        # not totals.ready. The two diverge in Readisys' API.
+        total_ready = dsc.get("ready", 0) or 0
+        pct_ready = round((total_ready / total_monitored) * 100, 1) if total_monitored else 0
+        prev_total_ready_dsc = prev_dsc.get("ready") if isinstance(prev_dsc, dict) else None
+        prev_total = totals.get("prev_total")
+        prev_pct_ready = round((prev_total_ready_dsc / prev_total) * 100, 1) if (prev_total and prev_total_ready_dsc is not None) else totals.get("prev_percent_ready")
+        prev_total_ready = prev_total_ready_dsc if prev_total_ready_dsc is not None else totals.get("prev_ready")
         total_issues = max(0, total_monitored - total_ready)
 
         # Adjusted readiness using opened-notification AEDs

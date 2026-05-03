@@ -117,12 +117,12 @@ export default function StarkDashboard({ user, onLogout }) {
     // Apply alias map first (e.g., "Franklin County Sheriff" -> "County of Franklin")
     const aliasHit = aliasMapRef.current[lower];
     const aliased = aliasHit || raw;
-    // Fuzzy match against the actual dropdown list
-    const list = aedSubscribersList || [];
-    const exact = list.find(s => s.toLowerCase() === aliased.toLowerCase());
-    const partial = !exact && list.find(s => s.toLowerCase().includes(aliased.toLowerCase()) || aliased.toLowerCase().includes(s.toLowerCase()));
+    // aedSubscribersList items are {subscriber, aed_count} — extract names
+    const names = (aedSubscribersList || []).map(s => typeof s === "string" ? s : (s?.subscriber || "")).filter(Boolean);
+    const exact = names.find(n => n.toLowerCase() === aliased.toLowerCase());
+    const partial = !exact && names.find(n => n.toLowerCase().includes(aliased.toLowerCase()) || aliased.toLowerCase().includes(n.toLowerCase()));
     const resolved = exact || partial || (lower === "all" ? "all" : aliased);
-    console.log(`[AEDA tool] show_aeds_on_map raw="${raw}" alias="${aliasHit||'(none)'}" -> resolved="${resolved}" (list size=${list.length})`);
+    console.log(`[AEDA tool] show_aeds_on_map raw="${raw}" alias="${aliasHit||'(none)'}" -> resolved="${resolved}" (list=${names.length})`);
     setMapMode("aeds");
     setAedSubscriber(resolved);
     setMapFullscreen(true);
@@ -343,20 +343,21 @@ export default function StarkDashboard({ user, onLogout }) {
                 || /show me where .*(aeds?|map)/i.test(t);
               if (wantsMap) {
                 // Try to extract subscriber name — match against known list + aliases
-                const knownList = aedSubscribersList || [];
+                const knownNames = (aedSubscribersList || []).map(s => typeof s === "string" ? s : (s?.subscriber || "")).filter(Boolean);
                 const aliasEntries = Object.entries(aliasMapRef.current || {});
                 const findMatch = () => {
                   for (const [spoken, canonical] of aliasEntries) {
                     if (t.includes(spoken)) return canonical;
                   }
-                  for (const name of knownList) {
+                  for (const name of knownNames) {
                     if (t.includes(name.toLowerCase())) return name;
                   }
                   return null;
                 };
                 const matched = findMatch();
+                console.log(`[AEDA fallback] map intent detected, knownNames=${knownNames.length}, matched=`, matched);
                 if (matched) {
-                  console.log(`[AEDA fallback] user asked for map of "${matched}" — triggering handler directly`);
+                  console.log(`[AEDA fallback] triggering map handler for "${matched}"`);
                   handleAedaShowAedsOnMap(matched);
                 }
               }
