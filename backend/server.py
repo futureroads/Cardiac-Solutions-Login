@@ -5963,6 +5963,8 @@ async def _build_aeda_fleet_briefing() -> str:
         total_monitored = totals.get("total", 0) or 0
         total_ready = totals.get("ready", 0) or 0
         pct_ready = totals.get("percent_ready")
+        prev_pct_ready = totals.get("prev_percent_ready")
+        prev_total_ready = totals.get("prev_ready")
         total_issues = max(0, total_monitored - total_ready)
 
         # Adjusted readiness using opened-notification AEDs
@@ -5975,6 +5977,44 @@ async def _build_aeda_fleet_briefing() -> str:
         adjusted_issues = max(0, total_issues - opened_unresolved)
         adjusted_ready = total_monitored - adjusted_issues
         pct_ready_adjusted = round(adjusted_ready / total_monitored * 100, 1) if total_monitored else None
+
+        # Yesterday's adjusted (best-effort, same notified baseline)
+        prev_pct_ready_adjusted = None
+        if prev_total_ready is not None and total_monitored:
+            prev_total_issues = max(0, total_monitored - prev_total_ready)
+            prev_adj_issues = max(0, prev_total_issues - opened_unresolved)
+            prev_adj_ready = total_monitored - prev_adj_issues
+            prev_pct_ready_adjusted = round(prev_adj_ready / total_monitored * 100, 1)
+
+        # Trend words (up/down/flat, relative to yesterday)
+        def _trend(now_v, prev_v):
+            if now_v is None or prev_v is None:
+                return ("unknown", 0.0)
+            delta = round(float(now_v) - float(prev_v), 1)
+            if abs(delta) < 0.1:
+                return ("flat", 0.0)
+            return ("up" if delta > 0 else "down", abs(delta))
+        actual_dir, actual_delta = _trend(pct_ready, prev_pct_ready)
+        adj_dir, adj_delta = _trend(pct_ready_adjusted, prev_pct_ready_adjusted)
+
+        # Plain-English trend summary AEDA can quote verbatim
+        if actual_dir == "flat" and adj_dir == "flat":
+            trend_summary = "System trend is flat compared to yesterday — no change in either actual or adjusted readiness."
+        else:
+            parts = []
+            if actual_dir == "flat":
+                parts.append("actual readiness is flat")
+            elif actual_dir == "unknown":
+                parts.append("actual readiness trend is unavailable")
+            else:
+                parts.append(f"actual readiness is {actual_dir} {actual_delta} percent")
+            if adj_dir == "flat":
+                parts.append("adjusted readiness is flat")
+            elif adj_dir == "unknown":
+                parts.append("adjusted readiness trend is unavailable")
+            else:
+                parts.append(f"adjusted readiness is {adj_dir} {adj_delta} percent")
+            trend_summary = "System trend versus yesterday: " + ", and ".join(parts) + "."
 
         # Top subscribers by unresolved notified AEDs (fast DB aggregation)
         try:
@@ -6016,7 +6056,14 @@ async def _build_aeda_fleet_briefing() -> str:
             "FLEET BRIEFING (live, refreshed at session start):",
             f"- Snapshot: {now_local}",
             f"- Total monitored AEDs: {total_monitored}",
-            f"- AEDs ready: {total_ready} ({pct_ready}% actual; {pct_ready_adjusted}% adjusted after subscriber notifications)",
+            f"- Percent Ready (actual): {pct_ready}% (yesterday: {prev_pct_ready if prev_pct_ready is not None else 'unknown'}%)",
+            f"- Adjusted Percent Ready: {pct_ready_adjusted}% (yesterday: {prev_pct_ready_adjusted if prev_pct_ready_adjusted is not None else 'unknown'}%)",
+            f"- {trend_summary}",
+            "",
+            "SYSTEM STATUS ANSWER TEMPLATE (use this exact phrasing when the operator asks for 'system status', 'status report', 'readiness', or 'how are we doing'):",
+            f'   "Percent Ready is {pct_ready} percent. Adjusted Percent Ready is {pct_ready_adjusted} percent. {trend_summary}"',
+            "",
+            f"- AEDs ready: {total_ready}",
             f"- Total active issues: {total_issues}",
             f"  * Expired batteries/pads: {dsc.get('expired_bp', 0)}",
             f"  * Expiring batteries/pads: {dsc.get('expiring_batt_pads', 0)}",
