@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import secrets
 import traceback
+import aiohttp
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
@@ -5912,6 +5913,81 @@ async def tts_speak(request: Request):
     except Exception as e:
         print(f"[TTS] Error: {e}", flush=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+# ------------------------------------------------------------------
+# AEDA Realtime Voice (OpenAI Realtime API, WebRTC)
+# ------------------------------------------------------------------
+AEDA_INSTRUCTIONS = (
+    "You are AEDA, the JARVIS-style AI assistant for Cardiac Solutions LLC's "
+    "AED monitoring platform. Speak calmly, concisely, and with quiet authority. "
+    "Greet the operator once at the start of the session (e.g., 'Welcome back, "
+    "Commander. All systems nominal.'), then wait for their question. Keep "
+    "responses brief and professional. If asked about AED readiness, fleet "
+    "status, or dashboard specifics, acknowledge politely and note that live "
+    "data will be wired in shortly."
+)
+_AEDA_REALTIME_MODEL = "gpt-4o-realtime-preview-2024-12-17"
+_AEDA_VOICE = "ash"
+
+@api_router.post("/realtime/session")
+async def aeda_realtime_session():
+    """Create an ephemeral OpenAI Realtime session for AEDA (voice: ash)."""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.openai.com/v1/realtime/sessions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": _AEDA_REALTIME_MODEL,
+                    "voice": _AEDA_VOICE,
+                    "instructions": AEDA_INSTRUCTIONS,
+                },
+            ) as resp:
+                data = await resp.json()
+                if resp.status >= 400:
+                    print(f"[AEDA-Realtime] session error {resp.status}: {data}", flush=True)
+                    raise HTTPException(status_code=resp.status, detail=data)
+                return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[AEDA-Realtime] session exception: {e}", flush=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/realtime/negotiate")
+async def aeda_realtime_negotiate(request: Request):
+    """Forward an SDP offer to OpenAI Realtime and return the SDP answer."""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
+    try:
+        sdp_offer = (await request.body()).decode()
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"https://api.openai.com/v1/realtime?model={_AEDA_REALTIME_MODEL}",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/sdp",
+                },
+                data=sdp_offer,
+            ) as resp:
+                sdp_answer = await resp.text()
+                if resp.status >= 400:
+                    print(f"[AEDA-Realtime] negotiate error {resp.status}: {sdp_answer[:400]}", flush=True)
+                    raise HTTPException(status_code=resp.status, detail=sdp_answer)
+                return {"sdp": sdp_answer}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[AEDA-Realtime] negotiate exception: {e}", flush=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @api_router.get("/")
 async def root():

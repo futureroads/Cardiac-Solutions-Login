@@ -37,10 +37,13 @@ export default function StarkDashboard({ user, onLogout }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [freshUser, setFreshUser] = useState(user);
 
-  // Voice state
-  const [isListening, setIsListening] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const cachedAudioRef = useRef(null);
+  // Voice state (OpenAI Realtime — AEDA)
+  const [isListening, setIsListening] = useState(false); // session active (mic open)
+  const [isSpeaking, setIsSpeaking] = useState(false);   // AEDA currently speaking
+  const pcRef = useRef(null);
+  const micStreamRef = useRef(null);
+  const audioElRef = useRef(null);
+  const dcRef = useRef(null);
 
   // Map state
   const [mapSubs, setMapSubs] = useState([]);
@@ -97,42 +100,88 @@ export default function StarkDashboard({ user, onLogout }) {
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Preload TTS
-  useEffect(() => {
-    (async () => {
-      try {
-        const hour = new Date().getHours();
-        const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-        const text = `${greeting}. My name is Ayda. How can I help you?`;
-        const res = await fetch(`${API_URL}/api/tts/speak`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ text, voice: "nova" }) });
-        if (res.ok) { const d = await res.json(); cachedAudioRef.current = `data:audio/mp3;base64,${d.audio}`; }
-      } catch {}
-    })();
-  }, [token]);
-
-  const jarvisGreet = async () => {
-    if (isSpeaking) return;
-    setIsSpeaking(true); setIsListening(true);
-    if (cachedAudioRef.current) {
-      const audio = new Audio(cachedAudioRef.current);
-      audio.onended = () => { setIsSpeaking(false); setIsListening(false); };
-      audio.onerror = () => { setIsSpeaking(false); setIsListening(false); };
-      await audio.play(); return;
-    }
-    const hour = new Date().getHours();
-    const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-    const text = `${greeting}. My name is AEDA. How can I help you?`;
+  // AEDA Realtime Voice (OpenAI Realtime API over WebRTC)
+  const stopAeda = useCallback(() => {
+    try { dcRef.current?.close(); } catch {}
     try {
-      const res = await fetch(`${API_URL}/api/tts/speak`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ text, voice: "nova" }) });
-      if (!res.ok) throw new Error();
-      const d = await res.json();
-      const audio = new Audio(`data:audio/mp3;base64,${d.audio}`);
-      audio.onended = () => { setIsSpeaking(false); setIsListening(false); };
-      await audio.play();
-    } catch {
-      setIsSpeaking(false); setIsListening(false);
+      pcRef.current?.getSenders()?.forEach((s) => { try { s.track?.stop(); } catch {} });
+      pcRef.current?.close();
+    } catch {}
+    try { micStreamRef.current?.getTracks()?.forEach((t) => t.stop()); } catch {}
+    try { if (audioElRef.current) { audioElRef.current.srcObject = null; audioElRef.current.remove(); } } catch {}
+    pcRef.current = null;
+    dcRef.current = null;
+    micStreamRef.current = null;
+    audioElRef.current = null;
+    setIsListening(false);
+    setIsSpeaking(false);
+  }, []);
+
+  const startAeda = useCallback(async () => {
+    if (isListening) { stopAeda(); return; }
+    try {
+      // 1) Ephemeral session (server-side) — validates OPENAI_API_KEY, returns client_secret
+      const sessionRes = await fetch(`${API}/realtime/session`, { method: "POST" });
+      if (!sessionRes.ok) throw new Error(`session ${sessionRes.status}`);
+
+      // 2) Create WebRTC peer connection + remote audio sink
+      const pc = new RTCPeerConnection();
+      pcRef.current = pc;
+      const audioEl = document.createElement("audio");
+      audioEl.autoplay = true;
+      document.body.appendChild(audioEl);
+      audioElRef.current = audioEl;
+      pc.ontrack = (e) => { audioEl.srcObject = e.streams[0]; };
+
+      // 3) Local mic
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = stream;
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+
+      // 4) Data channel for realtime events (speech start/stop, etc.)
+      const dc = pc.createDataChannel("oai-events");
+      dcRef.current = dc;
+      dc.onopen = () => {
+        // Nudge AEDA to greet first
+        try {
+          dc.send(JSON.stringify({
+            type: "response.create",
+            response: { modalities: ["audio", "text"], instructions: "Greet the operator briefly as AEDA, then wait for their question." }
+          }));
+        } catch {}
+      };
+      dc.onmessage = (e) => {
+        try {
+          const evt = JSON.parse(e.data);
+          if (evt.type === "response.audio.delta" || evt.type === "output_audio_buffer.started" || evt.type === "response.output_audio.delta") {
+            setIsSpeaking(true);
+          } else if (evt.type === "response.done" || evt.type === "output_audio_buffer.stopped" || evt.type === "response.audio.done") {
+            setIsSpeaking(false);
+          }
+        } catch {}
+      };
+      dc.onclose = () => setIsSpeaking(false);
+
+      // 5) SDP offer → backend → OpenAI → SDP answer
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      const negRes = await fetch(`${API}/realtime/negotiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/sdp" },
+        body: offer.sdp,
+      });
+      if (!negRes.ok) throw new Error(`negotiate ${negRes.status}`);
+      const { sdp: answerSdp } = await negRes.json();
+      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+      setIsListening(true);
+    } catch (err) {
+      console.error("[AEDA] startAeda failed:", err);
+      stopAeda();
     }
-  };
+  }, [isListening, stopAeda]);
+
+  // Clean up on unmount
+  useEffect(() => () => stopAeda(), [stopAeda]);
 
   // Fetch map
   useEffect(() => {
@@ -841,7 +890,7 @@ export default function StarkDashboard({ user, onLogout }) {
                   <div key={i} className={`w-[2px] rounded-sm ${isListening ? "bg-red-500 animate-voice-wave" : "bg-cyan-500/30"}`} style={{ height: h, animationDelay: `${i*0.1}s` }} />
                 ))}
               </div>
-              <button onClick={jarvisGreet} className={`w-[36px] h-[36px] rounded-full border flex items-center justify-center transition-all ${isListening ? "border-red-500 bg-red-500/10 animate-mic-pulse" : "border-cyan-500/50 bg-[rgba(0,40,70,0.8)] hover:border-cyan-400 hover:shadow-[0_0_16px_rgba(0,212,255,0.35)]"}`}>
+              <button onClick={startAeda} data-testid="stark-voice-mic-btn" title={isListening ? "End AEDA session" : "Start AEDA voice session"} className={`w-[36px] h-[36px] rounded-full border flex items-center justify-center transition-all ${isListening ? "border-red-500 bg-red-500/10 animate-mic-pulse" : "border-cyan-500/50 bg-[rgba(0,40,70,0.8)] hover:border-cyan-400 hover:shadow-[0_0_16px_rgba(0,212,255,0.35)]"}`}>
                 <Mic className={`w-[14px] h-[14px] ${isListening ? "text-red-500" : "text-cyan-400"}`} />
               </button>
               <div className={`font-orbitron text-[7px] font-bold tracking-[0.18em] ${isListening ? "text-red-500 animate-blink" : "text-cyan-500/60"}`}>
