@@ -1326,6 +1326,29 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
     except Exception as e:
         logger.warning(f"readiness-daily snapshot failed: {e}")
 
+    # Cache the per-subscriber summary for AEDA's voice briefing
+    try:
+        import time as _t
+        _aeda_sub_cache["subs"] = [
+            {
+                "subscriber": s.get("subscriber"),
+                "monitored_aeds": s.get("monitored_aeds", 0),
+                "percent_ready": s.get("percent_ready", 0),
+                "total_issues": s.get("total_issues", 0),
+                "expired_bp": s.get("expired_bp", 0),
+                "expiring_bp": s.get("expiring_bp", 0),
+                "not_ready": s.get("not_ready", 0),
+                "reposition": s.get("reposition", 0),
+                "not_present": s.get("not_present", 0),
+                "unknown": s.get("unknown", 0),
+                "lost_contact": s.get("lost_contact", 0),
+            }
+            for s in subscribers
+        ]
+        _aeda_sub_cache["ts"] = _t.time()
+    except Exception as e:
+        logger.warning(f"aeda sub cache populate failed: {e}")
+
     return {
         "subscribers": subscribers,
         "total_subscribers": len(subscribers),
@@ -5184,6 +5207,9 @@ async def _track_pct_ready(status_data: dict) -> str:
     return "stable"
 
 _status_cache = {"data": None, "ts": 0}
+# Cached per-subscriber summary populated by /api/support/dashboard-data so AEDA
+# can answer "how is GPC doing?" without re-fanning out per-subscriber API calls.
+_aeda_sub_cache = {"subs": [], "ts": 0}
 _bp_cache = {"data": None, "ts": 0}
 
 @api_router.get("/status-overview")
@@ -6016,30 +6042,60 @@ async def _build_aeda_fleet_briefing() -> str:
                 parts.append(f"adjusted readiness is {adj_dir} {adj_delta} percent")
             trend_summary = "System trend versus yesterday: " + ", and ".join(parts) + "."
 
-        # Top subscribers by unresolved notified AEDs (fast DB aggregation)
-        try:
-            pipe = [
-                {"$match": {"resolved": False}},
-                {"$group": {"_id": {"sub": "$subscriber", "iss": "$issue_type"}, "c": {"$sum": 1}}},
-            ]
-            by_sub = {}
-            async for doc in _db.notified_aeds.aggregate(pipe):
-                sub = doc["_id"]["sub"] or "Unknown"
-                iss = doc["_id"]["iss"] or "UNKNOWN"
-                if sub not in by_sub:
-                    by_sub[sub] = {"total": 0, "issues": {}}
-                by_sub[sub]["issues"][iss] = doc["c"]
-                by_sub[sub]["total"] += doc["c"]
-            enriched = [{"n": k, "t": v["total"], "issues": v["issues"]} for k, v in by_sub.items()]
-            enriched.sort(key=lambda x: x["t"], reverse=True)
-        except Exception as e:
-            print(f"[AEDA-Brief] subscriber aggregation failed: {e}", flush=True)
+        # Per-subscriber readiness from the support-dashboard cache (populated
+        # when the support dashboard is open — falls back to notified_aeds
+        # aggregation if the cache is empty).
+        import time as _time2
+        cache_fresh = _aeda_sub_cache.get("subs") and (_time2.time() - _aeda_sub_cache.get("ts", 0)) < 600
+        if cache_fresh:
             enriched = []
+            for s in _aeda_sub_cache["subs"]:
+                name = s.get("subscriber") or ""
+                if not name:
+                    continue
+                enriched.append({
+                    "n": name,
+                    "t": s.get("total_issues", 0),
+                    "mon": s.get("monitored_aeds", 0),
+                    "pct": s.get("percent_ready", 0),
+                    "issues": {
+                        "expired_bp": s.get("expired_bp", 0),
+                        "expiring_bp": s.get("expiring_bp", 0),
+                        "not_ready": s.get("not_ready", 0),
+                        "reposition": s.get("reposition", 0),
+                        "not_present": s.get("not_present", 0),
+                        "lost_contact": s.get("lost_contact", 0),
+                    },
+                })
+            enriched.sort(key=lambda x: x["t"], reverse=True)
+        else:
+            # Fallback — top subscribers by unresolved notified AEDs only
+            try:
+                pipe = [
+                    {"$match": {"resolved": False}},
+                    {"$group": {"_id": {"sub": "$subscriber", "iss": "$issue_type"}, "c": {"$sum": 1}}},
+                ]
+                by_sub = {}
+                async for doc in _db.notified_aeds.aggregate(pipe):
+                    sub = doc["_id"]["sub"] or "Unknown"
+                    iss = doc["_id"]["iss"] or "UNKNOWN"
+                    if sub not in by_sub:
+                        by_sub[sub] = {"total": 0, "issues": {}}
+                    by_sub[sub]["issues"][iss] = doc["c"]
+                    by_sub[sub]["total"] += doc["c"]
+                enriched = [{"n": k, "t": v["total"], "mon": 0, "pct": None, "issues": v["issues"]} for k, v in by_sub.items()]
+                enriched.sort(key=lambda x: x["t"], reverse=True)
+            except Exception as e:
+                print(f"[AEDA-Brief] subscriber aggregation failed: {e}", flush=True)
+                enriched = []
 
         top_lines = []
-        for s in enriched[:10]:
-            iss_parts = [f"{v} {k.lower().replace('_', ' ').replace('/', '/')}" for k, v in s["issues"].items() if v]
-            top_lines.append(f"- {s['n']}: {s['t']} unresolved ({', '.join(iss_parts)})")
+        for s in enriched[:15]:
+            iss_parts = [f"{v} {k.replace('_', ' ').lower()}" for k, v in s["issues"].items() if v]
+            if s.get("pct") is not None and s.get("mon"):
+                top_lines.append(f"- {s['n']}: {s['pct']}% ready ({s['mon']} AEDs total, {s['t']} with issues: {', '.join(iss_parts) or 'none'})")
+            else:
+                top_lines.append(f"- {s['n']}: {s['t']} unresolved ({', '.join(iss_parts)})")
 
         # Resolutions in last 24h
         try:
@@ -6076,9 +6132,19 @@ async def _build_aeda_fleet_briefing() -> str:
             f"- Subscribers with tracked unresolved notifications: {len(enriched)}",
         ]
         if top_lines:
-            lines.append("- Top subscribers by unresolved notified AEDs:")
+            lines.append("- Per-subscriber readiness:")
             lines.extend(top_lines)
-        lines.append("If asked about a subscriber not listed above, say they currently have no tracked unresolved notifications in your briefing.")
+        # Full list of subscriber names (for fuzzy-matching in the show_aeds_on_map tool)
+        known_subs = [s["n"] for s in enriched if s.get("n")]
+        if known_subs:
+            lines.append("")
+            lines.append(f"KNOWN SUBSCRIBERS (use exact spelling for tool calls): {', '.join(known_subs)}")
+        lines.append("")
+        lines.append("SUBSCRIBER STATUS ANSWER TEMPLATE (use when operator asks 'how is {subscriber} doing?', 'status of {subscriber}', etc):")
+        lines.append('   "{subscriber} is at X percent ready. They have M total AEDs, with N active issues: [list issue types and counts]."')
+        lines.append("If the operator asks about a subscriber not in the list above, say you don't see active data for them in this session and suggest they open the Support Dashboard.")
+        lines.append("")
+        lines.append("MAP COMMAND: If the operator asks to 'show me where [subscriber]'s AEDs are', 'find [subscriber] on the map', 'pull up [subscriber] on the map', or similar, CALL the show_aeds_on_map tool with the matched subscriber name. Briefly acknowledge verbally (e.g., 'Pulling up Georgia Power on the map now.'). Match the operator's spoken name to the closest known subscriber above — e.g., 'Georgia Power' matches 'GPC' if that's the only match.")
         return "\n".join(lines)
     except Exception as e:
         print(f"[AEDA-Brief] build error: {e}", flush=True)
@@ -6114,6 +6180,24 @@ async def aeda_realtime_session():
                         "create_response": True,
                         "interrupt_response": True,
                     },
+                    "tools": [
+                        {
+                            "type": "function",
+                            "name": "show_aeds_on_map",
+                            "description": "Open the Stark Dashboard map in fullscreen, switch it to AED mode, and filter to a single subscriber's AED locations. Call this when the operator asks to 'show me where [subscriber]'s AEDs are', 'find [subscriber] on the map', 'pull up [subscriber]', etc. Use the subscriber name exactly as listed in KNOWN SUBSCRIBERS.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "subscriber": {
+                                        "type": "string",
+                                        "description": "Exact subscriber name to filter AEDs by. Use 'all' to show every subscriber's AEDs.",
+                                    }
+                                },
+                                "required": ["subscriber"],
+                            },
+                        }
+                    ],
+                    "tool_choice": "auto",
                 },
             ) as resp:
                 data = await resp.json()

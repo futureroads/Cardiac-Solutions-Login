@@ -108,6 +108,26 @@ export default function StarkDashboard({ user, onLogout }) {
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // AEDA tool: "show_aeds_on_map" — driven by voice commands like
+  // "show me where Georgia Power's AEDs are"
+  const handleAedaShowAedsOnMap = useCallback((subscriberName) => {
+    const wanted = (subscriberName || "").trim().toLowerCase();
+    // Fuzzy match against the dropdown list — fall back to "all" if unknown
+    const match = aedSubscribersList.find(s =>
+      s.toLowerCase() === wanted ||
+      s.toLowerCase().includes(wanted) ||
+      wanted.includes(s.toLowerCase())
+    );
+    const resolved = match || (wanted && wanted !== "all" ? subscriberName : "all");
+    console.log(`[AEDA tool] show_aeds_on_map -> subscriber="${subscriberName}" resolved="${resolved}"`);
+    setMapMode("aeds");
+    setAedSubscriber(resolved);
+    setMapFullscreen(true);
+    setSelectedId(null);
+    setHoveredId(null);
+    return { ok: true, resolved_subscriber: resolved, requested: subscriberName };
+  }, [aedSubscribersList]);
+
   // AEDA Realtime Voice (OpenAI Realtime API over WebRTC)
   const stopAeda = useCallback(() => {
     try { dcRef.current?.close(); } catch {}
@@ -283,6 +303,31 @@ export default function StarkDashboard({ user, onLogout }) {
           } else if (evt.type === "response.done" || evt.type === "output_audio_buffer.stopped" || evt.type === "response.audio.done") {
             setIsSpeaking(false);
             isSpeakingRef.current = false;
+          } else if (evt.type === "response.function_call_arguments.done") {
+            // AEDA invoked a tool — route by name
+            const name = evt.name;
+            let args = {};
+            try { args = JSON.parse(evt.arguments || "{}"); } catch {}
+            console.log(`[AEDA tool-call] name=${name} args=`, args, "call_id=", evt.call_id);
+            let result = { ok: false, error: "unknown tool" };
+            if (name === "show_aeds_on_map") {
+              result = handleAedaShowAedsOnMap(args.subscriber || "all");
+            }
+            // Return the tool output so AEDA can continue her response
+            try {
+              const dc2 = dcRef.current;
+              if (dc2 && dc2.readyState === "open") {
+                dc2.send(JSON.stringify({
+                  type: "conversation.item.create",
+                  item: {
+                    type: "function_call_output",
+                    call_id: evt.call_id,
+                    output: JSON.stringify(result),
+                  },
+                }));
+                dc2.send(JSON.stringify({ type: "response.create" }));
+              }
+            } catch (e) { console.error("[AEDA tool] output send failed", e); }
           } else if (evt.type === "session.updated") {
             console.log("[AEDA] session.updated OK");
           } else if (evt.type === "error") {
@@ -315,7 +360,7 @@ export default function StarkDashboard({ user, onLogout }) {
       setVoiceError(err.message || String(err));
       stopAeda();
     }
-  }, [isListening, stopAeda]);
+  }, [isListening, stopAeda, handleAedaShowAedsOnMap]);
 
   // Clean up on unmount
   useEffect(() => () => stopAeda(), [stopAeda]);
