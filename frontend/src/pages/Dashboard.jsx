@@ -396,8 +396,8 @@ export default function Dashboard({ user, onLogout }) {
     const cd = liveStats?.totals?.telemetry_distribution?.cellular || {};
 
     // Percent Ready daily trend event
-    const todayPct = totals.percent_ready;
-    const prevPct = totals.prev_percent_ready;
+    const todayPct = readiness?.pct_ready ?? totals.percent_ready;
+    const prevPct = readiness?.prev_pct_ready ?? totals.prev_percent_ready;
     if (todayPct != null && prevPct != null) {
       const diff = (todayPct - prevPct).toFixed(1);
       const absDiff = Math.abs(diff);

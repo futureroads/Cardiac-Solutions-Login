@@ -432,24 +432,12 @@ export default function StarkDashboard({ user, onLogout }) {
               if (nearMatch) {
                 const loc = nearMatch[2].trim().replace(/[.?]$/, "");
                 console.log(`[AEDA fallback] location intent detected -> "${loc}"`);
-                // Run the lookup ourselves and instruct AEDA to read the result
-                handleAedaFindNearLocation(loc, 25).then((result) => {
-                  try {
-                    const dc2 = dcRef.current;
-                    if (dc2 && dc2.readyState === "open" && result?.voice_answer) {
-                      dc2.send(JSON.stringify({
-                        type: "response.cancel",
-                      }));
-                      dc2.send(JSON.stringify({
-                        type: "response.create",
-                        response: {
-                          modalities: ["audio", "text"],
-                          instructions: `Speak this exact sentence aloud as your reply, no preamble, no follow-up question: "${result.voice_answer}"`,
-                        },
-                      }));
-                    }
-                  } catch (e) { console.warn("[AEDA fallback] speak voice_answer failed", e); }
-                });
+                // Run the lookup ourselves. Do NOT also fire response.create — the
+                // realtime model has likely already started its own response, so
+                // racing with response.cancel/create produces "active response in
+                // progress" errors. Just drive the map; AEDA's own answer will
+                // be approximately correct, and the map shows the precise data.
+                handleAedaFindNearLocation(loc, 25);
               } else {
                 const wantsMap = /(show|pull up|find|display|open|where|locate|locations? for)\b.*\b(map|aeds?)\b/i.test(t)
                   || /\b(map|aeds?)\b.*\b(for|of)\b/i.test(t)
@@ -509,7 +497,9 @@ export default function StarkDashboard({ user, onLogout }) {
                 }));
                 // For find_aeds_near_location, force AEDA to read the voice_answer
                 // verbatim — the model otherwise tends to give a vague summary.
-                if (name === "find_aeds_near_location" && result?.voice_answer) {
+                // Only fire response.create if no response is currently active
+                // (otherwise OpenAI rejects with "active response in progress").
+                if (name === "find_aeds_near_location" && result?.voice_answer && !isSpeakingRef.current) {
                   dc2.send(JSON.stringify({
                     type: "response.create",
                     response: {
@@ -517,7 +507,7 @@ export default function StarkDashboard({ user, onLogout }) {
                       instructions: `Speak this exact sentence aloud as your reply, no preamble, no follow-up question: "${result.voice_answer}"`,
                     },
                   }));
-                } else {
+                } else if (!isSpeakingRef.current) {
                   dc2.send(JSON.stringify({ type: "response.create" }));
                 }
               }
@@ -765,8 +755,8 @@ export default function StarkDashboard({ user, onLogout }) {
     const items = [];
     const bd = totals.telemetry_distribution?.battery || {};
     const cd = totals.telemetry_distribution?.cellular || {};
-    const todayPct = totals.percent_ready;
-    const prevPct = totals.prev_percent_ready;
+    const todayPct = readiness?.pct_ready ?? totals.percent_ready;
+    const prevPct = readiness?.prev_pct_ready ?? totals.prev_percent_ready;
     if (todayPct != null && prevPct != null) {
       const diff = (todayPct - prevPct).toFixed(1);
       const absDiff = Math.abs(diff);
