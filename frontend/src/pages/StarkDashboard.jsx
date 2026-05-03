@@ -165,6 +165,8 @@ export default function StarkDashboard({ user, onLogout }) {
         throw new Error(`Mic blocked: ${micErr.name || micErr.message || "permission denied"}`);
       }
       micStreamRef.current = stream;
+      const audioTracks = stream.getAudioTracks();
+      console.log("[AEDA] mic OK — tracks:", audioTracks.map(t => ({ label: t.label, enabled: t.enabled, muted: t.muted, readyState: t.readyState })));
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
       console.log("[AEDA] mic OK, negotiating…");
 
@@ -210,6 +212,10 @@ export default function StarkDashboard({ user, onLogout }) {
       dc.onmessage = (e) => {
         try {
           const evt = JSON.parse(e.data);
+          // Firehose log — every event type OpenAI sends us (helps diagnose turn-taking)
+          if (evt.type && evt.type !== "response.audio.delta" && evt.type !== "response.audio_transcript.delta" && evt.type !== "response.output_audio.delta") {
+            console.log("[AEDA evt]", evt.type, evt);
+          }
           // Useful diagnostics for turn-taking
           if (evt.type === "input_audio_buffer.speech_started") {
             console.log("[AEDA] user started speaking");
@@ -241,11 +247,13 @@ export default function StarkDashboard({ user, onLogout }) {
           } else if (evt.type === "response.done" || evt.type === "output_audio_buffer.stopped" || evt.type === "response.audio.done") {
             setIsSpeaking(false);
             isSpeakingRef.current = false;
+          } else if (evt.type === "session.updated") {
+            console.log("[AEDA] session.updated OK");
           } else if (evt.type === "error") {
             console.error("[AEDA] realtime error event:", evt);
             setVoiceError(`AEDA: ${evt.error?.message || "error"}`);
           }
-        } catch {}
+        } catch (err) { console.error("[AEDA] msg parse err", err); }
       };
       dc.onclose = () => setIsSpeaking(false);
 
