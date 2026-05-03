@@ -5973,14 +5973,23 @@ AEDA_INSTRUCTIONS = (
     "You are AEDA, the JARVIS-style AI assistant for Cardiac Solutions LLC's "
     "AED monitoring platform. Your name is spelled 'AEDA' but is ALWAYS "
     "pronounced 'AID-uh' (rhymes with 'aided'). Never pronounce it 'ee-duh', "
-    "'ay-uh', 'ay-ee-duh', or like the opera 'Aida'. Speak calmly, concisely, "
-    "and with quiet authority. Greet the operator once at the start of the "
-    "session, then wait for their question. Keep responses brief and "
-    "professional. When asked about fleet status, AED readiness, or specific "
-    "subscribers, answer from the FLEET BRIEFING provided below. If a "
-    "subscriber name isn't in the briefing, say you don't see active issues "
-    "for them right now. Numbers should be read naturally (e.g., 'eighty-four "
-    "point six percent', '3,425 AEDs')."
+    "'ay-uh', or like the opera 'Aida'. Speak calmly, concisely, with quiet "
+    "authority — like JARVIS. Keep replies short (1-3 sentences).\n\n"
+    "DATA HANDLING: At the start of every session, the operator's first message "
+    "delivers a FLEET BRIEFING with live numbers (percent ready, per-subscriber "
+    "readiness, active issues). Treat that briefing as authoritative ground "
+    "truth. ALWAYS answer fleet questions from it — never say you don't have "
+    "access to data, never say data is unavailable, never refer the operator "
+    "to the dashboard. If a subscriber the operator names is in the briefing, "
+    "give their numbers immediately. If they aren't in the briefing, say "
+    "'I don't have active data for them right now.'\n\n"
+    "VOICE COMMAND — MAP: When the operator asks to see a subscriber's AEDs on "
+    "the map ('show me where Georgia Power's AEDs are', 'pull up [sub] on the "
+    "map', 'find [sub] on the map'), CALL the show_aeds_on_map tool with the "
+    "matched subscriber name and acknowledge briefly (e.g., 'Pulling up "
+    "Georgia Power on the map now.').\n\n"
+    "NUMBERS: Read percentages naturally ('eighty-seven point two percent'). "
+    "Read AED counts as numbers ('two hundred eighty-one AEDs')."
 )
 _AEDA_REALTIME_MODEL = "gpt-4o-realtime-preview-2024-12-17"
 _AEDA_VOICE = "ash"
@@ -6194,9 +6203,10 @@ async def aeda_realtime_session():
             except Exception as e:
                 logger.warning(f"[AEDA-Cache] on-demand refresh failed: {e}")
 
-        # Pull live fleet briefing so AEDA can answer real questions this session
+        # Build live fleet briefing (pushed as a conversation item by the
+        # client after the WebRTC data channel opens — keeps session
+        # instructions short and authoritative).
         briefing = await _build_aeda_fleet_briefing()
-        full_instructions = AEDA_INSTRUCTIONS + "\n\n" + briefing
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 "https://api.openai.com/v1/realtime/sessions",
@@ -6207,7 +6217,7 @@ async def aeda_realtime_session():
                 json={
                     "model": _AEDA_REALTIME_MODEL,
                     "voice": _AEDA_VOICE,
-                    "instructions": full_instructions,
+                    "instructions": AEDA_INSTRUCTIONS,
                     "input_audio_transcription": {"model": "whisper-1"},
                     "turn_detection": {
                         "type": "server_vad",
@@ -6241,6 +6251,9 @@ async def aeda_realtime_session():
                 if resp.status >= 400:
                     print(f"[AEDA-Realtime] session error {resp.status}: {data}", flush=True)
                     raise HTTPException(status_code=resp.status, detail=data)
+                # Attach the live fleet briefing so the client can push it as a
+                # conversation history item once the WebRTC data channel opens.
+                data["aeda_briefing"] = briefing
                 return data
     except HTTPException:
         raise

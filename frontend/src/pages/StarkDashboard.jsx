@@ -156,15 +156,20 @@ export default function StarkDashboard({ user, onLogout }) {
     if (isListening) { stopAeda(); return; }
     setVoiceError("");
     console.log("[AEDA] start: requesting session…");
+    let briefingText = "";
     try {
-      // 1) Ephemeral session (server-side) — validates OPENAI_API_KEY, returns client_secret
+      // 1) Ephemeral session (server-side) — validates OPENAI_API_KEY, returns client_secret + live fleet briefing
       const sessionRes = await fetch(`${API}/realtime/session`, { method: "POST" });
       if (!sessionRes.ok) {
         const t = await sessionRes.text();
         console.error("[AEDA] session error", sessionRes.status, t);
         throw new Error(`session ${sessionRes.status}: ${t.slice(0, 120)}`);
       }
-      console.log("[AEDA] session OK, requesting mic…");
+      try {
+        const sessionJson = await sessionRes.clone().json();
+        briefingText = sessionJson?.aeda_briefing || "";
+        console.log("[AEDA] session OK, briefing length:", briefingText.length);
+      } catch {}
 
       // 2) Create WebRTC peer connection + remote audio sink
       const pc = new RTCPeerConnection();
@@ -250,6 +255,27 @@ export default function StarkDashboard({ user, onLogout }) {
             },
           }));
         } catch (e) { console.error("[AEDA] session.update failed", e); }
+
+        // 1b) Push the live FLEET BRIEFING into conversation history. Long
+        // system instructions get treated as "reference" by the realtime
+        // model — putting the briefing as a conversation item makes the
+        // model treat it as committed context it MUST use.
+        if (briefingText) {
+          try {
+            dc.send(JSON.stringify({
+              type: "conversation.item.create",
+              item: {
+                type: "message",
+                role: "user",
+                content: [{
+                  type: "input_text",
+                  text: `[OPERATOR BRIEFING — read silently, do not speak this aloud, but use these numbers verbatim when answering any question about fleet status, readiness, percent ready, subscribers, or AED counts. This is the authoritative live data for our session.]\n\n${briefingText}`,
+                }],
+              },
+            }));
+            console.log("[AEDA] briefing pushed into conversation context");
+          } catch (e) { console.error("[AEDA] briefing push failed", e); }
+        }
 
         // 2) Force AEDA to open with a specific greeting based on local time of day
         try {
