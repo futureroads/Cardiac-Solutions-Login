@@ -5924,12 +5924,118 @@ AEDA_INSTRUCTIONS = (
     "'ay-uh', 'ay-ee-duh', or like the opera 'Aida'. Speak calmly, concisely, "
     "and with quiet authority. Greet the operator once at the start of the "
     "session, then wait for their question. Keep responses brief and "
-    "professional. If asked about AED readiness, fleet status, or dashboard "
-    "specifics, acknowledge politely and note that live data will be wired in "
-    "shortly."
+    "professional. When asked about fleet status, AED readiness, or specific "
+    "subscribers, answer from the FLEET BRIEFING provided below. If a "
+    "subscriber name isn't in the briefing, say you don't see active issues "
+    "for them right now. Numbers should be read naturally (e.g., 'eighty-four "
+    "point six percent', '3,425 AEDs')."
 )
 _AEDA_REALTIME_MODEL = "gpt-4o-realtime-preview-2024-12-17"
 _AEDA_VOICE = "ash"
+
+async def _build_aeda_fleet_briefing() -> str:
+    """Compose a concise, voice-friendly fleet briefing that AEDA can quote
+    from when the operator asks about AED readiness, issues, or subscribers.
+    Reads cached Readisys status + notified_aeds to avoid extra network calls.
+    """
+    try:
+        import httpx, time as _time
+        # Pull latest status (use 5-min cache)
+        status_data = None
+        try:
+            if _status_cache.get("data") and (_time.time() - _status_cache.get("ts", 0)) < 300:
+                status_data = _status_cache["data"]
+            else:
+                headers = _readisys_auth_headers()
+                async with httpx.AsyncClient(timeout=15) as client:
+                    resp = await client.get("https://readisys.survivalpath.ai/api/status-overview", headers=headers)
+                    if resp.status_code == 200:
+                        status_data = resp.json()
+                        _status_cache["data"] = status_data
+                        _status_cache["ts"] = _time.time()
+        except Exception:
+            pass
+        if not status_data:
+            return "FLEET BRIEFING: Live data is temporarily unavailable. Acknowledge the question and offer to try again in a moment."
+
+        totals = (status_data or {}).get("totals", {}) or {}
+        dsc = totals.get("detailed_status_counts", {}) or {}
+        total_monitored = totals.get("total", 0) or 0
+        total_ready = totals.get("ready", 0) or 0
+        pct_ready = totals.get("percent_ready")
+        total_issues = max(0, total_monitored - total_ready)
+
+        # Adjusted readiness using opened-notification AEDs
+        try:
+            opened_unresolved = await _db.notified_aeds.count_documents({"resolved": False, "email_opened": True})
+            total_unresolved = await _db.notified_aeds.count_documents({"resolved": False})
+        except Exception:
+            opened_unresolved = 0
+            total_unresolved = 0
+        adjusted_issues = max(0, total_issues - opened_unresolved)
+        adjusted_ready = total_monitored - adjusted_issues
+        pct_ready_adjusted = round(adjusted_ready / total_monitored * 100, 1) if total_monitored else None
+
+        # Top subscribers by unresolved notified AEDs (fast DB aggregation)
+        try:
+            pipe = [
+                {"$match": {"resolved": False}},
+                {"$group": {"_id": {"sub": "$subscriber", "iss": "$issue_type"}, "c": {"$sum": 1}}},
+            ]
+            by_sub = {}
+            async for doc in _db.notified_aeds.aggregate(pipe):
+                sub = doc["_id"]["sub"] or "Unknown"
+                iss = doc["_id"]["iss"] or "UNKNOWN"
+                if sub not in by_sub:
+                    by_sub[sub] = {"total": 0, "issues": {}}
+                by_sub[sub]["issues"][iss] = doc["c"]
+                by_sub[sub]["total"] += doc["c"]
+            enriched = [{"n": k, "t": v["total"], "issues": v["issues"]} for k, v in by_sub.items()]
+            enriched.sort(key=lambda x: x["t"], reverse=True)
+        except Exception as e:
+            print(f"[AEDA-Brief] subscriber aggregation failed: {e}", flush=True)
+            enriched = []
+
+        top_lines = []
+        for s in enriched[:10]:
+            iss_parts = [f"{v} {k.lower().replace('_', ' ').replace('/', '/')}" for k, v in s["issues"].items() if v]
+            top_lines.append(f"- {s['n']}: {s['t']} unresolved ({', '.join(iss_parts)})")
+
+        # Resolutions in last 24h
+        try:
+            cutoff_24 = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+            recently_resolved_24h = await _db.notified_aeds.count_documents({
+                "$or": [{"resolved": True, "resolved_at": {"$gte": cutoff_24}},
+                        {"partially_resolved": True, "partially_resolved_at": {"$gte": cutoff_24}}],
+            })
+        except Exception:
+            recently_resolved_24h = 0
+
+        now_local = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        lines = [
+            "FLEET BRIEFING (live, refreshed at session start):",
+            f"- Snapshot: {now_local}",
+            f"- Total monitored AEDs: {total_monitored}",
+            f"- AEDs ready: {total_ready} ({pct_ready}% actual; {pct_ready_adjusted}% adjusted after subscriber notifications)",
+            f"- Total active issues: {total_issues}",
+            f"  * Expired batteries/pads: {dsc.get('expired_bp', 0)}",
+            f"  * Expiring batteries/pads: {dsc.get('expiring_batt_pads', 0)}",
+            f"  * Not ready: {dsc.get('not_ready', 0)}",
+            f"  * Reposition: {dsc.get('reposition', 0)}",
+            f"  * Not present: {dsc.get('not_present', 0)}",
+            f"  * Lost contact: {dsc.get('lost_contact', 0)}",
+            f"- AEDs already notified & awaiting customer action: {total_unresolved} total ({opened_unresolved} confirmed opened)",
+            f"- AEDs resolved in last 24 hours: {recently_resolved_24h}",
+            f"- Subscribers with tracked unresolved notifications: {len(enriched)}",
+        ]
+        if top_lines:
+            lines.append("- Top subscribers by unresolved notified AEDs:")
+            lines.extend(top_lines)
+        lines.append("If asked about a subscriber not listed above, say they currently have no tracked unresolved notifications in your briefing.")
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"[AEDA-Brief] build error: {e}", flush=True)
+        return "FLEET BRIEFING: Live data is temporarily unavailable."
 
 @api_router.post("/realtime/session")
 async def aeda_realtime_session():
@@ -5938,6 +6044,9 @@ async def aeda_realtime_session():
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
     try:
+        # Pull live fleet briefing so AEDA can answer real questions this session
+        briefing = await _build_aeda_fleet_briefing()
+        full_instructions = AEDA_INSTRUCTIONS + "\n\n" + briefing
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 "https://api.openai.com/v1/realtime/sessions",
@@ -5948,7 +6057,7 @@ async def aeda_realtime_session():
                 json={
                     "model": _AEDA_REALTIME_MODEL,
                     "voice": _AEDA_VOICE,
-                    "instructions": AEDA_INSTRUCTIONS,
+                    "instructions": full_instructions,
                     "input_audio_transcription": {"model": "whisper-1"},
                     "turn_detection": {
                         "type": "server_vad",
