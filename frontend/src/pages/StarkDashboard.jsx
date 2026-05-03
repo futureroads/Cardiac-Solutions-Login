@@ -148,30 +148,39 @@ export default function StarkDashboard({ user, onLogout }) {
         return { ok: false, voice_answer: data.voice_answer || `No AEDs found near ${location}.`, count: 0 };
       }
       // Drive the map: switch to AEDs mode, show all subscribers, zoom to query.
-      // Queue the pan so it runs AFTER the new aedPins arrive (see effect below).
       pendingMapPanRef.current = {
         lat: data.query_lat,
         lng: data.query_lng,
-        zoom: 11,
+        zoom: 12,
         sentinel_id: data.aeds[0]?.sentinel_id || null,
       };
       setMapMode("aeds");
       setAedSubscriber("all");
       setMapFullscreen(true);
-      // If we're already in AEDs/all mode the useEffect won't refetch — pan immediately
-      setTimeout(() => {
-        if (pendingMapPanRef.current && mapRef.current && window.google) {
+      // Force-pan retry strategy: pan up to 5 times over the next 3 seconds,
+      // overriding any fitAll() that may run after the map mounts. Stops once
+      // the popup is open (handled by the aedPins effect) and ref is cleared.
+      let attempts = 0;
+      const tryPan = () => {
+        const pending = pendingMapPanRef.current;
+        if (!pending) return;
+        if (mapRef.current && window.google) {
           try {
-            mapRef.current.panTo({ lat: pendingMapPanRef.current.lat, lng: pendingMapPanRef.current.lng });
-            mapRef.current.setZoom(pendingMapPanRef.current.zoom);
+            mapRef.current.panTo({ lat: pending.lat, lng: pending.lng });
+            mapRef.current.setZoom(pending.zoom);
+            console.log(`[AEDA tool] pan attempt ${attempts + 1} -> (${pending.lat}, ${pending.lng}) zoom ${pending.zoom}`);
           } catch (e) { console.warn("[AEDA tool] map pan failed", e); }
         }
-      }, 250);
+        attempts++;
+        if (attempts < 6) setTimeout(tryPan, 500);
+      };
+      setTimeout(tryPan, 200);
       return {
         ok: true,
         voice_answer: data.voice_answer,
         count: data.count,
         closest: data.aeds[0],
+        instruction_for_aeda: `Read this voice_answer aloud verbatim as your reply: "${data.voice_answer}"`,
       };
     } catch (e) {
       console.error("[AEDA tool] aeds-near exception:", e);
@@ -182,7 +191,7 @@ export default function StarkDashboard({ user, onLogout }) {
   // Pending sentinel ID to auto-select once aedPins are loaded for that area
   const pendingSelectAedRef = useRef(null);
   useEffect(() => {
-    // Whenever new aedPins arrive, if a pan was queued, perform it AND select the closest AED
+    // Whenever new aedPins arrive, perform the queued pan AND select the closest AED
     const pending = pendingMapPanRef.current;
     if (pending && aedPins?.length && mapRef.current && window.google) {
       try {
@@ -193,10 +202,11 @@ export default function StarkDashboard({ user, onLogout }) {
         const idx = aedPins.findIndex(p => p.sentinel_id === pending.sentinel_id);
         if (idx >= 0) setSelectedId(`aed-${pending.sentinel_id}-${idx}`);
       }
-      pendingMapPanRef.current = null;
+      // Don't clear pendingMapPanRef immediately — let the tryPan retries finish
+      // overriding any fitAll(). Cleared after 3.5s by the retry loop completing.
+      setTimeout(() => { pendingMapPanRef.current = null; }, 3500);
       pendingSelectAedRef.current = null;
     } else {
-      // Legacy single-select hook (kept for show_aeds_on_map flows)
       const sid = pendingSelectAedRef.current;
       if (sid && aedPins?.length) {
         const idx = aedPins.findIndex(p => p.sentinel_id === sid);
@@ -422,7 +432,24 @@ export default function StarkDashboard({ user, onLogout }) {
               if (nearMatch) {
                 const loc = nearMatch[2].trim().replace(/[.?]$/, "");
                 console.log(`[AEDA fallback] location intent detected -> "${loc}"`);
-                handleAedaFindNearLocation(loc, 25);
+                // Run the lookup ourselves and instruct AEDA to read the result
+                handleAedaFindNearLocation(loc, 25).then((result) => {
+                  try {
+                    const dc2 = dcRef.current;
+                    if (dc2 && dc2.readyState === "open" && result?.voice_answer) {
+                      dc2.send(JSON.stringify({
+                        type: "response.cancel",
+                      }));
+                      dc2.send(JSON.stringify({
+                        type: "response.create",
+                        response: {
+                          modalities: ["audio", "text"],
+                          instructions: `Speak this exact sentence aloud as your reply, no preamble, no follow-up question: "${result.voice_answer}"`,
+                        },
+                      }));
+                    }
+                  } catch (e) { console.warn("[AEDA fallback] speak voice_answer failed", e); }
+                });
               } else {
                 const wantsMap = /(show|pull up|find|display|open|where|locate|locations? for)\b.*\b(map|aeds?)\b/i.test(t)
                   || /\b(map|aeds?)\b.*\b(for|of)\b/i.test(t)
@@ -466,7 +493,7 @@ export default function StarkDashboard({ user, onLogout }) {
             if (name === "show_aeds_on_map") {
               result = handleAedaShowAedsOnMap(args.subscriber || "all");
             } else if (name === "find_aeds_near_location") {
-              result = await handleAedaFindNearLocation(args.location || "", args.radius_miles || 10);
+              result = await handleAedaFindNearLocation(args.location || "", args.radius_miles || 25);
             }
             // Return the tool output so AEDA can continue her response
             try {
@@ -480,7 +507,19 @@ export default function StarkDashboard({ user, onLogout }) {
                     output: JSON.stringify(result),
                   },
                 }));
-                dc2.send(JSON.stringify({ type: "response.create" }));
+                // For find_aeds_near_location, force AEDA to read the voice_answer
+                // verbatim — the model otherwise tends to give a vague summary.
+                if (name === "find_aeds_near_location" && result?.voice_answer) {
+                  dc2.send(JSON.stringify({
+                    type: "response.create",
+                    response: {
+                      modalities: ["audio", "text"],
+                      instructions: `Speak this exact sentence aloud as your reply, no preamble, no follow-up question: "${result.voice_answer}"`,
+                    },
+                  }));
+                } else {
+                  dc2.send(JSON.stringify({ type: "response.create" }));
+                }
               }
             } catch (e) { console.error("[AEDA tool] output send failed", e); }
           } else if (evt.type === "session.updated") {
