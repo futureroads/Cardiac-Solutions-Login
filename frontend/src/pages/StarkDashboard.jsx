@@ -358,7 +358,7 @@ export default function StarkDashboard({ user, onLogout }) {
       } else if (todayPct < prevPct) {
         if (increases.length) reason = ` This is because ${increases.join(", ")} increased since yesterday.`;
       }
-      if (todayPct > prevPct) items.push({ type: "INFO", msg: `GOOD JOB! Percent ready improved from ${Number(prevPct).toFixed(1)}% yesterday to ${Number(todayPct).toFixed(1)}% today (+${absDiff}%).${reason}` });
+      if (todayPct > prevPct) items.push({ type: "INFO", highlight: true, msg: `GOOD JOB! Percent ready improved from ${Number(prevPct).toFixed(1)}% yesterday to ${Number(todayPct).toFixed(1)}% today (+${absDiff}%).${reason}` });
       else if (todayPct < prevPct) items.push({ type: "INFO", msg: `Percent ready slipped from ${Number(prevPct).toFixed(1)}% yesterday to ${Number(todayPct).toFixed(1)}% today (-${absDiff}%).${reason}` });
       else items.push({ type: "INFO", msg: `Percent ready is stable at ${Number(todayPct).toFixed(1)}% (same as yesterday).` });
     }
@@ -372,7 +372,7 @@ export default function StarkDashboard({ user, onLogout }) {
       const adjExplain = adjToday > adjPrev
         ? "This improvement reflects fewer unresolved issues that are our responsibility, after accounting for devices where subscribers have already been notified."
         : "This decline may be due to new issues appearing or previously notified devices not yet being resolved by subscribers.";
-      if (adjToday > adjPrev) items.push({ type: "INFO", msg: `Adjusted percent ready improved from ${Number(adjPrev).toFixed(1)}% yesterday to ${Number(adjToday).toFixed(1)}% today (+${adjAbsDiff}%). ${adjExplain}` });
+      if (adjToday > adjPrev) items.push({ type: "INFO", highlight: true, msg: `Adjusted percent ready improved from ${Number(adjPrev).toFixed(1)}% yesterday to ${Number(adjToday).toFixed(1)}% today (+${adjAbsDiff}%). ${adjExplain}` });
       else if (adjToday < adjPrev) items.push({ type: "INFO", msg: `Adjusted percent ready slipped from ${Number(adjPrev).toFixed(1)}% yesterday to ${Number(adjToday).toFixed(1)}% today (-${adjAbsDiff}%). ${adjExplain}` });
       else items.push({ type: "INFO", msg: `Adjusted percent ready is stable at ${Number(adjToday).toFixed(1)}% (same as yesterday).` });
     }
@@ -803,7 +803,7 @@ export default function StarkDashboard({ user, onLogout }) {
                     <div className="flex-1 border-t border-cyan-500/20" />
                   </div>
                 ) : (
-                  <div key={rec._key} className={`flex gap-2 items-start py-[3px] ${(rec.msg || "").toUpperCase().includes("GOOD JOB") ? "good-job-row" : ""}`} data-testid={(rec.msg || "").toUpperCase().includes("GOOD JOB") ? "di-good-job" : undefined}>
+                  <div key={rec._key} className={`flex gap-2 items-start py-[3px] ${rec.highlight ? "good-job-row" : ""}`} data-testid={rec.highlight ? "di-highlight" : undefined}>
                     <span className={`font-orbitron text-[8px] font-bold tracking-wider flex-shrink-0 mt-[1px] px-[4px] py-[1px] rounded-sm ${rec.type === "ACT" ? "bg-orange-500/20 text-orange-400" : rec.type === "WARN" ? "bg-yellow-500/20 text-yellow-400" : rec.type === "INFO" ? "bg-green-500/20 text-green-400" : "bg-cyan-500/20 text-cyan-400"}`}>{rec.type}</span>
                     <span className="text-[11px] text-slate-200/90 leading-tight font-mono">{rec.msg}</span>
                   </div>
