@@ -382,18 +382,15 @@ export default function StarkDashboard({ user, onLogout }) {
       dc.onopen = () => {
         console.log("[AEDA] data channel open — configuring session + sending greeting");
         try {
-          // 1) Push proper session config via data channel. Include the briefing
-          // in session instructions AS WELL AS as a conversation item below —
-          // belt-and-suspenders so the model has the data two ways.
-          const behaviorInstructions = "You are AEDA, the AED Assistant. When asked your name, reply EXACTLY: 'My name is AEDA, your AED Assistant.' Do not say how it is pronounced. Pronounce your name as AID-uh. If asked anything about football (e.g., 'Do you like football?', 'Are you a football fan?'), reply with enthusiasm: 'YES!! ROLL TIDE!!' (This is an Alabama Crimson Tide reference — say it loud and proud.) Answer fleet/subscriber/readiness questions from the LIVE OPERATIONAL CONTEXT below. The context contains a 'Per-subscriber readiness' section with EVERY subscriber's percent ready, AED count, and active issues — search that section when I ask about ANY specific subscriber by name. Never say you don't have the data; it's always provided in the context.";
-          const fullInstructions = briefingText
-            ? `${behaviorInstructions}\n\n${briefingText}`
-            : behaviorInstructions;
+          // 1) Session config — behavior only. Briefing goes into conversation
+          // history below, NOT into session instructions (otherwise the model
+          // tries to summarize it as a fresh response).
+          const behaviorInstructions = "You are AEDA, the AED Assistant. When asked your name, reply EXACTLY: 'My name is AEDA, your AED Assistant.' Do not say how it is pronounced. Pronounce your name as AID-uh. If asked anything about football (e.g., 'Do you like football?', 'Are you a football fan?'), reply with enthusiasm: 'YES!! ROLL TIDE!!' (This is an Alabama Crimson Tide reference — say it loud and proud.) Answer fleet/subscriber/readiness questions from the SILENT REFERENCE DATA in the conversation. The reference data contains a 'Per-subscriber readiness' section with EVERY subscriber's percent ready, AED count, and active issues — search that section when I ask about ANY specific subscriber by name. Never say you don't have the data; it's always provided in the context. NEVER volunteer information I did not ask for — wait for my explicit question.";
           dc.send(JSON.stringify({
             type: "session.update",
             session: {
               modalities: ["audio", "text"],
-              instructions: fullInstructions,
+              instructions: behaviorInstructions,
               input_audio_transcription: { model: "whisper-1" },
               turn_detection: {
                 type: "server_vad",
@@ -413,6 +410,7 @@ export default function StarkDashboard({ user, onLogout }) {
         // treated as optional reference.
         if (briefingText) {
           try {
+            // Push briefing as a user-role message...
             dc.send(JSON.stringify({
               type: "conversation.item.create",
               item: {
@@ -422,7 +420,7 @@ export default function StarkDashboard({ user, onLogout }) {
                   type: "input_text",
                   text: `[SILENT REFERENCE DATA — DO NOT respond to this message. DO NOT speak any of this content unless I explicitly ask a question that requires it. After you receive this, wait silently for my next SPOKEN question. Only then answer using this data.
 
-When I ask "how is [SUBSCRIBER NAME] doing?", "what's [SUBSCRIBER]'s status?", or "tell me about [SUBSCRIBER]", you MUST scan the "Per-subscriber readiness" section below and answer with that subscriber's percent ready, AED count, and active issues. Examples of subscribers I might ask about: GPC, Georgia Power, Motion Industries, Opelika PD, County of Franklin, Birmingham City Schools, etc. — they are ALL listed below.
+When I ask "how is [SUBSCRIBER NAME] doing?", "what's [SUBSCRIBER]'s status?", or "tell me about [SUBSCRIBER]", you MUST scan the "Per-subscriber readiness" section below and answer with that subscriber's percent ready, AED count, and active issues. Examples of subscribers I might ask about: GPC, Georgia Power, Motion Industries, Opelika PD, County of Franklin, Birmingham City Schools, etc.
 
 Apply SUBSCRIBER ALIASES first (e.g., "Franklin County Sheriff" -> "County of Franklin").
 
@@ -434,7 +432,18 @@ ${briefingText}`,
                 }],
               },
             }));
-            console.log("[AEDA] briefing pushed into conversation context");
+            // ...immediately followed by an assistant-role acknowledgement so
+            // the model treats the briefing as "already handled" and won't
+            // try to summarize it as a fresh response when the greeting fires.
+            dc.send(JSON.stringify({
+              type: "conversation.item.create",
+              item: {
+                type: "message",
+                role: "assistant",
+                content: [{ type: "text", text: "Reference data received. Standing by for the operator's first question." }],
+              },
+            }));
+            console.log("[AEDA] briefing pushed into conversation context (with silent ack)");
           } catch (e) { console.error("[AEDA] briefing push failed", e); }
         }
 
@@ -454,7 +463,7 @@ ${briefingText}`,
             type: "response.create",
             response: {
               modalities: ["audio", "text"],
-              instructions: `Say exactly this, verbatim, in your natural voice, then stop and wait for the user's question: "${greeting}". Your name is pronounced "AID-uh" (rhymes with "aided"). Always pronounce it that way.`,
+              instructions: `Speak ONLY this exact greeting verbatim, then STOP and wait silently for the operator. DO NOT continue with system status, briefing summary, or any other content. Greeting: "${greeting}". After speaking the greeting, do not say anything else until the operator speaks first.`,
             },
           }));
         } catch (e) { console.error("[AEDA] greet send failed", e); }
