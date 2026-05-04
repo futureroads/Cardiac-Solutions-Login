@@ -18,6 +18,7 @@ import EmailActivityAdmin from "./pages/EmailActivityAdmin";
 import UserActivity from "./pages/UserActivity";
 import Sales from "./pages/Sales";
 import SalesMobile from "./pages/SalesMobile";
+import SalesLogin from "./pages/SalesLogin";
 import useActivityHeartbeat from "./hooks/useActivityHeartbeat";
 import { Toaster } from "./components/ui/sonner";
 
@@ -70,11 +71,17 @@ function App() {
     return () => clearInterval(interval);
   }, [isAuthenticated]);
 
-  const handleLogin = (token, userData) => {
+  const handleLogin = (token, userData, opts = {}) => {
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(userData));
     setIsAuthenticated(true);
     setUser(userData);
+    if (opts.skipRedirect) return;
+    // If on sales subdomain, always go to mobile field view
+    if (typeof window !== "undefined" && window.location.hostname.startsWith("sales.")) {
+      window.location.href = "/sales/mobile";
+      return;
+    }
     // If dashboard is the only module, go directly to dashboard
     const mods = userData?.allowed_modules || [];
     if (mods.length === 1 && mods[0] === "dashboard") {
@@ -89,7 +96,11 @@ function App() {
     localStorage.removeItem("user");
     setIsAuthenticated(false);
     setUser(null);
-    window.location.href = "/";
+    if (typeof window !== "undefined" && window.location.hostname.startsWith("sales.")) {
+      window.location.href = "/sales/login";
+    } else {
+      window.location.href = "/";
+    }
   };
 
   if (loading) {
@@ -108,10 +119,24 @@ function App() {
           <Route 
             path="/" 
             element={
-              isAuthenticated ? 
-                <Navigate to="/hub" replace /> : 
-                <LoginPage onLogin={handleLogin} />
+              isAuthenticated ? (
+                typeof window !== "undefined" && window.location.hostname.startsWith("sales.")
+                  ? <Navigate to="/sales/mobile" replace />
+                  : <Navigate to="/hub" replace />
+              ) : (
+                typeof window !== "undefined" && window.location.hostname.startsWith("sales.")
+                  ? <Navigate to="/sales/login" replace />
+                  : <LoginPage onLogin={handleLogin} />
+              )
             } 
+          />
+          <Route
+            path="/sales/login"
+            element={
+              isAuthenticated ?
+                <Navigate to="/sales/mobile" replace /> :
+                <SalesLogin onLogin={handleLogin} />
+            }
           />
           <Route 
             path="/hub" 
