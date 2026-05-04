@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Upload, MapPin, Trash2, Check, Calendar, User, Printer, ClipboardList, Crosshair, Fuel } from "lucide-react";
+import { ArrowLeft, Upload, MapPin, Trash2, Check, Calendar, User, Printer, ClipboardList, Crosshair, Fuel, Phone } from "lucide-react";
 import { useJsApiLoader } from "@react-google-maps/api";
 import API_BASE from "../apiBase";
 
@@ -361,9 +361,14 @@ export default function Sales() {
             <ArrowLeft className="w-4 h-4" /> Back to Hub
           </button>
           <h1 className="font-orbitron text-2xl font-bold tracking-widest text-cyan-300">SALES ROUTES</h1>
-          <button onClick={() => setShowUpload(true)} data-testid="sales-upload-btn" className="flex items-center gap-2 px-3 py-1.5 rounded text-sm border border-green-500/40 bg-green-500/10 text-green-300 hover:bg-green-500/20">
-            <Upload className="w-4 h-4" /> Upload Route
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => navigate("/sales/mobile")} data-testid="sales-field-view-btn" className="flex items-center gap-2 px-3 py-1.5 rounded text-sm border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20" title="Mobile-optimized view for reps in the field">
+              <Phone className="w-4 h-4" /> Field View
+            </button>
+            <button onClick={() => setShowUpload(true)} data-testid="sales-upload-btn" className="flex items-center gap-2 px-3 py-1.5 rounded text-sm border border-green-500/40 bg-green-500/10 text-green-300 hover:bg-green-500/20">
+              <Upload className="w-4 h-4" /> Upload Route
+            </button>
+          </div>
         </div>
 
         {err && <div className="mb-4 p-3 border border-red-500/40 bg-red-500/10 text-red-300 text-sm rounded">{err}</div>}
@@ -701,7 +706,7 @@ function FuelEstimateModal({ stops, routeName, perStop, onClose }) {
   });
   const [pricePerGal, setPricePerGal] = useState(() => {
     const stored = parseFloat(localStorage.getItem("sales_fuel_price"));
-    return Number.isFinite(stored) && stored > 0 ? stored : 3.5;
+    return Number.isFinite(stored) && stored > 0 ? stored : 4.0;
   });
 
   useEffect(() => { localStorage.setItem("sales_fuel_mpg", String(mpg)); }, [mpg]);

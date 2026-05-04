@@ -17,6 +17,7 @@ import StarkDashboard from "./pages/StarkDashboard";
 import EmailActivityAdmin from "./pages/EmailActivityAdmin";
 import UserActivity from "./pages/UserActivity";
 import Sales from "./pages/Sales";
+import SalesMobile from "./pages/SalesMobile";
 import useActivityHeartbeat from "./hooks/useActivityHeartbeat";
 import { Toaster } from "./components/ui/sonner";
 
@@ -202,6 +203,14 @@ function App() {
             element={
               isAuthenticated ?
                 <Sales /> :
+                <Navigate to="/" replace />
+            }
+          />
+          <Route
+            path="/sales/mobile"
+            element={
+              isAuthenticated ?
+                <SalesMobile /> :
                 <Navigate to="/" replace />
             }
           />
