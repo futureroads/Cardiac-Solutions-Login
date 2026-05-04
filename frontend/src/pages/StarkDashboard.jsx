@@ -481,6 +481,9 @@ ${briefingText}`,
               if (/\b(close|exit|hide|dismiss|leave)\b.*\bmap\b/i.test(t) || /\bgo back to (the )?dashboard\b/i.test(t)) {
                 console.log("[AEDA fallback] close map intent detected");
                 handleAedaCloseMap();
+                // Force AEDA to acknowledge instead of saying "I don't have a command for that"
+                pendingForcedReplyRef.current = "Map closed.";
+                tryFlushForcedReply();
                 return;
               }
               // Detect "near <location>" intent first (most specific). Don't require
@@ -521,6 +524,8 @@ ${briefingText}`,
                   if (matched) {
                     console.log(`[AEDA fallback] triggering map handler for "${matched}"`);
                     handleAedaShowAedsOnMap(matched);
+                    pendingForcedReplyRef.current = `Pulling up ${matched} on the map now.`;
+                    tryFlushForcedReply();
                   }
                 }
               }
