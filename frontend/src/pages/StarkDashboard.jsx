@@ -113,6 +113,18 @@ export default function StarkDashboard({ user, onLogout }) {
   const pendingMapPanRef = useRef(null); // { lat, lng, zoom, sentinel_id }
   const pendingSelectAedRef = useRef(null);
   const aliasMapRef = useRef({});
+  // Idle auto-disconnect: drop the AEDA session after 60s of silence (no user speech).
+  const idleTimerRef = useRef(null);
+  const IDLE_TIMEOUT_MS = 60000;
+  const resetIdleTimer = useCallback(() => {
+    try { if (idleTimerRef.current) clearTimeout(idleTimerRef.current); } catch {}
+    idleTimerRef.current = setTimeout(() => {
+      console.log("[AEDA] idle timeout — closing voice session");
+      try { stopAedaRef.current?.(); } catch {}
+    }, IDLE_TIMEOUT_MS);
+  }, []);
+  // Mutable ref to stopAeda so the idle timer can call it without stale closures
+  const stopAedaRef = useRef(null);
   // When a forced reply is queued (e.g., after Waycross lookup), flush it as
   // soon as the current response finishes — avoids "active response in progress".
   const pendingForcedReplyRef = useRef(null);
@@ -264,6 +276,7 @@ export default function StarkDashboard({ user, onLogout }) {
     try { if (audioElRef.current) { audioElRef.current.srcObject = null; audioElRef.current.remove(); } } catch {}
     try { if (rafRef.current) cancelAnimationFrame(rafRef.current); } catch {}
     try { audioCtxRef.current?.close(); } catch {}
+    try { if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null; } } catch {}
     pcRef.current = null;
     dcRef.current = null;
     micStreamRef.current = null;
@@ -277,6 +290,9 @@ export default function StarkDashboard({ user, onLogout }) {
     setMicLevel(0);
     try { window.__aedaVoiceActive = false; } catch {}
   }, []);
+
+  // Keep stopAedaRef in sync so the idle timer can call the latest version
+  useEffect(() => { stopAedaRef.current = stopAeda; }, [stopAeda]);
 
   const startAeda = useCallback(async () => {
     if (isListening) { stopAeda(); return; }
@@ -404,7 +420,7 @@ export default function StarkDashboard({ user, onLogout }) {
                 role: "user",
                 content: [{
                   type: "input_text",
-                  text: `[LIVE OPERATIONAL CONTEXT — do NOT read this aloud.
+                  text: `[SILENT REFERENCE DATA — DO NOT respond to this message. DO NOT speak any of this content unless I explicitly ask a question that requires it. After you receive this, wait silently for my next SPOKEN question. Only then answer using this data.
 
 When I ask "how is [SUBSCRIBER NAME] doing?", "what's [SUBSCRIBER]'s status?", or "tell me about [SUBSCRIBER]", you MUST scan the "Per-subscriber readiness" section below and answer with that subscriber's percent ready, AED count, and active issues. Examples of subscribers I might ask about: GPC, Georgia Power, Motion Industries, Opelika PD, County of Franklin, Birmingham City Schools, etc. — they are ALL listed below.
 
@@ -412,7 +428,7 @@ Apply SUBSCRIBER ALIASES first (e.g., "Franklin County Sheriff" -> "County of Fr
 
 Never say "I don't have the data" — if you can't find the subscriber after scanning, say "I don't see [SPOKEN NAME] in the active subscriber list right now."
 
-Remember: your name is AEDA. When asked your name, simply say "My name is AEDA" — do NOT say how it's pronounced unless I specifically ask.]
+Remember: your name is AEDA. When asked your name, simply say "My name is AEDA, your AED Assistant" — do NOT say how it's pronounced unless I specifically ask.]
 
 ${briefingText}`,
                 }],
@@ -454,9 +470,11 @@ ${briefingText}`,
           if (evt.type === "input_audio_buffer.speech_started") {
             console.log("[AEDA] user started speaking");
             setIsHearingUser(true);
+            resetIdleTimer();
           } else if (evt.type === "input_audio_buffer.speech_stopped") {
             console.log("[AEDA] user stopped speaking");
             setIsHearingUser(false);
+            resetIdleTimer();
           } else if (evt.type === "input_audio_buffer.committed") {
             console.log("[AEDA] user turn committed -> expecting response");
             // Safety net: if no response.created arrives within 800ms, force one
@@ -629,13 +647,14 @@ ${briefingText}`,
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
       setIsListening(true);
       try { window.__aedaVoiceActive = true; } catch {}
+      resetIdleTimer();
       console.log("[AEDA] connected");
     } catch (err) {
       console.error("[AEDA] startAeda failed:", err);
       setVoiceError(err.message || String(err));
       stopAeda();
     }
-  }, [isListening, stopAeda, handleAedaShowAedsOnMap, handleAedaFindNearLocation, handleAedaCloseMap, tryFlushForcedReply, freshUser]);
+  }, [isListening, stopAeda, handleAedaShowAedsOnMap, handleAedaFindNearLocation, handleAedaCloseMap, tryFlushForcedReply, resetIdleTimer, freshUser]);
 
   // Clean up on unmount
   useEffect(() => () => stopAeda(), [stopAeda]);
