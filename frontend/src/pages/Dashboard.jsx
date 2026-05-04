@@ -319,11 +319,15 @@ export default function Dashboard({ user, onLogout }) {
     openTickets: 10
   };
 
-  const pctReady = stats.pctReady.toFixed(1);
-  const pctAdjusted = readiness?.pct_ready_adjusted != null ? Number(readiness.pct_ready_adjusted).toFixed(1) : pctReady;
-  const pctActual = readiness?.pct_ready != null ? Number(readiness.pct_ready).toFixed(1) : pctReady;
-  const gaugeAngleAdjusted = -90 + ((readiness?.pct_ready_adjusted ?? stats.pctReady) / 100) * 180;
-  const gaugeAngleActual = -90 + ((readiness?.pct_ready ?? stats.pctReady) / 100) * 180;
+  // Show 0.0% until /api/support/dashboard-data delivers accurate adjusted/actual.
+  // Raw totals.percent_ready (~90.8%) diverges from the dashboard's dsc-based
+  // calculation (~84.6%), so we intentionally don't use it as a placeholder.
+  const readinessLoaded = readiness != null;
+  const pctReady = readinessLoaded && readiness.pct_ready != null ? Number(readiness.pct_ready).toFixed(1) : "0.0";
+  const pctAdjusted = readinessLoaded && readiness.pct_ready_adjusted != null ? Number(readiness.pct_ready_adjusted).toFixed(1) : "0.0";
+  const pctActual = readinessLoaded && readiness.pct_ready != null ? Number(readiness.pct_ready).toFixed(1) : "0.0";
+  const gaugeAngleAdjusted = -90 + ((readinessLoaded ? (readiness.pct_ready_adjusted ?? 0) : 0) / 100) * 180;
+  const gaugeAngleActual = -90 + ((readinessLoaded ? (readiness.pct_ready ?? 0) : 0) / 100) * 180;
 
   // Retry handler for manual refresh
   const retryStatus = () => {
@@ -395,9 +399,10 @@ export default function Dashboard({ user, onLogout }) {
     const bd = liveStats?.totals?.telemetry_distribution?.battery || {};
     const cd = liveStats?.totals?.telemetry_distribution?.cellular || {};
 
-    // Percent Ready daily trend event
-    const todayPct = readiness?.pct_ready ?? totals.percent_ready;
-    const prevPct = readiness?.prev_pct_ready ?? totals.prev_percent_ready;
+    // Percent Ready daily trend event — only show when the dashboard-aligned
+    // readiness numbers have loaded (avoids the wrong ~90.8% from raw Readisys)
+    const todayPct = readiness?.pct_ready;
+    const prevPct = readiness?.prev_pct_ready;
     if (todayPct != null && prevPct != null) {
       const diff = (todayPct - prevPct).toFixed(1);
       const absDiff = Math.abs(diff);

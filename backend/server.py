@@ -1043,9 +1043,33 @@ async def support_dashboard_data(current_user: dict = Depends(get_current_user))
     return await _support_dashboard_data_core()
 
 
+# Cached response for dashboard-data so repeated loads are ~instant. The
+# underlying Readisys aggregation is the slowest op in the app (~40s cold).
+_dashboard_data_cache = {"data": None, "ts": 0}
+_dashboard_data_lock = asyncio.Lock()
+
+
 async def _support_dashboard_data_core():
     """Internal version of /api/support/dashboard-data that can be called by
-    background warmers (AEDA cache refresh) without requiring auth."""
+    background warmers (AEDA cache refresh) without requiring auth.
+    Serves a 2-min cached payload when available."""
+    import time
+    now = time.time()
+    # Serve cached response if fresh (2 min TTL — numbers change slowly)
+    if _dashboard_data_cache["data"] and (now - _dashboard_data_cache["ts"]) < 120:
+        return _dashboard_data_cache["data"]
+    # Serialize concurrent builds — only one coroutine aggregates at a time
+    async with _dashboard_data_lock:
+        if _dashboard_data_cache["data"] and (time.time() - _dashboard_data_cache["ts"]) < 120:
+            return _dashboard_data_cache["data"]
+        result = await _support_dashboard_data_build()
+        _dashboard_data_cache["data"] = result
+        _dashboard_data_cache["ts"] = time.time()
+        return result
+
+
+async def _support_dashboard_data_build():
+    """Underlying aggregation — only called on cache miss."""
     import httpx, time, asyncio, urllib.parse
     headers = _readisys_auth_headers()
     now = time.time()

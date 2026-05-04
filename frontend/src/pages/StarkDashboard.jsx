@@ -49,6 +49,7 @@ export default function StarkDashboard({ user, onLogout }) {
   const audioElRef = useRef(null);
   const dcRef = useRef(null);
   const isSpeakingRef = useRef(false);
+  const responseActiveRef = useRef(false);
   const audioCtxRef = useRef(null);
   const analyserRef = useRef(null);
   const rafRef = useRef(null);
@@ -465,6 +466,7 @@ export default function StarkDashboard({ user, onLogout }) {
             } catch (e) { console.warn("[AEDA fallback] match err", e); }
           } else if (evt.type === "response.created") {
             console.log("[AEDA] response.created");
+            responseActiveRef.current = true;
           } else if (evt.type === "response.audio.delta" || evt.type === "output_audio_buffer.started" || evt.type === "response.output_audio.delta") {
             setIsSpeaking(true);
             isSpeakingRef.current = true;
@@ -474,6 +476,7 @@ export default function StarkDashboard({ user, onLogout }) {
           } else if (evt.type === "response.done" || evt.type === "output_audio_buffer.stopped" || evt.type === "response.audio.done") {
             setIsSpeaking(false);
             isSpeakingRef.current = false;
+            responseActiveRef.current = false;
             // Re-enable mic once AEDA finishes speaking
             try { micStreamRef.current?.getAudioTracks()?.forEach(t => { t.enabled = true; }); } catch {}
           } else if (evt.type === "response.function_call_arguments.done") {
@@ -504,7 +507,7 @@ export default function StarkDashboard({ user, onLogout }) {
                 // verbatim — the model otherwise tends to give a vague summary.
                 // Only fire response.create if no response is currently active
                 // (otherwise OpenAI rejects with "active response in progress").
-                if (name === "find_aeds_near_location" && result?.voice_answer && !isSpeakingRef.current) {
+                if (name === "find_aeds_near_location" && result?.voice_answer && !responseActiveRef.current) {
                   dc2.send(JSON.stringify({
                     type: "response.create",
                     response: {
@@ -512,8 +515,10 @@ export default function StarkDashboard({ user, onLogout }) {
                       instructions: `Speak this exact sentence aloud as your reply, no preamble, no follow-up question: "${result.voice_answer}"`,
                     },
                   }));
-                } else if (!isSpeakingRef.current) {
+                } else if (!responseActiveRef.current) {
                   dc2.send(JSON.stringify({ type: "response.create" }));
+                } else {
+                  console.log("[AEDA tool] skipping response.create — response already active");
                 }
               }
             } catch (e) { console.error("[AEDA tool] output send failed", e); }
@@ -521,7 +526,14 @@ export default function StarkDashboard({ user, onLogout }) {
             console.log("[AEDA] session.updated OK");
           } else if (evt.type === "error") {
             console.error("[AEDA] realtime error event:", evt);
-            setVoiceError(`AEDA: ${evt.error?.message || "error"}`);
+            // Suppress the harmless "active response in progress" error — it's
+            // a race condition during tool-call dispatch that doesn't affect UX.
+            const msg = evt.error?.message || "";
+            if (!/active response in progress|response_already_in_progress/i.test(msg)) {
+              setVoiceError(`AEDA: ${msg || "error"}`);
+            } else {
+              console.log("[AEDA] suppressed race error:", msg);
+            }
           }
         } catch (err) { console.error("[AEDA] msg parse err", err); }
       };
@@ -725,13 +737,10 @@ export default function StarkDashboard({ user, onLogout }) {
     service: totals.not_ready || 0, dispatch: 0, alerts: (totals.lost_contact || 0) + (totals.not_ready || 0),
     pendingNotifs: 48, sentToday: 0, devicesAffected: totals.total || 0,
   };
-  // Show "—" placeholder until /api/support/dashboard-data has loaded the
-  // accurate readiness numbers (totals.percent_ready from raw Readisys is
-  // ~90.8% but the dashboard's adjusted is ~86% — avoid showing the wrong
-  // number for a few seconds during the initial load).
+  // Show 0.0% until /api/support/dashboard-data delivers accurate readiness.
   const readinessLoaded = readiness != null;
-  const pctAdjusted = readinessLoaded && readiness.pct_ready_adjusted != null ? Number(readiness.pct_ready_adjusted).toFixed(1) : "—";
-  const pctActual = readinessLoaded && readiness.pct_ready != null ? Number(readiness.pct_ready).toFixed(1) : "—";
+  const pctAdjusted = readinessLoaded && readiness.pct_ready_adjusted != null ? Number(readiness.pct_ready_adjusted).toFixed(1) : "0.0";
+  const pctActual = readinessLoaded && readiness.pct_ready != null ? Number(readiness.pct_ready).toFixed(1) : "0.0";
 
   // Gauge angles: 0% = -90deg (left), 100% = 90deg (right). Hold needle at 0
   // until accurate data arrives.
@@ -760,8 +769,8 @@ export default function StarkDashboard({ user, onLogout }) {
     const items = [];
     const bd = totals.telemetry_distribution?.battery || {};
     const cd = totals.telemetry_distribution?.cellular || {};
-    const todayPct = readiness?.pct_ready ?? totals.percent_ready;
-    const prevPct = readiness?.prev_pct_ready ?? totals.prev_percent_ready;
+    const todayPct = readiness?.pct_ready;
+    const prevPct = readiness?.prev_pct_ready;
     if (todayPct != null && prevPct != null) {
       const diff = (todayPct - prevPct).toFixed(1);
       const absDiff = Math.abs(diff);
