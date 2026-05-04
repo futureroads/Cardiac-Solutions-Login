@@ -278,10 +278,27 @@ export default function Sales() {
       const key = String(s.phase || s.day || "").trim();
       if (key && !seen.has(key)) { seen.add(key); out.push(key); }
     });
-    // Natural sort: numeric phases first, then alpha
+    // Sort:
+    //  1. Numeric phases first (1, 2, 3 …)
+    //  2. Geographic keywords: West → Middle/Central → East, North → South
+    //  3. Otherwise alphabetical
+    const geoRank = (s) => {
+      const t = s.toLowerCase();
+      if (t.includes("west")) return 1;
+      if (t.includes("middle") || t.includes("central")) return 2;
+      if (t.includes("east")) return 3;
+      if (t.includes("north")) return 4;
+      if (t.includes("south")) return 5;
+      return 99;
+    };
     out.sort((a, b) => {
       const na = parseFloat(a), nb = parseFloat(b);
-      if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+      const aIsNum = !Number.isNaN(na), bIsNum = !Number.isNaN(nb);
+      if (aIsNum && bIsNum) return na - nb;
+      if (aIsNum && !bIsNum) return -1;
+      if (!aIsNum && bIsNum) return 1;
+      const ra = geoRank(a), rb = geoRank(b);
+      if (ra !== rb) return ra - rb;
       return a.localeCompare(b);
     });
     return out;
