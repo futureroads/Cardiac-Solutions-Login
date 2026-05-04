@@ -6795,37 +6795,80 @@ async def sales_route_upload(request: Request, current_user: dict = Depends(get_
     if not rows:
         raise HTTPException(status_code=400, detail="File is empty")
 
-    # Normalize and geocode each starting/ending city in the background loop
+    # Normalize and geocode each starting/ending city in the background loop.
+    # Two schemas supported:
+    #  A) Week / Day / Region / Counties / Starting City / Ending City  (route-plan style)
+    #  B) Phase / Stop # / County / Office Address / City / State / ZIP  (per-stop style)
     stops: list[dict] = []
     for i, r in enumerate(rows):
-        stop = {
-            "idx": i,
-            "week": r.get("week", ""),
-            "day": r.get("day", ""),
-            "region": r.get("region", ""),
-            "counties": r.get("counties", ""),
-            "starting_city": r.get("starting_city") or r.get("start_city") or "",
-            "ending_city": r.get("ending_city") or r.get("end_city") or "",
-            "notes": r.get("notes", ""),
-            "completed": False,
-            "completed_at": None,
-            "start_lat": None, "start_lng": None,
-            "end_lat": None, "end_lng": None,
-        }
-        stops.append(stop)
+        # Schema B: detected by presence of "office_address" or "stop_#"
+        is_per_stop = ("office_address" in r) or ("stop_#" in r) or ("stop_number" in r)
+        if is_per_stop:
+            day_or_phase = r.get("day") or r.get("phase") or ""
+            office_addr = r.get("office_address") or ""
+            city = r.get("city") or ""
+            state = r.get("state") or ""
+            zipc = r.get("zip") or r.get("zip_code") or ""
+            full_addr = office_addr or ", ".join(p for p in [city, state, zipc] if p)
+            stops.append({
+                "idx": i,
+                "week": r.get("week", ""),
+                "day": day_or_phase,
+                "phase": r.get("phase", day_or_phase),
+                "stop_num": r.get("stop_#") or r.get("stop_number") or (i + 1),
+                "region": r.get("region", ""),
+                "counties": r.get("county") or r.get("counties", ""),
+                "starting_city": city,
+                "ending_city": "",
+                "office_address": office_addr,
+                "state": state,
+                "zip": zipc,
+                "full_address": full_addr,
+                "notes": r.get("notes", ""),
+                "completed": False,
+                "completed_at": None,
+                "start_lat": None, "start_lng": None,
+                "end_lat": None, "end_lng": None,
+            })
+        else:
+            stops.append({
+                "idx": i,
+                "week": r.get("week", ""),
+                "day": r.get("day", ""),
+                "phase": r.get("phase", r.get("day", "")),
+                "stop_num": i + 1,
+                "region": r.get("region", ""),
+                "counties": r.get("counties", ""),
+                "starting_city": r.get("starting_city") or r.get("start_city") or "",
+                "ending_city": r.get("ending_city") or r.get("end_city") or "",
+                "office_address": "",
+                "state": "",
+                "zip": "",
+                "full_address": r.get("starting_city") or r.get("start_city") or "",
+                "notes": r.get("notes", ""),
+                "completed": False,
+                "completed_at": None,
+                "start_lat": None, "start_lng": None,
+                "end_lat": None, "end_lng": None,
+            })
 
-    # Synchronous geocode (capped to 60 stops to keep upload responsive)
-    for s in stops[:60]:
-        for prefix, city_field in (("start", "starting_city"), ("end", "ending_city")):
-            city = s.get(city_field)
-            if not city:
-                continue
-            # Bias to TN by default — most US cities ambiguous otherwise. If a comma already present, trust the user.
-            q = city if "," in city else f"{city}, TN, USA"
+    # Geocode using the most specific address available (full address > city). Cap at 200.
+    for s in stops[:200]:
+        # Primary location (start)
+        primary = s.get("full_address") or s.get("starting_city")
+        if primary:
+            q = primary if "," in primary else f"{primary}, TN, USA"
             g = await _geocode_text(q)
             if g:
-                s[f"{prefix}_lat"] = g["lat"]
-                s[f"{prefix}_lng"] = g["lng"]
+                s["start_lat"] = g["lat"]
+                s["start_lng"] = g["lng"]
+        # End location (only when we have a separate ending_city)
+        if s.get("ending_city"):
+            q = s["ending_city"] if "," in s["ending_city"] else f"{s['ending_city']}, TN, USA"
+            g = await _geocode_text(q)
+            if g:
+                s["end_lat"] = g["lat"]
+                s["end_lng"] = g["lng"]
 
     route_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
