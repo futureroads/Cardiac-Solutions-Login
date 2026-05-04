@@ -331,12 +331,18 @@ export default function StarkDashboard({ user, onLogout }) {
       dc.onopen = () => {
         console.log("[AEDA] data channel open — configuring session + sending greeting");
         try {
-          // 1) Push proper session config via data channel (REST endpoint silently
-          //    drops input_audio_transcription and some VAD params).
+          // 1) Push proper session config via data channel. Include the briefing
+          // in session instructions AS WELL AS as a conversation item below —
+          // belt-and-suspenders so the model has the data two ways.
+          const behaviorInstructions = "You are AEDA (pronounced AID-uh). When asked 'what is your name?', say 'My name is AEDA, pronounced AID-uh.' Answer fleet/subscriber/readiness questions from the LIVE OPERATIONAL CONTEXT in the conversation. Never say you don't have the data; it's always provided.";
+          const fullInstructions = briefingText
+            ? `${behaviorInstructions}\n\n${briefingText}`
+            : behaviorInstructions;
           dc.send(JSON.stringify({
             type: "session.update",
             session: {
               modalities: ["audio", "text"],
+              instructions: fullInstructions,
               input_audio_transcription: { model: "whisper-1" },
               turn_detection: {
                 type: "server_vad",
@@ -350,10 +356,10 @@ export default function StarkDashboard({ user, onLogout }) {
           }));
         } catch (e) { console.error("[AEDA] session.update failed", e); }
 
-        // 1b) Push the live FLEET BRIEFING into conversation history. Long
-        // system instructions get treated as "reference" by the realtime
-        // model — putting the briefing as a conversation item makes the
-        // model treat it as committed context it MUST use.
+        // 1b) Push the live FLEET BRIEFING into conversation history. The
+        // realtime model treats conversation history items as authoritative
+        // context, whereas very long session-level instructions tend to be
+        // treated as optional reference.
         if (briefingText) {
           try {
             dc.send(JSON.stringify({
@@ -363,7 +369,7 @@ export default function StarkDashboard({ user, onLogout }) {
                 role: "user",
                 content: [{
                   type: "input_text",
-                  text: `[OPERATOR BRIEFING — read silently, do not speak this aloud, but use these numbers verbatim when answering any question about fleet status, readiness, percent ready, subscribers, or AED counts. This is the authoritative live data for our session.]\n\n${briefingText}`,
+                  text: `[LIVE OPERATIONAL CONTEXT — do NOT read this aloud. These are the authoritative, current numbers for our session. When I ask any question about fleet status, percent ready, subscribers, Georgia Power, GPC, AED counts, trends, or specific customer readiness, you MUST answer from these numbers. Never say "I don't have the data" or "check the dashboard" — the data is right here. Remember: your name is AEDA (pronounced AID-uh).]\n\n${briefingText}`,
                 }],
               },
             }));
