@@ -109,6 +109,15 @@ export default function StarkDashboard({ user, onLogout }) {
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // AEDA tool: "close_map" — exit fullscreen map back to the dashboard
+  const handleAedaCloseMap = useCallback(() => {
+    console.log("[AEDA tool] close_map -> exiting fullscreen");
+    setMapFullscreen(false);
+    setSelectedId(null);
+    setHoveredId(null);
+    return { ok: true };
+  }, []);
+
   // AEDA tool: "show_aeds_on_map" — driven by voice commands like
   // "show me where Georgia Power's AEDs are"
   const aliasMapRef = useRef({});
@@ -334,7 +343,7 @@ export default function StarkDashboard({ user, onLogout }) {
           // 1) Push proper session config via data channel. Include the briefing
           // in session instructions AS WELL AS as a conversation item below —
           // belt-and-suspenders so the model has the data two ways.
-          const behaviorInstructions = "You are AEDA (pronounced AID-uh). When asked 'what is your name?', say 'My name is AEDA, pronounced AID-uh.' Answer fleet/subscriber/readiness questions from the LIVE OPERATIONAL CONTEXT in the conversation. Never say you don't have the data; it's always provided.";
+          const behaviorInstructions = "You are AEDA. When asked your name, simply say 'My name is AEDA' — do not say how it is pronounced unless I ask. Pronounce your name as AID-uh. Answer fleet/subscriber/readiness questions from the LIVE OPERATIONAL CONTEXT below. The context contains a 'Per-subscriber readiness' section with EVERY subscriber's percent ready, AED count, and active issues — search that section when I ask about ANY specific subscriber by name. Never say you don't have the data; it's always provided in the context.";
           const fullInstructions = briefingText
             ? `${behaviorInstructions}\n\n${briefingText}`
             : behaviorInstructions;
@@ -369,7 +378,17 @@ export default function StarkDashboard({ user, onLogout }) {
                 role: "user",
                 content: [{
                   type: "input_text",
-                  text: `[LIVE OPERATIONAL CONTEXT — do NOT read this aloud. These are the authoritative, current numbers for our session. When I ask any question about fleet status, percent ready, subscribers, Georgia Power, GPC, AED counts, trends, or specific customer readiness, you MUST answer from these numbers. Never say "I don't have the data" or "check the dashboard" — the data is right here. Remember: your name is AEDA (pronounced AID-uh).]\n\n${briefingText}`,
+                  text: `[LIVE OPERATIONAL CONTEXT — do NOT read this aloud.
+
+When I ask "how is [SUBSCRIBER NAME] doing?", "what's [SUBSCRIBER]'s status?", or "tell me about [SUBSCRIBER]", you MUST scan the "Per-subscriber readiness" section below and answer with that subscriber's percent ready, AED count, and active issues. Examples of subscribers I might ask about: GPC, Georgia Power, Motion Industries, Opelika PD, County of Franklin, Birmingham City Schools, etc. — they are ALL listed below.
+
+Apply SUBSCRIBER ALIASES first (e.g., "Franklin County Sheriff" -> "County of Franklin").
+
+Never say "I don't have the data" — if you can't find the subscriber after scanning, say "I don't see [SPOKEN NAME] in the active subscriber list right now."
+
+Remember: your name is AEDA. When asked your name, simply say "My name is AEDA" — do NOT say how it's pronounced unless I specifically ask.]
+
+${briefingText}`,
                 }],
               },
             }));
@@ -432,6 +451,12 @@ export default function StarkDashboard({ user, onLogout }) {
             // fire the handler directly without waiting for AEDA's tool call.
             try {
               const t = txt.toLowerCase();
+              // "close map" fallback (most specific — runs first)
+              if (/\b(close|exit|hide|dismiss|leave)\b.*\bmap\b/i.test(t) || /\bgo back to (the )?dashboard\b/i.test(t)) {
+                console.log("[AEDA fallback] close map intent detected");
+                handleAedaCloseMap();
+                return;
+              }
               // Detect "near <location>" intent first (most specific). Don't require
               // the word "AED" because once we're in an AEDA conversation, the
               // operator typically drops "AED" in follow-ups (e.g., "any near Macon?").
@@ -496,6 +521,8 @@ export default function StarkDashboard({ user, onLogout }) {
               result = handleAedaShowAedsOnMap(args.subscriber || "all");
             } else if (name === "find_aeds_near_location") {
               result = await handleAedaFindNearLocation(args.location || "", args.radius_miles || 25);
+            } else if (name === "close_map") {
+              result = handleAedaCloseMap();
             }
             // Return the tool output so AEDA can continue her response
             try {
@@ -567,7 +594,7 @@ export default function StarkDashboard({ user, onLogout }) {
       setVoiceError(err.message || String(err));
       stopAeda();
     }
-  }, [isListening, stopAeda, handleAedaShowAedsOnMap, handleAedaFindNearLocation, freshUser]);
+  }, [isListening, stopAeda, handleAedaShowAedsOnMap, handleAedaFindNearLocation, handleAedaCloseMap, freshUser]);
 
   // Clean up on unmount
   useEffect(() => () => stopAeda(), [stopAeda]);

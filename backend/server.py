@@ -6403,6 +6403,12 @@ async def aeda_realtime_session():
                         },
                         {
                             "type": "function",
+                            "name": "close_map",
+                            "description": "Close the fullscreen map and return to the normal Stark Dashboard view. Call this when the operator says 'close map', 'close the map', 'exit map', 'go back to dashboard', or similar.",
+                            "parameters": {"type": "object", "properties": {}},
+                        },
+                        {
+                            "type": "function",
                             "name": "find_aeds_near_location",
                             "description": "Find AEDs near a specific geographic location (city, address, ZIP code, etc.). Call this when the operator asks 'are there any AEDs near [location]?', 'show me AEDs near [location]', 'find AEDs in/around [location]', or similar. The frontend will geocode the location, zoom the map there, drop a marker, and open the closest AED's popup automatically. Use this for ANY location-based query, including small towns the system may not have heard of.",
                             "parameters": {
