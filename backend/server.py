@@ -6961,6 +6961,70 @@ async def sales_stop_toggle(route_id: str, idx: int, request: Request, current_u
     return {"ok": True, "completed": stops[idx]["completed"]}
 
 
+@api_router.post("/sales/routes/{route_id}/stops/{idx}/recap")
+async def sales_stop_recap(route_id: str, idx: int, request: Request, current_user: dict = Depends(get_current_user)):
+    """Save (or update) a per-stop CRM-style recap: contact details, interest level, follow-up, action."""
+    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
+    body = {}
+    try:
+        body = await request.json() or {}
+    except Exception:
+        body = {}
+    r = await _db.sales_routes.find_one({"route_id": route_id})
+    if not r:
+        raise HTTPException(status_code=404, detail="Route not found")
+    stops = r.get("stops", [])
+    if idx < 0 or idx >= len(stops):
+        raise HTTPException(status_code=400, detail="bad index")
+
+    # Validate / normalize fields
+    interest = body.get("interest_level")
+    try:
+        interest_int = int(interest) if interest not in (None, "") else None
+        if interest_int is not None:
+            interest_int = max(1, min(10, interest_int))
+    except Exception:
+        interest_int = None
+    followup_raw = body.get("followup")
+    if isinstance(followup_raw, bool):
+        followup = followup_raw
+    elif isinstance(followup_raw, str):
+        followup = followup_raw.lower() in ("y", "yes", "true", "1")
+    else:
+        followup = False
+
+    recap = {
+        "contact_name": (body.get("contact_name") or "").strip()[:200],
+        "contact_title": (body.get("contact_title") or "").strip()[:200],
+        "contact_phone": (body.get("contact_phone") or "").strip()[:50],
+        "contact_email": (body.get("contact_email") or "").strip()[:200],
+        "interest_level": interest_int,
+        "followup": followup,
+        "action_text": (body.get("action_text") or "").strip()[:1000],
+        "recapped_at": datetime.now(timezone.utc).isoformat(),
+        "recapped_by": current_user.get("username", ""),
+    }
+    stops[idx]["recap"] = recap
+    await _db.sales_routes.update_one({"route_id": route_id}, {"$set": {"stops": stops}})
+    return {"ok": True, "recap": recap}
+
+
+@api_router.delete("/sales/routes/{route_id}/stops/{idx}/recap")
+async def sales_stop_recap_delete(route_id: str, idx: int, current_user: dict = Depends(get_current_user)):
+    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
+    r = await _db.sales_routes.find_one({"route_id": route_id})
+    if not r:
+        raise HTTPException(status_code=404, detail="Route not found")
+    stops = r.get("stops", [])
+    if idx < 0 or idx >= len(stops):
+        raise HTTPException(status_code=400, detail="bad index")
+    stops[idx].pop("recap", None)
+    await _db.sales_routes.update_one({"route_id": route_id}, {"$set": {"stops": stops}})
+    return {"ok": True}
+
+
 def _haversine_miles(lat1, lng1, lat2, lng2):
     import math
     if None in (lat1, lng1, lat2, lng2):

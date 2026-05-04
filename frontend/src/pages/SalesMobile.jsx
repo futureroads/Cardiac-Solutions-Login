@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ChevronRight, MapPin, Navigation2, Check, Crosshair, Phone } from "lucide-react";
+import { ArrowLeft, ChevronRight, MapPin, Navigation2, Check, Crosshair, Phone, FileText, Trash2 } from "lucide-react";
 import API_BASE from "../apiBase";
 
 const API = API_BASE + "/api";
@@ -59,6 +59,11 @@ export default function SalesMobile() {
   const [visitGps, setVisitGps] = useState({ status: "idle", lat: null, lng: null, accuracy: null, error: "" });
   const [visitNote, setVisitNote] = useState("");
   const [visitSaving, setVisitSaving] = useState(false);
+
+  // Recap modal
+  const [recapModal, setRecapModal] = useState(null);
+  const [recapForm, setRecapForm] = useState({ contact_name: "", contact_title: "", contact_phone: "", contact_email: "", interest_level: 5, followup: false, action_text: "" });
+  const [recapSaving, setRecapSaving] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -139,6 +144,50 @@ export default function SalesMobile() {
     if (!window.confirm("Mark this stop as not visited?")) return;
     await fetch(`${API}/sales/routes/${selected.route_id}/stops/${stop.idx}/toggle`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
     fetchDetail(selected.route_id);
+  };
+
+  const openRecap = (stop) => {
+    const r = stop.recap || {};
+    setRecapForm({
+      contact_name: r.contact_name || "",
+      contact_title: r.contact_title || "",
+      contact_phone: r.contact_phone || "",
+      contact_email: r.contact_email || "",
+      interest_level: r.interest_level || 5,
+      followup: !!r.followup,
+      action_text: r.action_text || "",
+    });
+    setRecapModal(stop);
+  };
+
+  const submitRecap = async () => {
+    if (!recapModal) return;
+    setRecapSaving(true);
+    try {
+      const r = await fetch(`${API}/sales/routes/${selected.route_id}/stops/${recapModal.idx}/recap`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(recapForm),
+      });
+      if (!r.ok) throw new Error(`save ${r.status}`);
+      setRecapModal(null);
+      await fetchDetail(selected.route_id);
+    } catch (e) { setErr(e.message); }
+    finally { setRecapSaving(false); }
+  };
+
+  const deleteRecap = async () => {
+    if (!recapModal || !recapModal.recap) { setRecapModal(null); return; }
+    if (!window.confirm("Delete this recap?")) return;
+    setRecapSaving(true);
+    try {
+      await fetch(`${API}/sales/routes/${selected.route_id}/stops/${recapModal.idx}/recap`, {
+        method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+      });
+      setRecapModal(null);
+      await fetchDetail(selected.route_id);
+    } catch (e) { setErr(e.message); }
+    finally { setRecapSaving(false); }
   };
 
   // ROUTE PICKER
@@ -276,21 +325,34 @@ export default function SalesMobile() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-2">
+                {s.recap && (
+                  <div className="text-[11px] bg-amber-500/5 border border-amber-500/30 rounded p-2 mb-3">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-amber-300 font-bold tracking-wider text-[10px]">RECAP</span>
+                      <span className="text-amber-300 text-[10px]">Interest: {s.recap.interest_level ?? "—"}/10 {s.recap.followup ? "· Follow-up" : ""}</span>
+                    </div>
+                    <div className="text-cyan-200 truncate">
+                      {s.recap.contact_name || "—"}{s.recap.contact_title ? `, ${s.recap.contact_title}` : ""}
+                    </div>
+                    {s.recap.action_text && <div className="text-slate-300 italic mt-0.5 line-clamp-2">"{s.recap.action_text}"</div>}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-2">
                   <a
                     href={directionsUrl(s)}
                     target="_blank"
                     rel="noopener noreferrer"
                     data-testid={`mobile-stop-${s.idx}-directions`}
-                    className="flex items-center justify-center gap-2 py-3 rounded-lg border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 text-sm font-bold tracking-wide active:bg-cyan-500/30"
+                    className="flex items-center justify-center gap-1 py-3 rounded-lg border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 text-xs font-bold tracking-wide active:bg-cyan-500/30"
                   >
-                    <Navigation2 className="w-4 h-4" /> DIRECTIONS
+                    <Navigation2 className="w-3.5 h-3.5" /> DIRS
                   </a>
                   {s.completed ? (
                     <button
                       onClick={() => undoStop(s)}
                       data-testid={`mobile-stop-${s.idx}-undo`}
-                      className="flex items-center justify-center gap-2 py-3 rounded-lg border border-slate-500/40 bg-slate-500/10 text-slate-300 text-sm font-bold tracking-wide active:bg-slate-500/30"
+                      className="flex items-center justify-center gap-1 py-3 rounded-lg border border-slate-500/40 bg-slate-500/10 text-slate-300 text-xs font-bold tracking-wide active:bg-slate-500/30"
                     >
                       UNDO
                     </button>
@@ -298,11 +360,18 @@ export default function SalesMobile() {
                     <button
                       onClick={() => openVisit(s)}
                       data-testid={`mobile-stop-${s.idx}-here`}
-                      className="flex items-center justify-center gap-2 py-3 rounded-lg border border-green-500/50 bg-green-500/20 text-green-200 text-sm font-bold tracking-wide active:bg-green-500/40"
+                      className="flex items-center justify-center gap-1 py-3 rounded-lg border border-green-500/50 bg-green-500/20 text-green-200 text-xs font-bold tracking-wide active:bg-green-500/40"
                     >
-                      <Check className="w-4 h-4" /> I'M HERE
+                      <Check className="w-3.5 h-3.5" /> HERE
                     </button>
                   )}
+                  <button
+                    onClick={() => openRecap(s)}
+                    data-testid={`mobile-stop-${s.idx}-recap`}
+                    className={`flex items-center justify-center gap-1 py-3 rounded-lg border text-xs font-bold tracking-wide ${s.recap ? "border-amber-500/60 bg-amber-500/20 text-amber-200 active:bg-amber-500/40" : "border-amber-500/40 bg-amber-500/10 text-amber-300 active:bg-amber-500/30"}`}
+                  >
+                    <FileText className="w-3.5 h-3.5" /> RECAP
+                  </button>
                 </div>
               </div>
             );
@@ -376,6 +445,145 @@ export default function SalesMobile() {
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Recap modal — CRM-style lead capture per stop */}
+      {recapModal && (
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => !recapSaving && setRecapModal(null)} data-testid="mobile-recap-modal">
+          <div className="bg-[#0A1628] border-t-2 sm:border-2 border-amber-500/50 rounded-t-2xl sm:rounded-2xl p-5 w-full max-w-md max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-amber-300" />
+                <h3 className="font-orbitron text-lg text-amber-300">RECAP</h3>
+              </div>
+              <button onClick={() => setRecapModal(null)} className="text-slate-400 text-2xl leading-none">×</button>
+            </div>
+
+            <div className="text-[11px] text-cyan-400 font-bold tracking-widest">
+              {perStop ? `${recapModal.phase} · STOP ${recapModal.stop_num}` : `${recapModal.day || "DAY"}`}
+            </div>
+            <div className="text-base text-cyan-100 leading-snug mb-4">{buildAddress(recapModal)}</div>
+
+            <div className="text-[10px] text-amber-400 uppercase tracking-widest font-bold mb-2">Who did I see?</div>
+            <div className="space-y-2 mb-4">
+              <input
+                value={recapForm.contact_name}
+                onChange={(e) => setRecapForm({ ...recapForm, contact_name: e.target.value })}
+                data-testid="recap-name"
+                placeholder="Name"
+                className="w-full bg-[#020617] border border-cyan-500/30 text-cyan-200 rounded-lg px-3 py-2.5 text-base"
+              />
+              <input
+                value={recapForm.contact_title}
+                onChange={(e) => setRecapForm({ ...recapForm, contact_title: e.target.value })}
+                data-testid="recap-title"
+                placeholder="Title (e.g. Sheriff, Chief, Captain)"
+                className="w-full bg-[#020617] border border-cyan-500/30 text-cyan-200 rounded-lg px-3 py-2.5 text-base"
+              />
+              <input
+                value={recapForm.contact_phone}
+                onChange={(e) => setRecapForm({ ...recapForm, contact_phone: e.target.value })}
+                data-testid="recap-phone"
+                type="tel"
+                inputMode="tel"
+                placeholder="Phone #"
+                className="w-full bg-[#020617] border border-cyan-500/30 text-cyan-200 rounded-lg px-3 py-2.5 text-base"
+              />
+              <input
+                value={recapForm.contact_email}
+                onChange={(e) => setRecapForm({ ...recapForm, contact_email: e.target.value })}
+                data-testid="recap-email"
+                type="email"
+                inputMode="email"
+                autoCapitalize="off"
+                autoCorrect="off"
+                placeholder="Email"
+                className="w-full bg-[#020617] border border-cyan-500/30 text-cyan-200 rounded-lg px-3 py-2.5 text-base"
+              />
+            </div>
+
+            {/* Interest level slider */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] text-amber-400 uppercase tracking-widest font-bold">Interest Level</label>
+                <span className="text-2xl font-bold font-mono text-amber-300" data-testid="recap-interest-display">{recapForm.interest_level}<span className="text-sm text-slate-500">/10</span></span>
+              </div>
+              <input
+                type="range"
+                min="1"
+                max="10"
+                step="1"
+                value={recapForm.interest_level}
+                onChange={(e) => setRecapForm({ ...recapForm, interest_level: parseInt(e.target.value, 10) })}
+                data-testid="recap-interest"
+                className="w-full mt-1 accent-amber-500"
+              />
+              <div className="flex justify-between text-[9px] text-slate-500 mt-0.5">
+                <span>Cold</span><span>Lukewarm</span><span>Hot</span>
+              </div>
+            </div>
+
+            {/* Follow-up toggle */}
+            <div className="mb-4">
+              <label className="text-[10px] text-amber-400 uppercase tracking-widest font-bold mb-1 block">Follow-up needed?</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRecapForm({ ...recapForm, followup: true })}
+                  data-testid="recap-followup-yes"
+                  className={`py-3 rounded-lg border text-sm font-bold tracking-wide ${recapForm.followup ? "border-green-500/60 bg-green-500/20 text-green-200" : "border-slate-500/40 bg-slate-500/5 text-slate-400"}`}
+                >YES</button>
+                <button
+                  type="button"
+                  onClick={() => setRecapForm({ ...recapForm, followup: false })}
+                  data-testid="recap-followup-no"
+                  className={`py-3 rounded-lg border text-sm font-bold tracking-wide ${!recapForm.followup ? "border-cyan-500/60 bg-cyan-500/20 text-cyan-200" : "border-slate-500/40 bg-slate-500/5 text-slate-400"}`}
+                >NO</button>
+              </div>
+            </div>
+
+            {/* Action */}
+            <label className="text-[10px] text-amber-400 uppercase tracking-widest font-bold">Action</label>
+            <textarea
+              value={recapForm.action_text}
+              onChange={(e) => setRecapForm({ ...recapForm, action_text: e.target.value })}
+              data-testid="recap-action"
+              rows={4}
+              maxLength={1000}
+              placeholder="Send quote for 3 AED units by Friday. Schedule training in May."
+              className="w-full mt-1 bg-[#020617] border border-cyan-500/30 text-cyan-200 rounded-lg px-3 py-2 text-base resize-none"
+            />
+            <div className="text-[10px] text-slate-500 text-right mt-0.5">{recapForm.action_text.length}/1000</div>
+
+            <button
+              onClick={submitRecap}
+              disabled={recapSaving}
+              data-testid="recap-save"
+              className="w-full mt-4 py-4 rounded-lg border-2 border-amber-500/60 bg-amber-500/20 text-amber-200 text-base font-bold tracking-wide active:bg-amber-500/40 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <Check className="w-5 h-5" /> {recapSaving ? "Saving…" : "SAVE"}
+            </button>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <button
+                onClick={() => setRecapModal(null)}
+                disabled={recapSaving}
+                className="py-3 rounded-lg border border-slate-500/40 text-slate-400 text-sm"
+              >
+                Cancel
+              </button>
+              {recapModal.recap && (
+                <button
+                  onClick={deleteRecap}
+                  disabled={recapSaving}
+                  data-testid="recap-delete"
+                  className="py-3 rounded-lg border border-red-500/40 text-red-300 text-sm flex items-center justify-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Delete
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
