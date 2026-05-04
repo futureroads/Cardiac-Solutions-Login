@@ -15,7 +15,14 @@ import TechResponse from "./pages/TechResponse";
 import MapPage from "./pages/MapPage";
 import StarkDashboard from "./pages/StarkDashboard";
 import EmailActivityAdmin from "./pages/EmailActivityAdmin";
+import UserActivity from "./pages/UserActivity";
+import useActivityHeartbeat from "./hooks/useActivityHeartbeat";
 import { Toaster } from "./components/ui/sonner";
+
+function ActivityHeartbeatBridge({ enabled }) {
+  useActivityHeartbeat({ enabled });
+  return null;
+}
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -94,6 +101,7 @@ function App() {
   return (
     <div className="App">
       <BrowserRouter>
+        <ActivityHeartbeatBridge enabled={isAuthenticated} />
         <Routes>
           <Route 
             path="/" 
@@ -177,6 +185,14 @@ function App() {
             element={
               isAuthenticated && user?.role === "admin" ?
                 <EmailActivityAdmin /> :
+                <Navigate to="/hub" replace />
+            }
+          />
+          <Route
+            path="/admin/user-activity"
+            element={
+              isAuthenticated && user?.username === "futureroads" ?
+                <UserActivity /> :
                 <Navigate to="/hub" replace />
             }
           />

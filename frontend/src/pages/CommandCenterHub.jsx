@@ -116,6 +116,18 @@ const ALL_MODULES = [
     badgeCount: null,
   },
   {
+    moduleKey: "user_activity",
+    title: "USER ACTIVITY",
+    status: "LIVE",
+    icon: Activity,
+    route: "/admin/user-activity",
+    adminOnly: true,
+    futureroadsOnly: true,
+    description:
+      "Track who is currently using the system (live), what page they're on, and a 90-day history of every login session, page visited, and AEDA voice usage. CSV export available.",
+    badgeCount: null,
+  },
+  {
     moduleKey: "email_log",
     title: "EMAIL LOG",
     status: "LIVE",
@@ -361,10 +373,12 @@ export default function CommandCenterHub({ user, onLogout }) {
   const userModules = user?.allowed_modules || [];
   const authToken = localStorage.getItem("token") || "";
 
-  // Filter modules: show those the user has access to + admin modules for admin users
-  const visibleModules = ALL_MODULES.filter((m) => 
-    userModules.includes(m.moduleKey) || user?.role === "admin"
-  );
+  // Filter modules: show those the user has access to + admin modules for admin users.
+  // futureroads-only modules are restricted strictly to that user.
+  const visibleModules = ALL_MODULES.filter((m) => {
+    if (m.futureroadsOnly) return user?.username === "futureroads";
+    return userModules.includes(m.moduleKey) || user?.role === "admin";
+  });
 
   if (powering) {
     return (

@@ -14,7 +14,7 @@ import uuid
 print("[SERVER] Module loading started", flush=True)
 
 try:
-    from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status, BackgroundTasks, Header
+    from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status, BackgroundTasks, Header, Response
     from fastapi.responses import JSONResponse
     from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
     from dotenv import load_dotenv
@@ -684,6 +684,8 @@ async def startup():
     # Keep AEDA's per-subscriber briefing cache warm so voice sessions always
     # have fresh fleet data available
     asyncio.create_task(_aeda_sub_cache_warmer())
+    # Finalize stale user-activity sessions + prune old history
+    asyncio.create_task(_activity_session_finalizer_loop())
 
 
 async def _aeda_sub_cache_warmer():
@@ -6477,6 +6479,313 @@ async def aeda_realtime_negotiate(request: Request):
 @api_router.get("/")
 async def root():
     return {"message": "Cardiac Solutions API - Online", "status": "operational"}
+
+
+# ------------------------------------------------------------------
+# Admin User Activity tracking (futureroads only)
+# ------------------------------------------------------------------
+ACTIVITY_ADMIN_USERNAME = "futureroads"
+_activity_idle_seconds = 60          # session is "online" if heartbeat within this
+_activity_session_timeout = 300      # finalize session if no heartbeat for this long
+_activity_retention_days = 90
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for") or ""
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return getattr(request.client, "host", "") or ""
+
+async def _decode_token_user(token: str) -> dict | None:
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        username = payload.get("username")
+        if not username:
+            return None
+        return await _db.users.find_one({"username": username}, {"_id": 0, "password_hash": 0})
+    except Exception:
+        return None
+
+def _require_activity_admin(user: dict):
+    if not user or user.get("username") != ACTIVITY_ADMIN_USERNAME:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+@api_router.post("/admin/activity/heartbeat")
+async def activity_heartbeat(request: Request, current_user: dict = Depends(get_current_user)):
+    body = await request.json()
+    route = (body.get("route") or "").strip() or "/"
+    voice_active = bool(body.get("voice_active"))
+    user_agent = (body.get("user_agent") or "")[:300]
+    ip = _client_ip(request)
+    username = current_user.get("username") or "?"
+    name = current_user.get("name") or username
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(seconds=_activity_session_timeout)).isoformat()
+
+    # Find existing open session (no ended_at, recent heartbeat) for this user+IP
+    existing = await _db.user_activity_sessions.find_one(
+        {
+            "username": username,
+            "ip": ip,
+            "ended_at": None,
+            "last_heartbeat": {"$gte": cutoff},
+        },
+        sort=[("started_at", -1)],
+    )
+
+    if existing:
+        # Append route entry if changed
+        last_route = (existing.get("routes") or [{}])[-1] if existing.get("routes") else None
+        ops = {
+            "$set": {
+                "last_heartbeat": now.isoformat(),
+                "current_route": route,
+                "voice_active": voice_active,
+                "user_agent": user_agent or existing.get("user_agent", ""),
+                "name": name,
+            }
+        }
+        if not last_route or last_route.get("route") != route:
+            # Close previous route segment
+            if last_route and last_route.get("entered_at"):
+                try:
+                    enter_dt = datetime.fromisoformat(last_route["entered_at"].replace("Z", "+00:00"))
+                    last_route["exited_at"] = now.isoformat()
+                    last_route["duration_s"] = max(0, int((now - enter_dt).total_seconds()))
+                    # rebuild routes array with the updated last entry + new entry
+                    routes = (existing.get("routes") or [])[:-1] + [last_route, {"route": route, "entered_at": now.isoformat()}]
+                    ops["$set"]["routes"] = routes
+                except Exception:
+                    ops.setdefault("$push", {})["routes"] = {"route": route, "entered_at": now.isoformat()}
+            else:
+                ops.setdefault("$push", {})["routes"] = {"route": route, "entered_at": now.isoformat()}
+        # voice session counting — increment on transition false -> true
+        if voice_active and not existing.get("voice_active"):
+            ops.setdefault("$inc", {})["voice_sessions_count"] = 1
+            ops["$set"]["voice_started_at"] = now.isoformat()
+        elif not voice_active and existing.get("voice_active") and existing.get("voice_started_at"):
+            try:
+                vs = datetime.fromisoformat(existing["voice_started_at"].replace("Z", "+00:00"))
+                ops.setdefault("$inc", {})["total_voice_seconds"] = max(0, int((now - vs).total_seconds()))
+                ops["$set"]["voice_started_at"] = None
+            except Exception:
+                pass
+        await _db.user_activity_sessions.update_one({"session_id": existing["session_id"]}, ops)
+        return {"ok": True, "session_id": existing["session_id"]}
+
+    # Otherwise create a new session
+    sid = str(uuid.uuid4())
+    doc = {
+        "session_id": sid,
+        "username": username,
+        "name": name,
+        "ip": ip,
+        "user_agent": user_agent,
+        "started_at": now.isoformat(),
+        "last_heartbeat": now.isoformat(),
+        "ended_at": None,
+        "current_route": route,
+        "routes": [{"route": route, "entered_at": now.isoformat()}],
+        "voice_active": voice_active,
+        "voice_sessions_count": 1 if voice_active else 0,
+        "total_voice_seconds": 0,
+        "voice_started_at": now.isoformat() if voice_active else None,
+    }
+    await _db.user_activity_sessions.insert_one(doc)
+    return {"ok": True, "session_id": sid, "new": True}
+
+@api_router.post("/admin/activity/end")
+async def activity_end(request: Request):
+    """Best-effort end-of-session endpoint called via sendBeacon on tab close."""
+    token = request.query_params.get("token") or ""
+    if not token:
+        try:
+            body = await request.json()
+            token = body.get("token") or ""
+        except Exception:
+            pass
+    user = await _decode_token_user(token)
+    if not user:
+        return {"ok": False}
+    ip = _client_ip(request)
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(seconds=_activity_session_timeout)).isoformat()
+    sess = await _db.user_activity_sessions.find_one(
+        {"username": user.get("username"), "ip": ip, "ended_at": None, "last_heartbeat": {"$gte": cutoff}},
+        sort=[("started_at", -1)],
+    )
+    if sess:
+        try:
+            started = datetime.fromisoformat(sess["started_at"].replace("Z", "+00:00"))
+            duration_s = max(0, int((now - started).total_seconds()))
+        except Exception:
+            duration_s = 0
+        # Close last route segment
+        routes = sess.get("routes") or []
+        if routes and not routes[-1].get("exited_at"):
+            try:
+                enter_dt = datetime.fromisoformat(routes[-1]["entered_at"].replace("Z", "+00:00"))
+                routes[-1]["exited_at"] = now.isoformat()
+                routes[-1]["duration_s"] = max(0, int((now - enter_dt).total_seconds()))
+            except Exception:
+                pass
+        await _db.user_activity_sessions.update_one(
+            {"session_id": sess["session_id"]},
+            {"$set": {"ended_at": now.isoformat(), "duration_s": duration_s, "routes": routes, "voice_active": False}},
+        )
+    return {"ok": True}
+
+def _serialize_session(s: dict, now: datetime) -> dict:
+    started = None
+    try:
+        started = datetime.fromisoformat(s["started_at"].replace("Z", "+00:00"))
+    except Exception:
+        pass
+    end_iso = s.get("ended_at")
+    if end_iso:
+        try:
+            end_dt = datetime.fromisoformat(end_iso.replace("Z", "+00:00"))
+        except Exception:
+            end_dt = now
+    else:
+        end_dt = now
+    duration_s = s.get("duration_s")
+    if duration_s is None and started:
+        duration_s = max(0, int((end_dt - started).total_seconds()))
+    return {
+        "session_id": s.get("session_id"),
+        "username": s.get("username"),
+        "name": s.get("name"),
+        "ip": s.get("ip"),
+        "started_at": s.get("started_at"),
+        "ended_at": s.get("ended_at"),
+        "last_heartbeat": s.get("last_heartbeat"),
+        "current_route": s.get("current_route"),
+        "voice_active": bool(s.get("voice_active")),
+        "voice_sessions_count": s.get("voice_sessions_count", 0),
+        "total_voice_seconds": s.get("total_voice_seconds", 0),
+        "duration_s": duration_s or 0,
+        "routes": [
+            {
+                "route": r.get("route"),
+                "entered_at": r.get("entered_at"),
+                "exited_at": r.get("exited_at"),
+                "duration_s": r.get("duration_s") or 0,
+            }
+            for r in (s.get("routes") or [])
+        ],
+    }
+
+@api_router.get("/admin/activity/online")
+async def activity_online(current_user: dict = Depends(get_current_user)):
+    _require_activity_admin(current_user)
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(seconds=_activity_idle_seconds)).isoformat()
+    sessions = []
+    async for s in _db.user_activity_sessions.find(
+        {"ended_at": None, "last_heartbeat": {"$gte": cutoff}},
+        {"_id": 0},
+    ).sort("started_at", -1):
+        sessions.append(_serialize_session(s, now))
+    return {"sessions": sessions, "count": len(sessions)}
+
+@api_router.get("/admin/activity/history")
+async def activity_history(
+    days: int = 7,
+    user: str | None = None,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_activity_admin(current_user)
+    days = max(1, min(int(days), 90))
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(days=days)).isoformat()
+    q: dict = {"started_at": {"$gte": since}}
+    if user:
+        q["username"] = {"$regex": f"^{user}", "$options": "i"}
+    sessions = []
+    async for s in _db.user_activity_sessions.find(q, {"_id": 0}).sort("started_at", -1).limit(2000):
+        sessions.append(_serialize_session(s, now))
+    return {"sessions": sessions, "count": len(sessions), "days": days}
+
+@api_router.get("/admin/activity/export.csv")
+async def activity_export_csv(
+    days: int = 7,
+    user: str | None = None,
+    token: str = "",
+):
+    """CSV download — accepts token via query param so window.location.href works."""
+    user_doc = await _decode_token_user(token)
+    _require_activity_admin(user_doc or {})
+    days = max(1, min(int(days), 90))
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(days=days)).isoformat()
+    q: dict = {"started_at": {"$gte": since}}
+    if user:
+        q["username"] = {"$regex": f"^{user}", "$options": "i"}
+    import io, csv
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow([
+        "session_id", "username", "name", "ip",
+        "started_at", "ended_at", "duration_s",
+        "voice_sessions_count", "total_voice_seconds",
+        "routes_visited",
+    ])
+    async for s in _db.user_activity_sessions.find(q, {"_id": 0}).sort("started_at", -1):
+        ser = _serialize_session(s, now)
+        routes_str = "; ".join(
+            f"{r['route']} ({r['duration_s']}s)" for r in ser["routes"]
+        )
+        w.writerow([
+            ser["session_id"], ser["username"], ser["name"], ser["ip"],
+            ser["started_at"], ser["ended_at"] or "", ser["duration_s"],
+            ser["voice_sessions_count"], ser["total_voice_seconds"],
+            routes_str,
+        ])
+    csv_data = buf.getvalue()
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="user-activity-{days}d.csv"'},
+    )
+
+async def _activity_session_finalizer_loop():
+    """Every 60s: finalize sessions whose heartbeat is stale (>5min) and prune
+    sessions older than 90 days."""
+    import asyncio as _a
+    await _a.sleep(15)
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            stale_cutoff = (now - timedelta(seconds=_activity_session_timeout)).isoformat()
+            async for s in _db.user_activity_sessions.find(
+                {"ended_at": None, "last_heartbeat": {"$lt": stale_cutoff}},
+                {"_id": 0, "session_id": 1, "started_at": 1, "last_heartbeat": 1, "routes": 1},
+            ):
+                try:
+                    started = datetime.fromisoformat(s["started_at"].replace("Z", "+00:00"))
+                    last_hb = datetime.fromisoformat(s["last_heartbeat"].replace("Z", "+00:00"))
+                    duration_s = max(0, int((last_hb - started).total_seconds()))
+                except Exception:
+                    duration_s = 0
+                routes = s.get("routes") or []
+                if routes and not routes[-1].get("exited_at"):
+                    try:
+                        enter_dt = datetime.fromisoformat(routes[-1]["entered_at"].replace("Z", "+00:00"))
+                        last_hb = datetime.fromisoformat(s["last_heartbeat"].replace("Z", "+00:00"))
+                        routes[-1]["exited_at"] = s["last_heartbeat"]
+                        routes[-1]["duration_s"] = max(0, int((last_hb - enter_dt).total_seconds()))
+                    except Exception:
+                        pass
+                await _db.user_activity_sessions.update_one(
+                    {"session_id": s["session_id"]},
+                    {"$set": {"ended_at": s["last_heartbeat"], "duration_s": duration_s, "routes": routes, "voice_active": False}},
+                )
+            # Prune > retention
+            prune_cutoff = (now - timedelta(days=_activity_retention_days)).isoformat()
+            await _db.user_activity_sessions.delete_many({"started_at": {"$lt": prune_cutoff}})
+        except Exception as e:
+            logger.warning(f"[ActivityFinalizer] {e}")
+        await _a.sleep(60)
 
 @api_router.get("/health")
 async def health():

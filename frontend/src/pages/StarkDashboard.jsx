@@ -275,6 +275,7 @@ export default function StarkDashboard({ user, onLogout }) {
     setIsSpeaking(false);
     setIsHearingUser(false);
     setMicLevel(0);
+    try { window.__aedaVoiceActive = false; } catch {}
   }, []);
 
   const startAeda = useCallback(async () => {
@@ -533,6 +534,7 @@ ${briefingText}`,
             // Mute mic while AEDA is speaking so background noise / her own
             // audio doesn't trip server VAD and cut her off.
             try { micStreamRef.current?.getAudioTracks()?.forEach(t => { t.enabled = false; }); } catch {}
+            try { window.__aedaVoiceActive = true; } catch {}
           } else if (evt.type === "response.done" || evt.type === "output_audio_buffer.stopped" || evt.type === "response.audio.done") {
             setIsSpeaking(false);
             isSpeakingRef.current = false;
@@ -621,6 +623,7 @@ ${briefingText}`,
       const { sdp: answerSdp } = await negRes.json();
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
       setIsListening(true);
+      try { window.__aedaVoiceActive = true; } catch {}
       console.log("[AEDA] connected");
     } catch (err) {
       console.error("[AEDA] startAeda failed:", err);
