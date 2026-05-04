@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Upload, MapPin, Trash2, Check, Calendar, User } from "lucide-react";
+import { ArrowLeft, Upload, MapPin, Trash2, Check, Calendar, User, Printer } from "lucide-react";
 import { useJsApiLoader } from "@react-google-maps/api";
 import API_BASE from "../apiBase";
 
@@ -16,6 +16,106 @@ const fmtDate = (iso) => {
 const isPerStopSchema = (stops) => {
   if (!stops || stops.length === 0) return false;
   return stops.some(s => s.office_address || s.state || s.zip || (s.stop_num && s.stop_num !== s.idx + 1));
+};
+
+const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// Build a printable HTML doc and open it in a new window with auto-print.
+const openCallSheet = ({ route, stops, perStop, phaseFilter }) => {
+  const geocoded = stops.filter(s => s.start_lat && s.start_lng);
+  // Static Map URL — keep within Google's 8192-char URL cap. Cap to 50 markers.
+  let staticMapUrl = "";
+  if (MAP_KEY && geocoded.length > 0) {
+    const capped = geocoded.slice(0, 50);
+    const markerParts = capped.map((s, i) => {
+      const lbl = perStop ? String(s.stop_num || i + 1) : String(i + 1);
+      // Static map labels must be 1 alphanumeric char; fall back to no label if multi-digit.
+      const safeLbl = /^[0-9A-Z]$/i.test(lbl) ? lbl : "";
+      return `markers=color:0x06b6d4${safeLbl ? `%7Clabel:${safeLbl}` : ""}%7C${s.start_lat},${s.start_lng}`;
+    });
+    const path = `path=color:0x06b6d4ff%7Cweight:3%7C${capped.map(s => `${s.start_lat},${s.start_lng}`).join("%7C")}`;
+    staticMapUrl = `https://maps.googleapis.com/maps/api/staticmap?size=800x400&maptype=roadmap&${markerParts.join("&")}&${path}&key=${MAP_KEY}`;
+  }
+  const today = new Date().toLocaleDateString();
+  const phaseLabel = phaseFilter === "ALL" ? "All stops" : `${perStop ? "Phase" : "Day"} ${phaseFilter}`;
+  const rowsHtml = stops.map((s, i) => {
+    const stopNo = perStop ? (s.stop_num || i + 1) : (i + 1);
+    if (perStop) {
+      const fullAddr = [s.office_address, s.starting_city, s.state, s.zip].filter(Boolean).join(", ");
+      return `<tr>
+        <td class="num">${escapeHtml(stopNo)}</td>
+        <td>${escapeHtml(s.phase || "—")}</td>
+        <td>${escapeHtml(s.counties || "—")}</td>
+        <td><div class="addr">${escapeHtml(fullAddr || "—")}</div></td>
+        <td class="check"></td>
+        <td class="notes"></td>
+      </tr>`;
+    } else {
+      return `<tr>
+        <td class="num">${escapeHtml(stopNo)}</td>
+        <td>${escapeHtml(s.day || "—")}${s.week ? ` <span class="muted">W${escapeHtml(s.week)}</span>` : ""}</td>
+        <td>${escapeHtml(s.region || "—")}</td>
+        <td><div class="addr">${escapeHtml(s.counties || "—")}<br/><span class="muted">${escapeHtml(s.starting_city || "")}${s.ending_city ? ` → ${escapeHtml(s.ending_city)}` : ""}</span></div></td>
+        <td class="check"></td>
+        <td class="notes"></td>
+      </tr>`;
+    }
+  }).join("");
+  const headerCols = perStop
+    ? `<th>Stop #</th><th>Phase</th><th>County</th><th>Office Address</th><th class="check">Visited</th><th class="notes">Notes</th>`
+    : `<th>#</th><th>Day</th><th>Region</th><th>Counties / Cities</th><th class="check">Visited</th><th class="notes">Notes</th>`;
+  const html = `<!doctype html>
+<html><head><meta charset="utf-8"/>
+<title>Call Sheet — ${escapeHtml(route.name)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #0a1628; margin: 0; padding: 24px; background: #fff; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: 1px; }
+  .meta { font-size: 11px; color: #475569; margin-bottom: 12px; }
+  .meta b { color: #0a1628; }
+  .map { width: 100%; max-width: 800px; height: auto; border: 1px solid #cbd5e1; border-radius: 6px; margin: 0 0 14px; display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  thead th { text-align: left; background: #0a1628; color: #fff; padding: 6px 8px; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; }
+  tbody td { border-bottom: 1px solid #e2e8f0; padding: 8px; vertical-align: top; }
+  td.num { font-weight: 700; width: 36px; text-align: center; background: #f1f5f9; }
+  td.check { width: 60px; text-align: center; }
+  td.check::before { content: ""; display: inline-block; width: 14px; height: 14px; border: 1.5px solid #0a1628; border-radius: 3px; }
+  td.notes { width: 240px; }
+  .addr { line-height: 1.35; }
+  .muted { color: #64748b; font-size: 10px; }
+  .footer { margin-top: 18px; font-size: 9px; color: #94a3b8; text-align: right; }
+  @media print {
+    body { padding: 12px; }
+    .noprint { display: none !important; }
+    table { page-break-inside: auto; }
+    tr { page-break-inside: avoid; }
+    thead { display: table-header-group; }
+  }
+  .toolbar { margin-bottom: 16px; }
+  .toolbar button { background: #0a1628; color: #fff; border: 0; padding: 8px 14px; font-size: 11px; letter-spacing: 1px; cursor: pointer; border-radius: 4px; }
+</style></head>
+<body>
+  <div class="toolbar noprint"><button onclick="window.print()">PRINT</button></div>
+  <h1>${escapeHtml(route.name)} — Call Sheet</h1>
+  <div class="meta">
+    <b>Salesman:</b> ${escapeHtml(route.salesman || "—")} &nbsp;·&nbsp;
+    <b>Start date:</b> ${escapeHtml(route.start_date || "—")} &nbsp;·&nbsp;
+    <b>${escapeHtml(phaseLabel)}:</b> ${stops.length} stops &nbsp;·&nbsp;
+    <b>Printed:</b> ${escapeHtml(today)}
+  </div>
+  ${staticMapUrl ? `<img class="map" src="${staticMapUrl}" alt="Route map" onerror="this.style.display='none'"/>` : ""}
+  <table>
+    <thead><tr>${headerCols}</tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+  <div class="footer">Cardiac Solutions LLC — Sales Routes</div>
+  <script>window.addEventListener('load', () => setTimeout(() => window.print(), 600));</script>
+</body></html>`;
+  const w = window.open("", "_blank", "width=900,height=1000");
+  if (!w) { alert("Popup blocked. Please allow popups for this site."); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
 };
 
 export default function Sales() {
@@ -202,32 +302,44 @@ export default function Sales() {
                   </div>
                 </div>
 
-                {/* Phase / Day filter chips */}
-                {phases.length > 1 && (
-                  <div className="flex flex-wrap gap-2 mb-3" data-testid="sales-phase-filter">
-                    <button
-                      onClick={() => setPhaseFilter("ALL")}
-                      data-testid="phase-chip-ALL"
-                      className={`px-3 py-1 rounded-full text-[11px] font-bold tracking-wider border transition ${phaseFilter === "ALL" ? "border-cyan-400 bg-cyan-500/20 text-cyan-200" : "border-cyan-500/30 text-cyan-400 hover:border-cyan-400/60"}`}
-                    >
-                      ALL ({selected.stops.length})
-                    </button>
-                    {phases.map(p => {
-                      const count = selected.stops.filter(s => String(s.phase || s.day || "").trim() === p).length;
-                      const active = phaseFilter === p;
-                      return (
+                {/* Phase / Day filter chips + Print button */}
+                <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                  <div className="flex flex-wrap gap-2" data-testid="sales-phase-filter">
+                    {phases.length > 1 && (
+                      <>
                         <button
-                          key={p}
-                          onClick={() => setPhaseFilter(p)}
-                          data-testid={`phase-chip-${p}`}
-                          className={`px-3 py-1 rounded-full text-[11px] font-bold tracking-wider border transition ${active ? "border-amber-400 bg-amber-500/20 text-amber-200" : "border-cyan-500/30 text-cyan-400 hover:border-amber-400/60 hover:text-amber-300"}`}
+                          onClick={() => setPhaseFilter("ALL")}
+                          data-testid="phase-chip-ALL"
+                          className={`px-3 py-1 rounded-full text-[11px] font-bold tracking-wider border transition ${phaseFilter === "ALL" ? "border-cyan-400 bg-cyan-500/20 text-cyan-200" : "border-cyan-500/30 text-cyan-400 hover:border-cyan-400/60"}`}
                         >
-                          {perStop ? "PHASE" : "DAY"} {p} ({count})
+                          ALL ({selected.stops.length})
                         </button>
-                      );
-                    })}
+                        {phases.map(p => {
+                          const count = selected.stops.filter(s => String(s.phase || s.day || "").trim() === p).length;
+                          const active = phaseFilter === p;
+                          return (
+                            <button
+                              key={p}
+                              onClick={() => setPhaseFilter(p)}
+                              data-testid={`phase-chip-${p}`}
+                              className={`px-3 py-1 rounded-full text-[11px] font-bold tracking-wider border transition ${active ? "border-amber-400 bg-amber-500/20 text-amber-200" : "border-cyan-500/30 text-cyan-400 hover:border-amber-400/60 hover:text-amber-300"}`}
+                            >
+                              {perStop ? "PHASE" : "DAY"} {p} ({count})
+                            </button>
+                          );
+                        })}
+                      </>
+                    )}
                   </div>
-                )}
+                  <button
+                    onClick={() => openCallSheet({ route: selected, stops: filteredStops, perStop, phaseFilter })}
+                    data-testid="print-call-sheet-btn"
+                    className="flex items-center gap-1.5 px-3 py-1 rounded text-[11px] font-bold tracking-wider border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+                    title="Open a printable call sheet for the visible stops"
+                  >
+                    <Printer className="w-3.5 h-3.5" /> PRINT CALL SHEET
+                  </button>
+                </div>
 
                 <SalesRouteMap stops={filteredStops} perStop={perStop} />
 
