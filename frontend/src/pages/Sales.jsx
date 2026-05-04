@@ -718,13 +718,6 @@ function FuelEstimateModal({ stops, routeName, perStop, onClose }) {
   const totalGal = breakdown.totalMiles / safeMpg;
   const totalCost = totalGal * pricePerGal;
 
-  // Daily / weekly / monthly extrapolations
-  // Daily avg = total / num distinct days. Weekly = daily * 5 workdays. Monthly = daily * 22 workdays.
-  const dailyAvgMiles = breakdown.dayCount ? breakdown.totalMiles / breakdown.dayCount : 0;
-  const weeklyMiles = dailyAvgMiles * 5;
-  const monthlyMiles = dailyAvgMiles * 22;
-  const milesToCost = (m) => (m / safeMpg) * pricePerGal;
-
   const fmt$ = (n) => `$${n.toFixed(2)}`;
   const fmtMi = (n) => `${n.toFixed(1)} mi`;
   const fmtGal = (n) => `${n.toFixed(2)} gal`;
@@ -794,27 +787,12 @@ function FuelEstimateModal({ stops, routeName, perStop, onClose }) {
           </div>
         </div>
 
-        {/* Trip totals + daily/weekly/monthly */}
-        <div className="grid grid-cols-4 gap-3 p-5 border-b border-emerald-500/20">
-          <div className="p-3 rounded border border-emerald-500/30 bg-emerald-500/5">
+        {/* Trip total */}
+        <div className="p-5 border-b border-emerald-500/20">
+          <div className="p-4 rounded border border-emerald-500/30 bg-emerald-500/5 max-w-sm">
             <div className="text-[9px] tracking-widest text-emerald-400 font-bold">TRIP TOTAL</div>
-            <div className="mt-1 text-base font-bold text-emerald-200" data-testid="fuel-trip-miles">{fmtMi(breakdown.totalMiles)}</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">{fmtGal(totalGal)} · <span className="text-emerald-300">{fmt$(totalCost)}</span></div>
-          </div>
-          <div className="p-3 rounded border border-cyan-500/20 bg-[rgba(0,12,24,0.6)]">
-            <div className="text-[9px] tracking-widest text-cyan-400 font-bold">DAILY AVG</div>
-            <div className="mt-1 text-base font-bold text-cyan-200" data-testid="fuel-daily">{fmtMi(dailyAvgMiles)}</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">{fmtGal(dailyAvgMiles / safeMpg)} · {fmt$(milesToCost(dailyAvgMiles))}</div>
-          </div>
-          <div className="p-3 rounded border border-cyan-500/20 bg-[rgba(0,12,24,0.6)]">
-            <div className="text-[9px] tracking-widest text-cyan-400 font-bold">WEEKLY (×5)</div>
-            <div className="mt-1 text-base font-bold text-cyan-200" data-testid="fuel-weekly">{fmtMi(weeklyMiles)}</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">{fmtGal(weeklyMiles / safeMpg)} · {fmt$(milesToCost(weeklyMiles))}</div>
-          </div>
-          <div className="p-3 rounded border border-cyan-500/20 bg-[rgba(0,12,24,0.6)]">
-            <div className="text-[9px] tracking-widest text-cyan-400 font-bold">MONTHLY (×22)</div>
-            <div className="mt-1 text-base font-bold text-cyan-200" data-testid="fuel-monthly">{fmtMi(monthlyMiles)}</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">{fmtGal(monthlyMiles / safeMpg)} · {fmt$(milesToCost(monthlyMiles))}</div>
+            <div className="mt-1 text-xl font-bold text-emerald-200" data-testid="fuel-trip-miles">{fmtMi(breakdown.totalMiles)}</div>
+            <div className="text-[11px] text-slate-400 mt-0.5">{fmtGal(totalGal)} · <span className="text-emerald-300 font-bold">{fmt$(totalCost)}</span></div>
           </div>
         </div>
 
