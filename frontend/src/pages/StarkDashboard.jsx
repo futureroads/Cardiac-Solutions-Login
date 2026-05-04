@@ -110,17 +110,44 @@ export default function StarkDashboard({ user, onLogout }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // AEDA tool: "close_map" — exit fullscreen map back to the dashboard
+  const pendingMapPanRef = useRef(null); // { lat, lng, zoom, sentinel_id }
+  const pendingSelectAedRef = useRef(null);
+  const aliasMapRef = useRef({});
+  // When a forced reply is queued (e.g., after Waycross lookup), flush it as
+  // soon as the current response finishes — avoids "active response in progress".
+  const pendingForcedReplyRef = useRef(null);
+  const tryFlushForcedReply = useCallback(() => {
+    const text = pendingForcedReplyRef.current;
+    if (!text) return;
+    const dc = dcRef.current;
+    if (!dc || dc.readyState !== "open") return;
+    if (responseActiveRef.current) return; // wait for current to finish
+    pendingForcedReplyRef.current = null;
+    try {
+      dc.send(JSON.stringify({
+        type: "response.create",
+        response: {
+          modalities: ["audio", "text"],
+          instructions: `Speak this exact sentence aloud as your reply, no preamble, no follow-up question: "${text}"`,
+        },
+      }));
+      console.log("[AEDA] flushed forced reply");
+    } catch (e) { console.warn("[AEDA] forced reply send failed", e); }
+  }, []);
   const handleAedaCloseMap = useCallback(() => {
     console.log("[AEDA tool] close_map -> exiting fullscreen");
     setMapFullscreen(false);
     setSelectedId(null);
     setHoveredId(null);
+    setMapMode("subscribers");
+    setAedSubscriber("all");
+    pendingMapPanRef.current = null;
+    pendingSelectAedRef.current = null;
     return { ok: true };
   }, []);
 
   // AEDA tool: "show_aeds_on_map" — driven by voice commands like
   // "show me where Georgia Power's AEDs are"
-  const aliasMapRef = useRef({});
   const handleAedaShowAedsOnMap = useCallback((subscriberName) => {
     const raw = (subscriberName || "").trim();
     const lower = raw.toLowerCase();
@@ -141,7 +168,6 @@ export default function StarkDashboard({ user, onLogout }) {
 
   // AEDA tool: "find_aeds_near_location" — driven by "are there any AEDs near
   // Waycross, Georgia?" type queries
-  const pendingMapPanRef = useRef(null); // { lat, lng, zoom, sentinel_id }
   const handleAedaFindNearLocation = useCallback(async (location, radiusMiles = 10) => {
     console.log(`[AEDA tool] find_aeds_near_location location="${location}" radius=${radiusMiles}`);
     try {
@@ -198,8 +224,7 @@ export default function StarkDashboard({ user, onLogout }) {
     }
   }, [token]);
 
-  // Pending sentinel ID to auto-select once aedPins are loaded for that area
-  const pendingSelectAedRef = useRef(null);
+  // Effect: auto-select closest AED + replay queued pan when aedPins reload
   useEffect(() => {
     // Whenever new aedPins arrive, perform the queued pan AND select the closest AED
     const pending = pendingMapPanRef.current;
@@ -343,7 +368,7 @@ export default function StarkDashboard({ user, onLogout }) {
           // 1) Push proper session config via data channel. Include the briefing
           // in session instructions AS WELL AS as a conversation item below —
           // belt-and-suspenders so the model has the data two ways.
-          const behaviorInstructions = "You are AEDA, the AED Assistant. When asked your name, reply EXACTLY: 'My name is AEDA, your AED Assistant.' Do not say how it is pronounced. Pronounce your name as AID-uh. Answer fleet/subscriber/readiness questions from the LIVE OPERATIONAL CONTEXT below. The context contains a 'Per-subscriber readiness' section with EVERY subscriber's percent ready, AED count, and active issues — search that section when I ask about ANY specific subscriber by name. Never say you don't have the data; it's always provided in the context.";
+          const behaviorInstructions = "You are AEDA, the AED Assistant. When asked your name, reply EXACTLY: 'My name is AEDA, your AED Assistant.' Do not say how it is pronounced. Pronounce your name as AID-uh. If asked anything about football (e.g., 'Do you like football?', 'Are you a football fan?'), reply with enthusiasm: 'YES!! ROLL TIDE!!' (This is an Alabama Crimson Tide reference — say it loud and proud.) Answer fleet/subscriber/readiness questions from the LIVE OPERATIONAL CONTEXT below. The context contains a 'Per-subscriber readiness' section with EVERY subscriber's percent ready, AED count, and active issues — search that section when I ask about ANY specific subscriber by name. Never say you don't have the data; it's always provided in the context.";
           const fullInstructions = briefingText
             ? `${behaviorInstructions}\n\n${briefingText}`
             : behaviorInstructions;
@@ -464,12 +489,16 @@ ${briefingText}`,
               if (nearMatch) {
                 const loc = nearMatch[2].trim().replace(/[.?]$/, "");
                 console.log(`[AEDA fallback] location intent detected -> "${loc}"`);
-                // Run the lookup ourselves. Do NOT also fire response.create — the
-                // realtime model has likely already started its own response, so
-                // racing with response.cancel/create produces "active response in
-                // progress" errors. Just drive the map; AEDA's own answer will
-                // be approximately correct, and the map shows the precise data.
-                handleAedaFindNearLocation(loc, 25);
+                // Run lookup, drive map, AND queue a forced spoken reply with
+                // the precise data. The queued reply waits for the current
+                // response to finish (avoids "active response in progress").
+                handleAedaFindNearLocation(loc, 25).then((result) => {
+                  if (result?.voice_answer) {
+                    pendingForcedReplyRef.current = result.voice_answer;
+                    // Try to send immediately if no response is active
+                    tryFlushForcedReply();
+                  }
+                });
               } else {
                 const wantsMap = /(show|pull up|find|display|open|where|locate|locations? for)\b.*\b(map|aeds?)\b/i.test(t)
                   || /\b(map|aeds?)\b.*\b(for|of)\b/i.test(t)
@@ -510,6 +539,10 @@ ${briefingText}`,
             responseActiveRef.current = false;
             // Re-enable mic once AEDA finishes speaking
             try { micStreamRef.current?.getAudioTracks()?.forEach(t => { t.enabled = true; }); } catch {}
+            // If a forced reply was queued (e.g., Waycross voice_answer), flush it now
+            if (pendingForcedReplyRef.current) {
+              setTimeout(tryFlushForcedReply, 150);
+            }
           } else if (evt.type === "response.function_call_arguments.done") {
             // AEDA invoked a tool — route by name
             const name = evt.name;
@@ -594,7 +627,7 @@ ${briefingText}`,
       setVoiceError(err.message || String(err));
       stopAeda();
     }
-  }, [isListening, stopAeda, handleAedaShowAedsOnMap, handleAedaFindNearLocation, handleAedaCloseMap, freshUser]);
+  }, [isListening, stopAeda, handleAedaShowAedsOnMap, handleAedaFindNearLocation, handleAedaCloseMap, tryFlushForcedReply, freshUser]);
 
   // Clean up on unmount
   useEffect(() => () => stopAeda(), [stopAeda]);
