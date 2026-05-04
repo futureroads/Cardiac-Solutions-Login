@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Upload, MapPin, Trash2, Check, Calendar, User, Printer } from "lucide-react";
+import { ArrowLeft, Upload, MapPin, Trash2, Check, Calendar, User, Printer, ClipboardList, Crosshair } from "lucide-react";
 import { useJsApiLoader } from "@react-google-maps/api";
 import API_BASE from "../apiBase";
 
@@ -134,6 +134,16 @@ export default function Sales() {
   const [uploadStartDate, setUploadStartDate] = useState("");
   const [uploading, setUploading] = useState(false);
 
+  // Visit logging modal state
+  const [visitModal, setVisitModal] = useState(null); // { idx, stop } when marking complete
+  const [visitGps, setVisitGps] = useState({ status: "idle", lat: null, lng: null, accuracy: null, error: "" });
+  const [visitNote, setVisitNote] = useState("");
+  const [visitSaving, setVisitSaving] = useState(false);
+
+  // Trip recap modal state
+  const [recapData, setRecapData] = useState(null);
+  const [recapLoading, setRecapLoading] = useState(false);
+
   const fetchRoutes = async () => {
     setLoading(true);
     try {
@@ -196,8 +206,66 @@ export default function Sales() {
 
   const toggleStop = async (idx) => {
     if (!selected) return;
-    const r = await fetch(`${API}/sales/routes/${selected.route_id}/stops/${idx}/toggle`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-    if (r.ok) fetchDetail(selected.route_id);
+    const stop = selected.stops?.[idx];
+    if (!stop) return;
+    // If already complete, simply un-mark via plain POST
+    if (stop.completed) {
+      const r = await fetch(`${API}/sales/routes/${selected.route_id}/stops/${idx}/toggle`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (r.ok) fetchDetail(selected.route_id);
+      return;
+    }
+    // Otherwise open the visit logging modal
+    setVisitNote("");
+    setVisitGps({ status: "idle", lat: null, lng: null, accuracy: null, error: "" });
+    setVisitModal({ idx, stop });
+    // Try to capture GPS immediately
+    if (navigator.geolocation) {
+      setVisitGps({ status: "capturing", lat: null, lng: null, accuracy: null, error: "" });
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setVisitGps({ status: "ok", lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy, error: "" }),
+        (e) => setVisitGps({ status: "error", lat: null, lng: null, accuracy: null, error: e.message || "GPS unavailable" }),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } else {
+      setVisitGps({ status: "error", lat: null, lng: null, accuracy: null, error: "Geolocation not supported" });
+    }
+  };
+
+  const submitVisit = async () => {
+    if (!visitModal) return;
+    setVisitSaving(true);
+    try {
+      const body = {
+        lat: visitGps.lat,
+        lng: visitGps.lng,
+        accuracy_m: visitGps.accuracy,
+        note: visitNote,
+      };
+      const r = await fetch(`${API}/sales/routes/${selected.route_id}/stops/${visitModal.idx}/toggle`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error(`save ${r.status}`);
+      setVisitModal(null);
+      await fetchDetail(selected.route_id);
+    } catch (e) { setErr(e.message); }
+    finally { setVisitSaving(false); }
+  };
+
+  const openRecap = async () => {
+    if (!selected) return;
+    setRecapLoading(true);
+    try {
+      const r = await fetch(`${API}/sales/routes/${selected.route_id}/recap`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) throw new Error(`recap ${r.status}`);
+      const d = await r.json();
+      setRecapData(d);
+    } catch (e) { setErr(e.message); }
+    finally { setRecapLoading(false); }
   };
 
   // Schema detection + phases derived from selected route
@@ -331,14 +399,24 @@ export default function Sales() {
                       </>
                     )}
                   </div>
-                  <button
-                    onClick={() => openCallSheet({ route: selected, stops: filteredStops, perStop, phaseFilter })}
-                    data-testid="print-call-sheet-btn"
-                    className="flex items-center gap-1.5 px-3 py-1 rounded text-[11px] font-bold tracking-wider border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
-                    title="Open a printable call sheet for the visible stops"
-                  >
-                    <Printer className="w-3.5 h-3.5" /> PRINT CALL SHEET
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={openRecap}
+                      data-testid="trip-recap-btn"
+                      className="flex items-center gap-1.5 px-3 py-1 rounded text-[11px] font-bold tracking-wider border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20"
+                      title="View visited stops with GPS accuracy and notes"
+                    >
+                      <ClipboardList className="w-3.5 h-3.5" /> TRIP RECAP
+                    </button>
+                    <button
+                      onClick={() => openCallSheet({ route: selected, stops: filteredStops, perStop, phaseFilter })}
+                      data-testid="print-call-sheet-btn"
+                      className="flex items-center gap-1.5 px-3 py-1 rounded text-[11px] font-bold tracking-wider border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+                      title="Open a printable call sheet for the visible stops"
+                    >
+                      <Printer className="w-3.5 h-3.5" /> PRINT CALL SHEET
+                    </button>
+                  </div>
                 </div>
 
                 <SalesRouteMap stops={filteredStops} perStop={perStop} />
@@ -458,6 +536,169 @@ export default function Sales() {
           </div>
         </div>
       )}
+
+      {/* Log Visit modal */}
+      {visitModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" onClick={() => !visitSaving && setVisitModal(null)}>
+          <div className="bg-[#0A1628] border border-cyan-500/40 rounded-lg p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-orbitron text-lg text-cyan-300 mb-1 flex items-center gap-2"><MapPin className="w-4 h-4" /> LOG VISIT</h3>
+            <div className="text-[11px] text-slate-400 mb-4">
+              {perStop ? `Phase ${visitModal.stop.phase} · Stop ${visitModal.stop.stop_num}` : `Day ${visitModal.stop.day}`}
+              <div className="text-cyan-200 mt-0.5">{visitModal.stop.office_address || visitModal.stop.starting_city || "—"}</div>
+            </div>
+
+            {/* GPS status */}
+            <div className="mb-4 p-3 rounded border border-cyan-500/20 bg-[rgba(0,12,24,0.6)]">
+              <div className="flex items-center justify-between text-[11px]">
+                <div className="flex items-center gap-2 text-cyan-400 font-bold tracking-wider">
+                  <Crosshair className="w-3.5 h-3.5" /> GPS LOCATION
+                </div>
+                <div data-testid="visit-gps-status" className={`text-[10px] tracking-wider ${
+                  visitGps.status === "ok" ? "text-green-400" :
+                  visitGps.status === "capturing" ? "text-amber-300" :
+                  visitGps.status === "error" ? "text-red-400" : "text-slate-500"
+                }`}>
+                  {visitGps.status === "ok" ? "CAPTURED" : visitGps.status === "capturing" ? "CAPTURING…" : visitGps.status === "error" ? "UNAVAILABLE" : "IDLE"}
+                </div>
+              </div>
+              {visitGps.status === "ok" && (
+                <div className="text-[11px] text-cyan-200 mt-1 font-mono">
+                  {visitGps.lat.toFixed(6)}, {visitGps.lng.toFixed(6)}
+                  {visitGps.accuracy && <span className="text-slate-500 ml-2">±{Math.round(visitGps.accuracy)}m</span>}
+                </div>
+              )}
+              {visitGps.status === "error" && (
+                <div className="text-[11px] text-red-300 mt-1">{visitGps.error}<br/><span className="text-slate-500">You can still save without GPS.</span></div>
+              )}
+              {visitGps.status === "capturing" && (
+                <div className="text-[11px] text-slate-400 mt-1">Waiting for browser location permission…</div>
+              )}
+            </div>
+
+            <label className="text-xs text-cyan-400 uppercase tracking-wider">Note (optional)</label>
+            <textarea
+              value={visitNote}
+              onChange={(e) => setVisitNote(e.target.value)}
+              data-testid="visit-note"
+              rows={3}
+              maxLength={500}
+              placeholder="Met with John — interested in 2 AED units, follow up next week"
+              className="w-full mt-1 bg-[#020617] border border-cyan-500/30 text-cyan-200 rounded px-3 py-2 text-sm resize-none"
+            />
+            <div className="text-[10px] text-slate-500 text-right mt-0.5">{visitNote.length}/500</div>
+
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setVisitModal(null)} disabled={visitSaving} className="px-4 py-2 text-sm border border-slate-500/40 text-slate-300 rounded hover:bg-slate-500/10">Cancel</button>
+              <button
+                onClick={submitVisit}
+                disabled={visitSaving}
+                data-testid="visit-save-btn"
+                className="px-4 py-2 text-sm border border-green-500/40 bg-green-500/10 text-green-300 rounded hover:bg-green-500/20 disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" />
+                {visitSaving ? "Saving…" : "Save & Mark Complete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trip Recap modal */}
+      {recapData && (
+        <TripRecapModal data={recapData} onClose={() => setRecapData(null)} />
+      )}
+      {recapLoading && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="text-cyan-300 text-sm">Loading trip recap…</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TripRecapModal({ data, onClose }) {
+  const fmt = (iso) => {
+    if (!iso) return "—";
+    try { return new Date(iso).toLocaleString(); } catch { return iso; }
+  };
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50" onClick={onClose} data-testid="trip-recap-modal">
+      <div className="bg-[#0A1628] border border-cyan-500/40 rounded-lg w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-cyan-500/20">
+          <div>
+            <h2 className="font-orbitron text-lg text-cyan-300 tracking-wider">TRIP RECAP</h2>
+            <div className="text-[11px] text-slate-400 mt-0.5">{data.name} · {data.salesman || "—"}</div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-cyan-300 text-xl leading-none px-2">×</button>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-5 gap-3 p-5 border-b border-cyan-500/20">
+          <Stat label="VISITED" value={`${data.visited_count} / ${data.total_stops}`} accent="text-green-300" />
+          <Stat label="COMPLETION" value={`${data.completion_pct}%`} accent="text-cyan-200" />
+          <Stat label="DURATION" value={data.duration_min != null ? `${data.duration_min} min` : "—"} accent="text-cyan-200" />
+          <Stat label="AVG OFF-PLAN" value={data.avg_miles_off_plan != null ? `${data.avg_miles_off_plan} mi` : "—"} accent="text-amber-300" />
+          <Stat label="LAST VISIT" value={data.last_visit_at ? fmt(data.last_visit_at).replace(/:\d{2}\s/, " ") : "—"} accent="text-slate-300" small />
+        </div>
+
+        {/* Visited table */}
+        <div className="flex-1 overflow-y-auto p-5">
+          {data.visited.length === 0 ? (
+            <div className="text-slate-400 text-sm py-8 text-center">No visits logged yet. Mark a stop complete to capture GPS + notes.</div>
+          ) : (
+            <table className="w-full text-sm" data-testid="recap-table">
+              <thead>
+                <tr className="border-b border-cyan-500/20 text-cyan-400 text-[10px] uppercase tracking-wider">
+                  <th className="text-left py-2">Stop</th>
+                  <th className="text-left py-2">Phase</th>
+                  <th className="text-left py-2">Location</th>
+                  <th className="text-left py-2">Visited At</th>
+                  <th className="text-left py-2">By</th>
+                  <th className="text-right py-2">Off-Plan</th>
+                  <th className="text-left py-2">Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.visited.map((v) => (
+                  <tr key={v.idx} className="border-b border-cyan-500/10">
+                    <td className="py-2 text-cyan-200 font-mono text-xs">{v.stop_num || v.idx + 1}</td>
+                    <td className="py-2 text-slate-300 text-xs">{v.phase || "—"}</td>
+                    <td className="py-2 text-cyan-200 text-xs max-w-[260px]">
+                      <div className="truncate">{v.label || "—"}</div>
+                      {(v.city || v.state) && <div className="text-[10px] text-slate-500">{[v.city, v.state].filter(Boolean).join(", ")}</div>}
+                    </td>
+                    <td className="py-2 text-slate-300 text-xs">{fmt(v.completed_at)}</td>
+                    <td className="py-2 text-slate-400 text-xs">{v.visited_by || "—"}</td>
+                    <td className="py-2 text-right text-xs">
+                      {v.miles_off == null ? (
+                        <span className="text-slate-500">no GPS</span>
+                      ) : v.miles_off < 0.1 ? (
+                        <span className="text-green-400">on-site</span>
+                      ) : v.miles_off < 1 ? (
+                        <span className="text-cyan-300">{v.miles_off} mi</span>
+                      ) : (
+                        <span className="text-amber-300">{v.miles_off} mi</span>
+                      )}
+                    </td>
+                    <td className="py-2 text-slate-300 text-xs max-w-[300px]">
+                      <div className="truncate" title={v.visit_note}>{v.visit_note || <span className="text-slate-600">—</span>}</div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, accent = "text-cyan-200", small = false }) {
+  return (
+    <div className="p-3 rounded border border-cyan-500/20 bg-[rgba(0,12,24,0.6)]">
+      <div className="text-[9px] tracking-widest text-cyan-400 font-bold">{label}</div>
+      <div className={`mt-1 ${small ? "text-xs" : "text-lg"} font-bold ${accent}`}>{value}</div>
     </div>
   );
 }

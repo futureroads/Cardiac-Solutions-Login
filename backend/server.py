@@ -6912,19 +6912,125 @@ async def sales_route_delete(route_id: str, current_user: dict = Depends(get_cur
     return {"ok": True}
 
 @api_router.post("/sales/routes/{route_id}/stops/{idx}/toggle")
-async def sales_stop_toggle(route_id: str, idx: int, current_user: dict = Depends(get_current_user)):
+async def sales_stop_toggle(route_id: str, idx: int, request: Request, current_user: dict = Depends(get_current_user)):
+    """Toggle a stop's completed flag. Optional JSON body when marking complete:
+    { lat, lng, accuracy_m, note } — captured into the stop's visit log."""
     if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
+    body = {}
+    try:
+        ct = (request.headers.get("content-type") or "").lower()
+        if "application/json" in ct:
+            body = await request.json() or {}
+    except Exception:
+        body = {}
     r = await _db.sales_routes.find_one({"route_id": route_id})
     if not r:
         raise HTTPException(status_code=404, detail="Route not found")
     stops = r.get("stops", [])
     if idx < 0 or idx >= len(stops):
         raise HTTPException(status_code=400, detail="bad index")
-    stops[idx]["completed"] = not bool(stops[idx].get("completed"))
-    stops[idx]["completed_at"] = datetime.now(timezone.utc).isoformat() if stops[idx]["completed"] else None
+    new_state = not bool(stops[idx].get("completed"))
+    stops[idx]["completed"] = new_state
+    if new_state:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        stops[idx]["completed_at"] = now_iso
+        stops[idx]["visited_by"] = current_user.get("username", "")
+        try:
+            lat = body.get("lat"); lng = body.get("lng")
+            stops[idx]["visit_lat"] = float(lat) if lat is not None else None
+            stops[idx]["visit_lng"] = float(lng) if lng is not None else None
+        except Exception:
+            stops[idx]["visit_lat"] = None
+            stops[idx]["visit_lng"] = None
+        try:
+            acc = body.get("accuracy_m")
+            stops[idx]["visit_accuracy_m"] = float(acc) if acc is not None else None
+        except Exception:
+            stops[idx]["visit_accuracy_m"] = None
+        stops[idx]["visit_note"] = (body.get("note") or "").strip()[:500]
+    else:
+        # Clearing visit metadata when un-marking
+        stops[idx]["completed_at"] = None
+        stops[idx]["visited_by"] = None
+        stops[idx]["visit_lat"] = None
+        stops[idx]["visit_lng"] = None
+        stops[idx]["visit_accuracy_m"] = None
+        stops[idx]["visit_note"] = ""
     await _db.sales_routes.update_one({"route_id": route_id}, {"$set": {"stops": stops}})
     return {"ok": True, "completed": stops[idx]["completed"]}
+
+
+def _haversine_miles(lat1, lng1, lat2, lng2):
+    import math
+    if None in (lat1, lng1, lat2, lng2):
+        return None
+    R = 3958.7613  # earth radius miles
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+@api_router.get("/sales/routes/{route_id}/recap")
+async def sales_route_recap(route_id: str, current_user: dict = Depends(get_current_user)):
+    """Trip recap — visited stops with planned vs actual GPS, distance off, timestamps, notes."""
+    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
+    r = await _db.sales_routes.find_one({"route_id": route_id}, {"_id": 0})
+    if not r:
+        raise HTTPException(status_code=404, detail="Route not found")
+    stops = r.get("stops", [])
+    visited = []
+    for s in stops:
+        if not s.get("completed"):
+            continue
+        plan_lat = s.get("start_lat"); plan_lng = s.get("start_lng")
+        v_lat = s.get("visit_lat"); v_lng = s.get("visit_lng")
+        miles_off = _haversine_miles(plan_lat, plan_lng, v_lat, v_lng)
+        visited.append({
+            "idx": s.get("idx"),
+            "stop_num": s.get("stop_num"),
+            "phase": s.get("phase") or s.get("day"),
+            "label": s.get("office_address") or s.get("starting_city") or "",
+            "city": s.get("starting_city") or "",
+            "state": s.get("state") or "",
+            "completed_at": s.get("completed_at"),
+            "visited_by": s.get("visited_by"),
+            "plan_lat": plan_lat, "plan_lng": plan_lng,
+            "visit_lat": v_lat, "visit_lng": v_lng,
+            "visit_accuracy_m": s.get("visit_accuracy_m"),
+            "miles_off": round(miles_off, 2) if miles_off is not None else None,
+            "visit_note": s.get("visit_note") or "",
+        })
+    visited.sort(key=lambda v: v.get("completed_at") or "")
+    # Aggregate
+    first_ts = visited[0]["completed_at"] if visited else None
+    last_ts = visited[-1]["completed_at"] if visited else None
+    duration_min = None
+    if first_ts and last_ts and first_ts != last_ts:
+        try:
+            t1 = datetime.fromisoformat(first_ts.replace("Z", "+00:00"))
+            t2 = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
+            duration_min = max(0, int((t2 - t1).total_seconds() / 60))
+        except Exception:
+            duration_min = None
+    miles_offs = [v["miles_off"] for v in visited if v.get("miles_off") is not None]
+    avg_off = round(sum(miles_offs) / len(miles_offs), 2) if miles_offs else None
+    return {
+        "route_id": route_id,
+        "name": r.get("name"),
+        "salesman": r.get("salesman"),
+        "total_stops": len(stops),
+        "visited_count": len(visited),
+        "completion_pct": round(100.0 * len(visited) / max(1, len(stops)), 1),
+        "first_visit_at": first_ts,
+        "last_visit_at": last_ts,
+        "duration_min": duration_min,
+        "avg_miles_off_plan": avg_off,
+        "visited": visited,
+    }
+
 
 
 async def _activity_session_finalizer_loop():
