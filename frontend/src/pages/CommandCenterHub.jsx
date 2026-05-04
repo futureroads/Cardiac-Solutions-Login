@@ -18,6 +18,7 @@ import {
   Building2,
   MapPin,
   AlertCircle,
+  Briefcase,
   LifeBuoy,
 } from "lucide-react";
 
@@ -113,6 +114,16 @@ const ALL_MODULES = [
     route: "/backend",
     description:
       "Monitor and control backend processes, system health, database status, and server performance metrics.",
+    badgeCount: null,
+  },
+  {
+    moduleKey: "sales",
+    title: "SALES",
+    status: "LIVE",
+    icon: Briefcase,
+    route: "/sales",
+    description:
+      "Upload sales route plans (.xlsx or .csv), assign them to salesmen, view stops on a map, and track route completion. Supports per-day stops with starting/ending cities, regions, and counties.",
     badgeCount: null,
   },
   {

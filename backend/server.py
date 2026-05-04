@@ -103,7 +103,7 @@ async def log_to_db(level, message, context=""):
         pass  # Can't log the log failure
 
 # All available module IDs
-ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path", "hybrid_training", "customer_portal", "map"]
+ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path", "hybrid_training", "customer_portal", "map", "sales"]
 
 # Create the main app
 app = FastAPI(title="Cardiac Solutions API")
@@ -6747,6 +6747,142 @@ async def activity_export_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="user-activity-{days}d.csv"'},
     )
+
+# ------------------------------------------------------------------
+# Sales Routes (upload + view + map)
+# ------------------------------------------------------------------
+def _norm_col(s: str) -> str:
+    return (s or "").strip().lower().replace(" ", "_")
+
+@api_router.post("/sales/routes/upload")
+async def sales_route_upload(request: Request, current_user: dict = Depends(get_current_user)):
+    """Upload an XLSX/CSV with columns: Week, Day, Region, Counties, Starting City, Ending City.
+    Optional fields: Notes, Salesman."""
+    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
+    form = await request.form()
+    upload = form.get("file")
+    name = (form.get("name") or "").strip()
+    salesman = (form.get("salesman") or "").strip()
+    start_date = (form.get("start_date") or "").strip()
+    if not upload or not getattr(upload, "filename", None):
+        raise HTTPException(status_code=400, detail="No file uploaded")
+    raw = await upload.read()
+    fname = upload.filename.lower()
+    rows: list[dict] = []
+    try:
+        if fname.endswith(".csv"):
+            import csv, io
+            text = raw.decode("utf-8-sig", errors="replace")
+            reader = csv.DictReader(io.StringIO(text))
+            for r in reader:
+                rows.append({_norm_col(k): (v or "").strip() for k, v in r.items()})
+        elif fname.endswith(".xlsx") or fname.endswith(".xlsm"):
+            import openpyxl, io
+            wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
+            ws = wb.active
+            headers = [_norm_col(c.value or "") for c in next(ws.iter_rows(min_row=1, max_row=1))]
+            for r in ws.iter_rows(min_row=2, values_only=True):
+                if not any(c not in (None, "") for c in r):
+                    continue
+                rows.append({headers[i]: (str(c).strip() if c is not None else "") for i, c in enumerate(r) if i < len(headers)})
+        else:
+            raise HTTPException(status_code=400, detail="Use .xlsx or .csv")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse file: {e}")
+    if not rows:
+        raise HTTPException(status_code=400, detail="File is empty")
+
+    # Normalize and geocode each starting/ending city in the background loop
+    stops: list[dict] = []
+    for i, r in enumerate(rows):
+        stop = {
+            "idx": i,
+            "week": r.get("week", ""),
+            "day": r.get("day", ""),
+            "region": r.get("region", ""),
+            "counties": r.get("counties", ""),
+            "starting_city": r.get("starting_city") or r.get("start_city") or "",
+            "ending_city": r.get("ending_city") or r.get("end_city") or "",
+            "notes": r.get("notes", ""),
+            "completed": False,
+            "completed_at": None,
+            "start_lat": None, "start_lng": None,
+            "end_lat": None, "end_lng": None,
+        }
+        stops.append(stop)
+
+    # Synchronous geocode (capped to 60 stops to keep upload responsive)
+    for s in stops[:60]:
+        for prefix, city_field in (("start", "starting_city"), ("end", "ending_city")):
+            city = s.get(city_field)
+            if not city:
+                continue
+            # Bias to TN by default — most US cities ambiguous otherwise. If a comma already present, trust the user.
+            q = city if "," in city else f"{city}, TN, USA"
+            g = await _geocode_text(q)
+            if g:
+                s[f"{prefix}_lat"] = g["lat"]
+                s[f"{prefix}_lng"] = g["lng"]
+
+    route_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "route_id": route_id,
+        "name": name or upload.filename.rsplit(".", 1)[0],
+        "salesman": salesman or current_user.get("name") or current_user.get("username") or "",
+        "start_date": start_date,
+        "uploaded_by": current_user.get("username", ""),
+        "uploaded_at": now,
+        "stops_count": len(stops),
+        "stops": stops,
+        "filename": upload.filename,
+    }
+    await _db.sales_routes.insert_one(doc)
+    return {"ok": True, "route_id": route_id, "stops_count": len(stops), "geocoded": sum(1 for s in stops if s.get("start_lat"))}
+
+@api_router.get("/sales/routes")
+async def sales_routes_list(current_user: dict = Depends(get_current_user)):
+    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
+    out = []
+    async for r in _db.sales_routes.find({}, {"_id": 0, "stops": 0}).sort("uploaded_at", -1):
+        out.append(r)
+    return {"routes": out}
+
+@api_router.get("/sales/routes/{route_id}")
+async def sales_route_detail(route_id: str, current_user: dict = Depends(get_current_user)):
+    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
+    r = await _db.sales_routes.find_one({"route_id": route_id}, {"_id": 0})
+    if not r:
+        raise HTTPException(status_code=404, detail="Route not found")
+    return r
+
+@api_router.delete("/sales/routes/{route_id}")
+async def sales_route_delete(route_id: str, current_user: dict = Depends(get_current_user)):
+    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
+    await _db.sales_routes.delete_one({"route_id": route_id})
+    return {"ok": True}
+
+@api_router.post("/sales/routes/{route_id}/stops/{idx}/toggle")
+async def sales_stop_toggle(route_id: str, idx: int, current_user: dict = Depends(get_current_user)):
+    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
+    r = await _db.sales_routes.find_one({"route_id": route_id})
+    if not r:
+        raise HTTPException(status_code=404, detail="Route not found")
+    stops = r.get("stops", [])
+    if idx < 0 or idx >= len(stops):
+        raise HTTPException(status_code=400, detail="bad index")
+    stops[idx]["completed"] = not bool(stops[idx].get("completed"))
+    stops[idx]["completed_at"] = datetime.now(timezone.utc).isoformat() if stops[idx]["completed"] else None
+    await _db.sales_routes.update_one({"route_id": route_id}, {"$set": {"stops": stops}})
+    return {"ok": True, "completed": stops[idx]["completed"]}
+
 
 async def _activity_session_finalizer_loop():
     """Every 60s: finalize sessions whose heartbeat is stale (>5min) and prune

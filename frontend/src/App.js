@@ -16,6 +16,7 @@ import MapPage from "./pages/MapPage";
 import StarkDashboard from "./pages/StarkDashboard";
 import EmailActivityAdmin from "./pages/EmailActivityAdmin";
 import UserActivity from "./pages/UserActivity";
+import Sales from "./pages/Sales";
 import useActivityHeartbeat from "./hooks/useActivityHeartbeat";
 import { Toaster } from "./components/ui/sonner";
 
@@ -194,6 +195,14 @@ function App() {
               isAuthenticated && user?.username === "futureroads" ?
                 <UserActivity /> :
                 <Navigate to="/hub" replace />
+            }
+          />
+          <Route
+            path="/sales"
+            element={
+              isAuthenticated ?
+                <Sales /> :
+                <Navigate to="/" replace />
             }
           />
           <Route 
