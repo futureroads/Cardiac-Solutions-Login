@@ -943,6 +943,7 @@ function SalesRouteMap({ stops, perStop }) {
         stopNum: s.stop_num,
         idx: s.idx,
         completed: s.completed,
+        recap: s.recap || null,
         cityState: [s.starting_city, s.state, s.zip].filter(Boolean).join(", "),
       } : null)
       .filter(Boolean);
@@ -966,8 +967,12 @@ function SalesRouteMap({ stops, perStop }) {
     if (points.length === 0) return;
 
     const bounds = new window.google.maps.LatLngBounds();
+    const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     points.forEach((p, i) => {
       const labelText = perStop ? String(p.stopNum || i + 1) : String(i + 1);
+      // Color logic: recap submitted → green; otherwise completed → green; else cyan
+      const hasRecap = !!p.recap;
+      const isGreen = hasRecap || p.completed;
       const marker = new window.google.maps.Marker({
         position: { lat: p.lat, lng: p.lng },
         map: mapRef.current,
@@ -975,7 +980,7 @@ function SalesRouteMap({ stops, perStop }) {
         icon: {
           path: window.google.maps.SymbolPath.CIRCLE,
           scale: 13,
-          fillColor: p.completed ? "#22c55e" : "#06b6d4",
+          fillColor: isGreen ? "#22c55e" : "#06b6d4",
           fillOpacity: 1,
           strokeColor: "#fff",
           strokeWeight: 2,
@@ -983,11 +988,29 @@ function SalesRouteMap({ stops, perStop }) {
         title: perStop ? `Phase ${p.phase} · Stop ${p.stopNum}: ${p.label}` : `Day ${p.day}: ${p.label}`,
       });
       const headerLine = perStop
-        ? `<b>Phase ${p.phase || "—"} · Stop ${p.stopNum || "—"}</b>`
-        : `<b>Day ${p.day || "—"}</b>`;
-      const cityLine = perStop && p.cityState ? `<br/><span style="color:#475569">${p.cityState}</span>` : "";
+        ? `<b>Phase ${escapeHtml(p.phase || "—")} · Stop ${escapeHtml(p.stopNum || "—")}</b>`
+        : `<b>Day ${escapeHtml(p.day || "—")}</b>`;
+      const cityLine = perStop && p.cityState ? `<br/><span style="color:#475569">${escapeHtml(p.cityState)}</span>` : "";
+      // Recap block
+      let recapBlock = "";
+      if (hasRecap) {
+        const r = p.recap;
+        const rows = [];
+        if (r.contact_name) rows.push(`<div><b>${escapeHtml(r.contact_name)}</b>${r.contact_title ? `, ${escapeHtml(r.contact_title)}` : ""}</div>`);
+        if (r.contact_phone) rows.push(`<div><a href="tel:${escapeHtml(r.contact_phone)}" style="color:#0891b2">${escapeHtml(r.contact_phone)}</a></div>`);
+        if (r.contact_email) rows.push(`<div><a href="mailto:${escapeHtml(r.contact_email)}" style="color:#0891b2">${escapeHtml(r.contact_email)}</a></div>`);
+        const meta = [];
+        if (r.interest_level != null) meta.push(`Interest: <b>${r.interest_level}/10</b>`);
+        if (r.followup) meta.push(`<span style="color:#16a34a">Follow-up</span>`);
+        if (meta.length) rows.push(`<div style="margin-top:4px">${meta.join(" · ")}</div>`);
+        if (r.action_text) rows.push(`<div style="margin-top:6px;font-style:italic;color:#334155">"${escapeHtml(r.action_text)}"</div>`);
+        recapBlock = `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0">
+          <div style="color:#16a34a;font-size:9px;font-weight:bold;letter-spacing:1.5px;margin-bottom:4px">RECAP</div>
+          ${rows.join("")}
+        </div>`;
+      }
       const info = new window.google.maps.InfoWindow({
-        content: `<div style="color:#0a1628;font-size:12px;max-width:260px">${headerLine}<br/>${p.label || ""}${cityLine}</div>`,
+        content: `<div style="color:#0a1628;font-size:12px;max-width:300px;line-height:1.45">${headerLine}<br/>${escapeHtml(p.label || "")}${cityLine}${recapBlock}</div>`,
       });
       marker.addListener("click", () => info.open(mapRef.current, marker));
       markersRef.current.push(marker);
