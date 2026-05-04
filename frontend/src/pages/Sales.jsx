@@ -749,6 +749,9 @@ function SalesRouteMap({ stops, perStop }) {
       mapRef.current = new window.google.maps.Map(ref.current, {
         zoom: 6, center: { lat: 35.86, lng: -86.66 },
         mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
+        zoomControl: true,
+        zoomControlOptions: { position: window.google.maps.ControlPosition.RIGHT_CENTER },
+        gestureHandling: "greedy",
         styles: [{ elementType: "geometry", stylers: [{ color: "#1a2332" }] }, { elementType: "labels.text.fill", stylers: [{ color: "#9ca3af" }] }, { elementType: "labels.text.stroke", stylers: [{ color: "#0a1628" }] }, { featureType: "water", stylers: [{ color: "#0a1628" }] }, { featureType: "road", stylers: [{ color: "#2a3a4a" }] }],
       });
     }
