@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ChevronRight, MapPin, Navigation2, Check, Crosshair, Phone, FileText, Trash2, LogOut, Map as MapIcon } from "lucide-react";
+import { ArrowLeft, ChevronRight, MapPin, Navigation2, Check, Crosshair, Phone, FileText, Trash2, LogOut, Map as MapIcon, Fuel } from "lucide-react";
 import { useJsApiLoader } from "@react-google-maps/api";
 import API_BASE from "../apiBase";
 
@@ -47,6 +47,43 @@ const directionsUrl = (s) => {
   return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
 };
 
+// Haversine distance in miles between two lat/lng points
+const haversineMiles = (lat1, lng1, lat2, lng2) => {
+  if ([lat1, lng1, lat2, lng2].some(v => v == null || Number.isNaN(v))) return 0;
+  const R = 3958.7613;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+};
+
+const ROAD_FACTOR = 1.3;
+
+// Group stops by phase/day, compute per-day driving miles
+const calcFuelBreakdown = (stops) => {
+  if (!stops || stops.length === 0) return { perDay: [], totalMiles: 0, dayCount: 0 };
+  const groups = new Map();
+  stops.forEach(s => {
+    const key = String(s.phase || s.day || "Unassigned").trim() || "Unassigned";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(s);
+  });
+  const perDay = [];
+  let totalMiles = 0;
+  for (const [key, dayStops] of groups.entries()) {
+    const ordered = [...dayStops].sort((a, b) => (a.idx ?? 0) - (b.idx ?? 0));
+    let miles = 0;
+    for (let i = 1; i < ordered.length; i++) {
+      const a = ordered[i - 1], b = ordered[i];
+      miles += haversineMiles(a.start_lat, a.start_lng, b.start_lat, b.start_lng) * ROAD_FACTOR;
+    }
+    perDay.push({ key, stops: ordered.length, miles });
+    totalMiles += miles;
+  }
+  return { perDay, totalMiles, dayCount: groups.size };
+};
+
 export default function SalesMobile() {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
@@ -69,6 +106,8 @@ export default function SalesMobile() {
 
   // Route map modal
   const [showMap, setShowMap] = useState(false);
+  // Fuel estimate modal
+  const [showFuel, setShowFuel] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -248,18 +287,27 @@ export default function SalesMobile() {
     <div className="min-h-screen bg-[#040A14] text-cyan-100 pb-32 font-sans">
       {/* Sticky header */}
       <div className="sticky top-0 z-30 bg-[#040A14]/95 backdrop-blur border-b border-cyan-500/20 px-4 py-3">
-        <div className="flex items-center justify-between mb-2">
-          <button onClick={() => setSelected(null)} data-testid="mobile-route-back" className="flex items-center gap-1.5 text-cyan-400 text-sm">
+        <div className="flex items-center justify-between mb-2 gap-2">
+          <button onClick={() => setSelected(null)} data-testid="mobile-route-back" className="flex items-center gap-1 text-cyan-400 text-sm shrink-0">
             <ArrowLeft className="w-4 h-4" /> Routes
           </button>
-          <button
-            onClick={() => setShowMap(true)}
-            data-testid="mobile-route-map-btn"
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-bold tracking-widest border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 active:bg-cyan-500/30"
-          >
-            <MapIcon className="w-3.5 h-3.5" /> ROUTE MAP
-          </button>
-          <div className="text-[10px] text-slate-500">{completed}/{filteredStops.length} done</div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setShowMap(true)}
+              data-testid="mobile-route-map-btn"
+              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold tracking-widest border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 active:bg-cyan-500/30"
+            >
+              <MapIcon className="w-3.5 h-3.5" /> MAP
+            </button>
+            <button
+              onClick={() => setShowFuel(true)}
+              data-testid="mobile-fuel-btn"
+              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold tracking-widest border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 active:bg-emerald-500/30"
+            >
+              <Fuel className="w-3.5 h-3.5" /> FUEL
+            </button>
+          </div>
+          <div className="text-[10px] text-slate-500 shrink-0">{completed}/{filteredStops.length}</div>
         </div>
         <div className="text-base font-bold text-cyan-200 truncate" data-testid="mobile-route-name">{selected.name}</div>
         <div className="text-[11px] text-slate-400">{selected.salesman || "—"}</div>
@@ -622,6 +670,147 @@ export default function SalesMobile() {
           onClose={() => setShowMap(false)}
         />
       )}
+
+      {/* Fuel estimate modal */}
+      {showFuel && (
+        <FuelEstimateMobile
+          stops={selected.stops || []}
+          perStop={perStop}
+          routeName={selected.name}
+          onClose={() => setShowFuel(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function FuelEstimateMobile({ stops, perStop, routeName, onClose }) {
+  const [mpg, setMpg] = useState(() => {
+    const stored = parseFloat(localStorage.getItem("sales_fuel_mpg"));
+    return Number.isFinite(stored) && stored > 0 ? stored : 20;
+  });
+  const [pricePerGal, setPricePerGal] = useState(() => {
+    const stored = parseFloat(localStorage.getItem("sales_fuel_price"));
+    return Number.isFinite(stored) && stored > 0 ? stored : 4.0;
+  });
+
+  useEffect(() => { localStorage.setItem("sales_fuel_mpg", String(mpg)); }, [mpg]);
+  useEffect(() => { localStorage.setItem("sales_fuel_price", String(pricePerGal)); }, [pricePerGal]);
+
+  const breakdown = useMemo(() => calcFuelBreakdown(stops), [stops]);
+  const safeMpg = mpg > 0 ? mpg : 20;
+  const totalGal = breakdown.totalMiles / safeMpg;
+  const totalCost = totalGal * pricePerGal;
+
+  const sortedPerDay = useMemo(() => {
+    const geoRank = (s) => {
+      const t = s.toLowerCase();
+      if (t.includes("west")) return 1;
+      if (t.includes("middle") || t.includes("central")) return 2;
+      if (t.includes("east")) return 3;
+      if (t.includes("north")) return 4;
+      if (t.includes("south")) return 5;
+      return 99;
+    };
+    return [...breakdown.perDay].sort((a, b) => {
+      const na = parseFloat(a.key), nb = parseFloat(b.key);
+      const aIsNum = !Number.isNaN(na), bIsNum = !Number.isNaN(nb);
+      if (aIsNum && bIsNum) return na - nb;
+      if (aIsNum && !bIsNum) return -1;
+      if (!aIsNum && bIsNum) return 1;
+      const ra = geoRank(a.key), rb = geoRank(b.key);
+      if (ra !== rb) return ra - rb;
+      return a.key.localeCompare(b.key);
+    });
+  }, [breakdown.perDay]);
+
+  return (
+    <div className="fixed inset-0 bg-black/85 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose} data-testid="mobile-fuel-modal">
+      <div className="bg-[#0A1628] border-t-2 sm:border-2 border-emerald-500/50 rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-emerald-500/20">
+          <div className="flex items-center gap-2">
+            <Fuel className="w-5 h-5 text-emerald-300" />
+            <h3 className="font-orbitron text-base text-emerald-300 tracking-wider">FUEL ESTIMATE</h3>
+          </div>
+          <button onClick={onClose} className="text-slate-400 text-2xl leading-none px-2">×</button>
+        </div>
+
+        <div className="px-4 pt-3 text-[11px] text-slate-400">
+          <div className="text-cyan-200 truncate">{routeName}</div>
+          <div>{breakdown.dayCount} {perStop ? "phase" : "day"}{breakdown.dayCount !== 1 ? "s" : ""} · {stops.length} stops</div>
+        </div>
+
+        {/* Trip total */}
+        <div className="px-4 pt-3">
+          <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5">
+            <div className="text-[9px] tracking-widest text-emerald-400 font-bold">TRIP TOTAL</div>
+            <div className="mt-1 text-2xl font-bold text-emerald-200" data-testid="mobile-fuel-trip-miles">
+              {breakdown.totalMiles.toFixed(1)} <span className="text-sm text-emerald-400">mi</span>
+            </div>
+            <div className="text-[12px] text-slate-300 mt-0.5">
+              {totalGal.toFixed(2)} gal · <span className="text-emerald-300 font-bold">${totalCost.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Inputs */}
+        <div className="grid grid-cols-2 gap-2 p-4">
+          <div>
+            <label className="text-[10px] text-emerald-400 uppercase tracking-widest font-bold">MPG</label>
+            <input
+              type="number"
+              value={mpg}
+              onChange={(e) => setMpg(parseFloat(e.target.value) || 0)}
+              data-testid="mobile-fuel-mpg"
+              inputMode="decimal"
+              min="1"
+              step="0.5"
+              className="w-full mt-1 bg-[#020617] border border-emerald-500/30 text-emerald-200 rounded-lg px-3 py-2.5 text-base font-mono"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-emerald-400 uppercase tracking-widest font-bold">$ / gal</label>
+            <input
+              type="number"
+              value={pricePerGal}
+              onChange={(e) => setPricePerGal(parseFloat(e.target.value) || 0)}
+              data-testid="mobile-fuel-price"
+              inputMode="decimal"
+              min="0"
+              step="0.05"
+              className="w-full mt-1 bg-[#020617] border border-emerald-500/30 text-emerald-200 rounded-lg px-3 py-2.5 text-base font-mono"
+            />
+          </div>
+        </div>
+
+        {/* Per-day breakdown */}
+        <div className="px-4 pb-4">
+          <div className="text-[10px] text-emerald-400 uppercase tracking-widest font-bold mb-2">
+            Per-{perStop ? "Phase" : "Day"} Breakdown
+          </div>
+          {sortedPerDay.length === 0 ? (
+            <div className="text-slate-400 text-sm py-6 text-center">No geocoded stops to estimate.</div>
+          ) : (
+            <div className="space-y-1.5" data-testid="mobile-fuel-breakdown">
+              {sortedPerDay.map(d => {
+                const gal = d.miles / safeMpg;
+                const cost = gal * pricePerGal;
+                return (
+                  <div key={d.key} className="grid grid-cols-12 gap-2 items-center px-2 py-2 rounded border border-emerald-500/15 bg-[rgba(0,12,24,0.5)]">
+                    <div className="col-span-5 text-[12px] text-cyan-200 truncate">{d.key}</div>
+                    <div className="col-span-2 text-[11px] text-slate-400 text-right">{d.stops}<span className="text-slate-500">×</span></div>
+                    <div className="col-span-3 text-[12px] text-cyan-200 font-mono text-right">{d.miles.toFixed(1)}mi</div>
+                    <div className="col-span-2 text-[12px] text-emerald-300 font-mono text-right">${cost.toFixed(0)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="mt-3 text-[10px] text-slate-500 leading-relaxed">
+            Straight-line distance × 1.3× road factor. Excludes home-base commute.
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
