@@ -207,17 +207,23 @@ function App() {
           <Route
             path="/sales"
             element={
-              isAuthenticated ?
-                <Sales /> :
-                <SalesLogin onLogin={handleLogin} />
+              !isAuthenticated
+                ? <SalesLogin onLogin={handleLogin} />
+                : (user?.allowed_modules || []).includes("sales") || user?.role === "admin"
+                  ? <Sales />
+                  : (user?.allowed_modules || []).includes("sales_field")
+                    ? <Navigate to="/sales/mobile" replace />
+                    : <Navigate to="/hub" replace />
             }
           />
           <Route
             path="/sales/mobile"
             element={
-              isAuthenticated ?
-                <SalesMobile /> :
-                <Navigate to="/" replace />
+              !isAuthenticated
+                ? <Navigate to="/sales" replace />
+                : (user?.allowed_modules || []).includes("sales") || (user?.allowed_modules || []).includes("sales_field") || user?.role === "admin"
+                  ? <SalesMobile />
+                  : <Navigate to="/hub" replace />
             }
           />
           <Route 

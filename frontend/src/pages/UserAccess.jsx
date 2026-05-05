@@ -33,6 +33,7 @@ const MODULE_OPTIONS = [
   { id: "customer_portal", title: "Customer Portal" },
   { id: "map", title: "Map" },
   { id: "sales", title: "Sales" },
+  { id: "sales_field", title: "Sales Field Portal" },
 ];
 
 const ROLE_OPTIONS = ["admin", "C Level", "Director", "Manager", "Supervisor", "Employee"];

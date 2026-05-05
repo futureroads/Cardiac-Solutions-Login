@@ -40,10 +40,20 @@ export default function SalesLogin({ onLogin }) {
       localStorage.setItem("token", d.access_token);
       localStorage.setItem("user", JSON.stringify(d.user || {}));
       if (typeof onLogin === "function") {
-        // Lift state to App without redirecting away — we'll navigate ourselves
         onLogin(d.access_token, d.user, { skipRedirect: true });
       }
-      navigate("/sales/mobile", { replace: true });
+      // Routing logic:
+      // - Field-only users (sales_field but NOT sales) → always mobile field view
+      // - Sales admins on phone → mobile (auto-redirect handled in Sales.jsx)
+      // - Sales admins on desktop → desktop /sales view
+      const mods = (d.user?.allowed_modules) || [];
+      const isFieldOnly = mods.includes("sales_field") && !mods.includes("sales") && d.user?.role !== "admin";
+      const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+      if (isFieldOnly || isMobile) {
+        navigate("/sales/mobile", { replace: true });
+      } else {
+        navigate("/sales", { replace: true });
+      }
     } catch (e) {
       setErr(e.message || "Login failed");
     } finally {

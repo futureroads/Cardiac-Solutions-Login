@@ -127,6 +127,16 @@ const ALL_MODULES = [
     badgeCount: null,
   },
   {
+    moduleKey: "sales_field",
+    title: "FIELD PORTAL",
+    status: "LIVE",
+    icon: Briefcase,
+    route: "/sales/mobile",
+    description:
+      "Mobile field view for sales reps: view assigned routes, get directions, log visits with GPS + notes, and capture per-stop CRM recaps (contact, interest level, follow-up, action).",
+    badgeCount: null,
+  },
+  {
     moduleKey: "user_activity",
     title: "USER ACTIVITY",
     status: "LIVE",

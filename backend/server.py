@@ -6754,11 +6754,23 @@ async def activity_export_csv(
 def _norm_col(s: str) -> str:
     return (s or "").strip().lower().replace(" ", "_")
 
+
+def _has_sales_admin(user: dict) -> bool:
+    """Sales admin (desktop view) — can upload/delete routes, see all data."""
+    return user.get("role") == "admin" or "sales" in (user.get("allowed_modules") or [])
+
+
+def _has_sales_field(user: dict) -> bool:
+    """Sales field rep — can view routes, log visits, save recaps, but not upload/delete."""
+    mods = user.get("allowed_modules") or []
+    return user.get("role") == "admin" or "sales" in mods or "sales_field" in mods
+
+
 @api_router.post("/sales/routes/upload")
 async def sales_route_upload(request: Request, current_user: dict = Depends(get_current_user)):
     """Upload an XLSX/CSV with columns: Week, Day, Region, Counties, Starting City, Ending City.
     Optional fields: Notes, Salesman."""
-    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+    if not _has_sales_admin(current_user):
         raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
     form = await request.form()
     upload = form.get("file")
@@ -6888,7 +6900,7 @@ async def sales_route_upload(request: Request, current_user: dict = Depends(get_
 
 @api_router.get("/sales/routes")
 async def sales_routes_list(current_user: dict = Depends(get_current_user)):
-    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+    if not _has_sales_field(current_user):
         raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
     out = []
     async for r in _db.sales_routes.find({}, {"_id": 0, "stops": 0}).sort("uploaded_at", -1):
@@ -6897,7 +6909,7 @@ async def sales_routes_list(current_user: dict = Depends(get_current_user)):
 
 @api_router.get("/sales/routes/{route_id}")
 async def sales_route_detail(route_id: str, current_user: dict = Depends(get_current_user)):
-    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+    if not _has_sales_field(current_user):
         raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
     r = await _db.sales_routes.find_one({"route_id": route_id}, {"_id": 0})
     if not r:
@@ -6906,8 +6918,8 @@ async def sales_route_detail(route_id: str, current_user: dict = Depends(get_cur
 
 @api_router.delete("/sales/routes/{route_id}")
 async def sales_route_delete(route_id: str, current_user: dict = Depends(get_current_user)):
-    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
+    if not _has_sales_admin(current_user):
+        raise HTTPException(status_code=403, detail="Sales admin access required")
     await _db.sales_routes.delete_one({"route_id": route_id})
     return {"ok": True}
 
@@ -6915,7 +6927,7 @@ async def sales_route_delete(route_id: str, current_user: dict = Depends(get_cur
 async def sales_stop_toggle(route_id: str, idx: int, request: Request, current_user: dict = Depends(get_current_user)):
     """Toggle a stop's completed flag. Optional JSON body when marking complete:
     { lat, lng, accuracy_m, note } — captured into the stop's visit log."""
-    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+    if not _has_sales_field(current_user):
         raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
     body = {}
     try:
@@ -6964,7 +6976,7 @@ async def sales_stop_toggle(route_id: str, idx: int, request: Request, current_u
 @api_router.post("/sales/routes/{route_id}/stops/{idx}/recap")
 async def sales_stop_recap(route_id: str, idx: int, request: Request, current_user: dict = Depends(get_current_user)):
     """Save (or update) a per-stop CRM-style recap: contact details, interest level, follow-up, action."""
-    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+    if not _has_sales_field(current_user):
         raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
     body = {}
     try:
@@ -7012,7 +7024,7 @@ async def sales_stop_recap(route_id: str, idx: int, request: Request, current_us
 
 @api_router.delete("/sales/routes/{route_id}/stops/{idx}/recap")
 async def sales_stop_recap_delete(route_id: str, idx: int, current_user: dict = Depends(get_current_user)):
-    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+    if not _has_sales_field(current_user):
         raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
     r = await _db.sales_routes.find_one({"route_id": route_id})
     if not r:
@@ -7039,7 +7051,7 @@ def _haversine_miles(lat1, lng1, lat2, lng2):
 @api_router.get("/sales/routes/{route_id}/recap")
 async def sales_route_recap(route_id: str, current_user: dict = Depends(get_current_user)):
     """Trip recap — visited stops with planned vs actual GPS, distance off, timestamps, notes."""
-    if "sales" not in (current_user.get("allowed_modules") or []) and current_user.get("role") != "admin":
+    if not _has_sales_field(current_user):
         raise HTTPException(status_code=403, detail="Sales module not enabled for this user")
     r = await _db.sales_routes.find_one({"route_id": route_id}, {"_id": 0})
     if not r:

@@ -65,6 +65,10 @@ Build a Tony Stark, dark themed web page for Cardiac Solutions LLC. They sell, s
 - Refactor large frontend components
 
 ## Changelog
+- 2026-05-05: **Sales — Split access: `sales` (admin) vs `sales_field` (rep)** — Per user request, the Sales module now has TWO independent permissions in User Access:
+  • **Sales** — desktop admin view at `/sales`. Can upload, delete, and manage routes, run fuel estimates, etc.
+  • **Sales Field Portal** — mobile field view at `/sales/mobile`. Can view assigned routes, get directions, log visits with GPS+notes, capture per-stop CRM recaps. **Cannot** upload or delete routes.
+  Backend introduces two helpers — `_has_sales_admin(user)` (gates upload + delete) and `_has_sales_field(user)` (gates list/detail/toggle/recap). Admins always pass both. Routing rules in App.js: a `sales_field`-only user hitting `/sales` auto-redirects to `/sales/mobile`; a non-sales user gets sent back to `/hub`. SalesLogin redirects field-only users to `/sales/mobile` after login regardless of viewport. New "FIELD PORTAL" Hub card surfaces for users with the `sales_field` permission. Verified end-to-end via curl: a `sales_field`-only test user got 200 on list/detail and 403 on upload/delete; admin endpoints blocked correctly.
 - 2026-05-05: **Sales — Phone-friendly `/sales` (path-based + auto-redirect)** — Pivoted away from the `sales.cardiac-solutions.ai` subdomain (Emergent native deployment only supports one custom domain). Now the entry URL is **`cardiac-solutions.ai/sales`**:
   • Unauthenticated → renders the **Sales Field Portal** login (mobile-first card)
   • Authenticated + viewport `< 768px` → auto-redirects to `/sales/mobile` so phone users always land on the field view instead of the broken desktop grid
