@@ -535,11 +535,21 @@ export default function Sales() {
                     <tbody>
                       {filteredStops.map((s) => {
                         const i = s.idx; // original index needed for toggle
+                        const isVisited = s.completed || !!s.recap;
                         return (
-                          <tr key={i} className={`border-b border-cyan-500/10 ${s.completed ? "opacity-50" : ""}`}>
+                          <tr key={i} className={`border-b border-cyan-500/10 ${isVisited ? "bg-red-500/5" : ""}`}>
                             <td className="py-2">
-                              <button onClick={() => toggleStop(i)} data-testid={`stop-toggle-${i}`} className={`w-5 h-5 rounded border flex items-center justify-center ${s.completed ? "bg-green-500/30 border-green-400 text-green-300" : "border-cyan-500/40 hover:border-cyan-400"}`} title={s.completed ? "Mark incomplete" : "Mark complete"}>
-                                {s.completed && <Check className="w-3 h-3" />}
+                              <button
+                                onClick={() => toggleStop(i)}
+                                data-testid={`stop-toggle-${i}`}
+                                className={`w-5 h-5 rounded border flex items-center justify-center ${
+                                  isVisited
+                                    ? "bg-red-500/30 border-red-400 text-red-300"
+                                    : "border-cyan-500/40 hover:border-cyan-400"
+                                }`}
+                                title={isVisited ? (s.recap ? "Visited (has recap)" : "Marked complete") : "Mark complete"}
+                              >
+                                {isVisited && <Check className="w-3 h-3" />}
                               </button>
                             </td>
                             {perStop ? (
