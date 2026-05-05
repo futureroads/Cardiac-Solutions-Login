@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ChevronRight, MapPin, Navigation2, Check, Crosshair, Phone, FileText, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronRight, MapPin, Navigation2, Check, Crosshair, Phone, FileText, Trash2, LogOut } from "lucide-react";
 import API_BASE from "../apiBase";
 
 const API = API_BASE + "/api";
@@ -195,11 +195,18 @@ export default function SalesMobile() {
     return (
       <div className="min-h-screen bg-[#040A14] text-cyan-100 px-4 py-5 font-sans">
         <div className="flex items-center justify-between mb-5">
-          <button onClick={() => navigate("/hub")} data-testid="mobile-back-btn" className="flex items-center gap-1.5 text-cyan-400 text-sm">
-            <ArrowLeft className="w-4 h-4" /> Hub
+          <h1 className="font-orbitron text-base font-bold tracking-widest text-cyan-300">SALES FIELD PORTAL</h1>
+          <button
+            onClick={() => {
+              localStorage.removeItem("token");
+              localStorage.removeItem("user");
+              window.location.href = "/sales";
+            }}
+            data-testid="mobile-logout-btn"
+            className="flex items-center gap-1.5 text-[10px] tracking-widest font-bold text-red-400 active:text-red-300 px-2 py-1"
+          >
+            <LogOut className="w-3.5 h-3.5" /> LOGOUT
           </button>
-          <h1 className="font-orbitron text-base font-bold tracking-widest text-cyan-300">FIELD VIEW</h1>
-          <button onClick={() => navigate("/sales")} data-testid="mobile-desktop-link" className="text-[10px] text-slate-500">DESKTOP</button>
         </div>
         {err && <div className="mb-4 p-3 border border-red-500/40 bg-red-500/10 text-red-300 text-sm rounded">{err}</div>}
         <div className="text-[10px] tracking-widest text-cyan-400 font-bold mb-2">SELECT ROUTE</div>
