@@ -910,6 +910,10 @@ function TripRecapModal({ data, onClose }) {
                     <td className="py-2 text-cyan-200 text-xs max-w-[260px]">
                       <div className="truncate">{v.label || "—"}</div>
                       {(v.city || v.state) && <div className="text-[10px] text-slate-500">{[v.city, v.state].filter(Boolean).join(", ")}</div>}
+                      <div className="flex gap-1 mt-0.5">
+                        {v.has_visit && <span className="text-[9px] tracking-widest font-bold text-green-400">VISIT</span>}
+                        {v.has_recap && <span className="text-[9px] tracking-widest font-bold text-amber-400">RECAP</span>}
+                      </div>
                     </td>
                     <td className="py-2 text-slate-300 text-xs">{fmt(v.completed_at)}</td>
                     <td className="py-2 text-slate-400 text-xs">{v.visited_by || "—"}</td>

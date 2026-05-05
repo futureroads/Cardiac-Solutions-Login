@@ -7059,11 +7059,32 @@ async def sales_route_recap(route_id: str, current_user: dict = Depends(get_curr
     stops = r.get("stops", [])
     visited = []
     for s in stops:
-        if not s.get("completed"):
+        # Count a stop as visited if EITHER the visit was logged (HERE/checkbox)
+        # OR a recap was saved on it.
+        has_visit = bool(s.get("completed"))
+        has_recap = bool(s.get("recap"))
+        if not has_visit and not has_recap:
             continue
         plan_lat = s.get("start_lat"); plan_lng = s.get("start_lng")
         v_lat = s.get("visit_lat"); v_lng = s.get("visit_lng")
         miles_off = _haversine_miles(plan_lat, plan_lng, v_lat, v_lng)
+        recap = s.get("recap") or {}
+        # Use completed_at if visit-logged, else recap timestamp, else nothing
+        ts = s.get("completed_at") or recap.get("recapped_at")
+        by = s.get("visited_by") or recap.get("recapped_by")
+        # Build a richer note that includes recap info if no plain note
+        note = s.get("visit_note") or ""
+        if not note and has_recap:
+            parts = []
+            if recap.get("contact_name"):
+                parts.append(recap["contact_name"] + (f", {recap['contact_title']}" if recap.get("contact_title") else ""))
+            if recap.get("interest_level") is not None:
+                parts.append(f"Interest {recap['interest_level']}/10")
+            if recap.get("followup"):
+                parts.append("Follow-up")
+            if recap.get("action_text"):
+                parts.append(recap["action_text"])
+            note = " · ".join(parts)
         visited.append({
             "idx": s.get("idx"),
             "stop_num": s.get("stop_num"),
@@ -7071,13 +7092,15 @@ async def sales_route_recap(route_id: str, current_user: dict = Depends(get_curr
             "label": s.get("office_address") or s.get("starting_city") or "",
             "city": s.get("starting_city") or "",
             "state": s.get("state") or "",
-            "completed_at": s.get("completed_at"),
-            "visited_by": s.get("visited_by"),
+            "completed_at": ts,
+            "visited_by": by,
             "plan_lat": plan_lat, "plan_lng": plan_lng,
             "visit_lat": v_lat, "visit_lng": v_lng,
             "visit_accuracy_m": s.get("visit_accuracy_m"),
             "miles_off": round(miles_off, 2) if miles_off is not None else None,
-            "visit_note": s.get("visit_note") or "",
+            "visit_note": note,
+            "has_recap": has_recap,
+            "has_visit": has_visit,
         })
     visited.sort(key=lambda v: v.get("completed_at") or "")
     # Aggregate
