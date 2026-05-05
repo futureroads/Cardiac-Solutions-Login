@@ -294,7 +294,13 @@ export default function SalesMobile() {
               <div
                 key={s.idx}
                 data-testid={`mobile-stop-${s.idx}`}
-                className={`p-4 rounded-xl border-2 ${s.completed ? "border-green-500/50 bg-green-500/5" : "border-cyan-500/30 bg-[rgba(0,18,32,0.93)]"}`}
+                className={`p-4 rounded-xl border-2 ${
+                  s.recap
+                    ? "border-slate-400/40 bg-slate-300/10"
+                    : s.completed
+                      ? "border-green-500/50 bg-green-500/5"
+                      : "border-cyan-500/30 bg-[rgba(0,18,32,0.93)]"
+                }`}
               >
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
