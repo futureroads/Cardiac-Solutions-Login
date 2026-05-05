@@ -13,12 +13,6 @@ export default function SalesLogin({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  // If already logged in, jump straight to mobile route picker
-  useEffect(() => {
-    const t = localStorage.getItem("token");
-    if (t) navigate("/sales/mobile", { replace: true });
-  }, [navigate]);
-
   // Pre-fill saved username
   useEffect(() => {
     const saved = localStorage.getItem("saved_username");

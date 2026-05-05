@@ -77,11 +77,6 @@ function App() {
     setIsAuthenticated(true);
     setUser(userData);
     if (opts.skipRedirect) return;
-    // If on sales subdomain, always go to mobile field view
-    if (typeof window !== "undefined" && window.location.hostname.startsWith("sales.")) {
-      window.location.href = "/sales/mobile";
-      return;
-    }
     // If dashboard is the only module, go directly to dashboard
     const mods = userData?.allowed_modules || [];
     if (mods.length === 1 && mods[0] === "dashboard") {
@@ -96,11 +91,7 @@ function App() {
     localStorage.removeItem("user");
     setIsAuthenticated(false);
     setUser(null);
-    if (typeof window !== "undefined" && window.location.hostname.startsWith("sales.")) {
-      window.location.href = "/sales/login";
-    } else {
-      window.location.href = "/";
-    }
+    window.location.href = "/";
   };
 
   if (loading) {
@@ -119,24 +110,14 @@ function App() {
           <Route 
             path="/" 
             element={
-              isAuthenticated ? (
-                typeof window !== "undefined" && window.location.hostname.startsWith("sales.")
-                  ? <Navigate to="/sales/mobile" replace />
-                  : <Navigate to="/hub" replace />
-              ) : (
-                typeof window !== "undefined" && window.location.hostname.startsWith("sales.")
-                  ? <Navigate to="/sales/login" replace />
-                  : <LoginPage onLogin={handleLogin} />
-              )
+              isAuthenticated ? 
+                <Navigate to="/hub" replace /> : 
+                <LoginPage onLogin={handleLogin} />
             } 
           />
           <Route
             path="/sales/login"
-            element={
-              isAuthenticated ?
-                <Navigate to="/sales/mobile" replace /> :
-                <SalesLogin onLogin={handleLogin} />
-            }
+            element={<Navigate to="/sales" replace />}
           />
           <Route 
             path="/hub" 
@@ -228,7 +209,7 @@ function App() {
             element={
               isAuthenticated ?
                 <Sales /> :
-                <Navigate to="/" replace />
+                <SalesLogin onLogin={handleLogin} />
             }
           />
           <Route
