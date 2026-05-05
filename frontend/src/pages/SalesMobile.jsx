@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ChevronRight, MapPin, Navigation2, Check, Crosshair, Phone, FileText, Trash2, LogOut } from "lucide-react";
+import { ArrowLeft, ChevronRight, MapPin, Navigation2, Check, Crosshair, Phone, FileText, Trash2, LogOut, Map as MapIcon } from "lucide-react";
+import { useJsApiLoader } from "@react-google-maps/api";
 import API_BASE from "../apiBase";
 
 const API = API_BASE + "/api";
+const MAP_KEY = process.env.REACT_APP_GOOGLE_MAPS_KEY;
 
 const isPerStopSchema = (stops) => {
   if (!stops || stops.length === 0) return false;
@@ -64,6 +66,9 @@ export default function SalesMobile() {
   const [recapModal, setRecapModal] = useState(null);
   const [recapForm, setRecapForm] = useState({ contact_name: "", contact_title: "", contact_phone: "", contact_email: "", interest_level: 5, followup: false, action_text: "" });
   const [recapSaving, setRecapSaving] = useState(false);
+
+  // Route map modal
+  const [showMap, setShowMap] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -246,6 +251,13 @@ export default function SalesMobile() {
         <div className="flex items-center justify-between mb-2">
           <button onClick={() => setSelected(null)} data-testid="mobile-route-back" className="flex items-center gap-1.5 text-cyan-400 text-sm">
             <ArrowLeft className="w-4 h-4" /> Routes
+          </button>
+          <button
+            onClick={() => setShowMap(true)}
+            data-testid="mobile-route-map-btn"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-bold tracking-widest border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 active:bg-cyan-500/30"
+          >
+            <MapIcon className="w-3.5 h-3.5" /> ROUTE MAP
           </button>
           <div className="text-[10px] text-slate-500">{completed}/{filteredStops.length} done</div>
         </div>
@@ -600,6 +612,159 @@ export default function SalesMobile() {
           </div>
         </div>
       )}
+      {/* Route map modal */}
+      {showMap && (
+        <RouteMapModal
+          stops={filteredStops}
+          perStop={perStop}
+          phaseFilter={phaseFilter}
+          routeName={selected.name}
+          onClose={() => setShowMap(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function RouteMapModal({ stops, perStop, phaseFilter, routeName, onClose }) {
+  const ref = useRef(null);
+  const mapRef = useRef(null);
+  const markersRef = useRef([]);
+  const polylineRef = useRef(null);
+  const { isLoaded } = useJsApiLoader({ googleMapsApiKey: MAP_KEY });
+
+  const points = useMemo(() => {
+    return stops
+      .filter(s => s.start_lat && s.start_lng)
+      .map(s => ({
+        lat: s.start_lat,
+        lng: s.start_lng,
+        idx: s.idx,
+        stopNum: s.stop_num,
+        phase: s.phase,
+        day: s.day,
+        completed: s.completed,
+        recap: s.recap || null,
+        label: s.office_address || s.starting_city || "",
+        city: s.starting_city || "",
+        state: s.state || "",
+        zip: s.zip || "",
+      }));
+  }, [stops]);
+
+  useEffect(() => {
+    if (!isLoaded || !window.google?.maps || !ref.current) return;
+    if (!mapRef.current) {
+      mapRef.current = new window.google.maps.Map(ref.current, {
+        zoom: 6, center: { lat: 35.86, lng: -86.66 },
+        mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
+        zoomControl: true,
+        zoomControlOptions: { position: window.google.maps.ControlPosition.RIGHT_BOTTOM },
+        gestureHandling: "greedy",
+        styles: [
+          { elementType: "geometry", stylers: [{ color: "#1a2332" }] },
+          { elementType: "labels.text.fill", stylers: [{ color: "#9ca3af" }] },
+          { elementType: "labels.text.stroke", stylers: [{ color: "#0a1628" }] },
+          { featureType: "water", stylers: [{ color: "#0a1628" }] },
+          { featureType: "road", stylers: [{ color: "#2a3a4a" }] },
+        ],
+      });
+    }
+    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current = [];
+    if (polylineRef.current) polylineRef.current.setMap(null);
+    if (points.length === 0) return;
+
+    const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const bounds = new window.google.maps.LatLngBounds();
+    points.forEach((p, i) => {
+      const labelText = perStop ? String(p.stopNum || i + 1) : String(i + 1);
+      const isGreen = !!p.recap || p.completed;
+      const marker = new window.google.maps.Marker({
+        position: { lat: p.lat, lng: p.lng },
+        map: mapRef.current,
+        label: { text: labelText, color: "#0a1628", fontWeight: "bold", fontSize: "11px" },
+        icon: {
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: 13,
+          fillColor: isGreen ? "#22c55e" : "#06b6d4",
+          fillOpacity: 1,
+          strokeColor: "#fff",
+          strokeWeight: 2,
+        },
+        title: perStop ? `Phase ${p.phase} · Stop ${p.stopNum}` : `Day ${p.day}`,
+      });
+      const headerLine = perStop
+        ? `<b>Phase ${escapeHtml(p.phase || "—")} · Stop ${escapeHtml(p.stopNum || "—")}</b>`
+        : `<b>Day ${escapeHtml(p.day || "—")}</b>`;
+      const cityState = [p.city, p.state, p.zip].filter(Boolean).join(", ");
+      let recapBlock = "";
+      if (p.recap) {
+        const r = p.recap;
+        const rows = [];
+        if (r.contact_name) rows.push(`<div><b>${escapeHtml(r.contact_name)}</b>${r.contact_title ? `, ${escapeHtml(r.contact_title)}` : ""}</div>`);
+        if (r.contact_phone) rows.push(`<div><a href="tel:${escapeHtml(r.contact_phone)}" style="color:#0891b2">${escapeHtml(r.contact_phone)}</a></div>`);
+        if (r.contact_email) rows.push(`<div><a href="mailto:${escapeHtml(r.contact_email)}" style="color:#0891b2">${escapeHtml(r.contact_email)}</a></div>`);
+        const meta = [];
+        if (r.interest_level != null) meta.push(`Interest: <b>${r.interest_level}/10</b>`);
+        if (r.followup) meta.push(`<span style="color:#16a34a">Follow-up</span>`);
+        if (meta.length) rows.push(`<div style="margin-top:4px">${meta.join(" · ")}</div>`);
+        if (r.action_text) rows.push(`<div style="margin-top:6px;font-style:italic;color:#334155">"${escapeHtml(r.action_text)}"</div>`);
+        recapBlock = `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0">
+          <div style="color:#16a34a;font-size:9px;font-weight:bold;letter-spacing:1.5px;margin-bottom:4px">RECAP</div>
+          ${rows.join("")}
+        </div>`;
+      }
+      const info = new window.google.maps.InfoWindow({
+        content: `<div style="color:#0a1628;font-size:12px;max-width:260px;line-height:1.45">${headerLine}<br/>${escapeHtml(p.label)}${cityState ? `<br/><span style="color:#475569">${escapeHtml(cityState)}</span>` : ""}${recapBlock}</div>`,
+      });
+      marker.addListener("click", () => info.open(mapRef.current, marker));
+      markersRef.current.push(marker);
+      bounds.extend(marker.getPosition());
+    });
+    polylineRef.current = new window.google.maps.Polyline({
+      path: points.map(p => ({ lat: p.lat, lng: p.lng })),
+      geodesic: true, strokeColor: "#06b6d4", strokeOpacity: 0.8, strokeWeight: 3,
+      map: mapRef.current,
+    });
+    if (points.length === 1) {
+      mapRef.current.setCenter(points[0]);
+      mapRef.current.setZoom(11);
+    } else {
+      mapRef.current.fitBounds(bounds, 60);
+    }
+  }, [points, perStop, isLoaded]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-[#040A14] flex flex-col" data-testid="mobile-route-map-modal">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-cyan-500/20 bg-[#040A14]/95">
+        <div className="flex-1 min-w-0">
+          <div className="text-base font-bold text-cyan-200 truncate">{routeName}</div>
+          <div className="text-[10px] text-slate-400">
+            {points.length} stop{points.length !== 1 ? "s" : ""} · {phaseFilter === "ALL" ? "All phases" : `${perStop ? "Phase" : "Day"} ${phaseFilter}`}
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          data-testid="mobile-route-map-close"
+          className="ml-3 px-3 py-2 rounded border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 text-xs font-bold tracking-wider active:bg-cyan-500/30"
+        >
+          CLOSE
+        </button>
+      </div>
+      <div className="flex-1 relative">
+        {!isLoaded ? (
+          <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">Loading map…</div>
+        ) : points.length === 0 ? (
+          <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm px-6 text-center">No geocoded stops to map for this filter.</div>
+        ) : (
+          <div ref={ref} className="w-full h-full" />
+        )}
+      </div>
+      <div className="px-4 py-2 border-t border-cyan-500/20 bg-[#040A14]/95 text-[10px] text-slate-500 flex items-center justify-center gap-4">
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-cyan-500 border border-white" /> Pending</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-500 border border-white" /> Visited / Recap</span>
+      </div>
     </div>
   );
 }
