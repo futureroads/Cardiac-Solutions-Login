@@ -161,6 +161,18 @@ const openCallSheet = ({ route, stops, perStop, phaseFilter }) => {
 export default function Sales() {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
+
+  // Mobile auto-redirect: if viewport is phone-sized, send to the mobile field view.
+  // Allow override via ?desktop=1 for admins on a phone who explicitly want this view.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("desktop") === "1") return;
+    if (window.innerWidth < 768) {
+      navigate("/sales/mobile", { replace: true });
+    }
+  }, [navigate]);
+
   const [routes, setRoutes] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
