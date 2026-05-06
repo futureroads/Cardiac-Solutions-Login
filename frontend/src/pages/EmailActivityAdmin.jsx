@@ -15,6 +15,42 @@ export default function EmailActivityAdmin() {
   const [search, setSearch] = useState("");
   const [detailRow, setDetailRow] = useState(null);
 
+  // Email provider selector (SendGrid / Mailgun)
+  const [provider, setProvider] = useState(null); // { active, providers: { sendgrid: {configured}, mailgun: {configured} } }
+  const [providerSaving, setProviderSaving] = useState(false);
+  const [providerErr, setProviderErr] = useState("");
+
+  const loadProvider = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const r = await fetch(`${API}/admin/email-provider`, { headers: { Authorization: `Bearer ${token}` } });
+      if (r.ok) setProvider(await r.json());
+    } catch (e) { /* non-fatal */ }
+  };
+
+  const switchProvider = async (newProvider) => {
+    if (!provider || newProvider === provider.active) return;
+    setProviderSaving(true);
+    setProviderErr("");
+    try {
+      const token = localStorage.getItem("token");
+      const r = await fetch(`${API}/admin/email-provider`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: newProvider }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+      await loadProvider();
+    } catch (e) {
+      setProviderErr(e.message || "Failed to switch provider");
+    } finally {
+      setProviderSaving(false);
+    }
+  };
+
+  useEffect(() => { loadProvider(); }, []);
+
   const load = async () => {
     setLoading(true);
     try {
@@ -73,6 +109,40 @@ export default function EmailActivityAdmin() {
             <div className="font-orbitron text-sm tracking-wider text-cyan-400">EMAIL ACTIVITY MONITOR</div>
             <div className="text-[9px] text-slate-500 font-orbitron tracking-wider">ADMIN — INVESTIGATE FAILED & SUCCESSFUL SENDS</div>
           </div>
+          {/* Email provider toggle */}
+          {provider && (
+            <div className="flex items-center gap-2 ml-3 pl-3 border-l border-slate-700/60" data-testid="email-provider-toggle">
+              <span className="font-orbitron text-[9px] text-slate-500 tracking-widest">PROVIDER:</span>
+              <div className="flex items-center border border-slate-700 rounded-sm overflow-hidden">
+                {["sendgrid", "mailgun"].map((p) => {
+                  const isActive = provider.active === p;
+                  const isConfigured = provider.providers?.[p]?.configured;
+                  const label = provider.providers?.[p]?.label || p.toUpperCase();
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => switchProvider(p)}
+                      disabled={providerSaving || !isConfigured}
+                      data-testid={`provider-${p}`}
+                      title={!isConfigured ? `${label} is not configured (missing API key)` : isActive ? `Active: all emails go through ${label}` : `Switch to ${label}`}
+                      className={`font-orbitron text-[9px] px-3 py-1 transition ${
+                        isActive
+                          ? "bg-cyan-500/20 text-cyan-300"
+                          : isConfigured
+                            ? "text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/5"
+                            : "text-slate-700 cursor-not-allowed"
+                      }`}
+                    >
+                      {label.toUpperCase()}
+                      {!isConfigured && <span className="ml-1 text-[8px]">(N/A)</span>}
+                      {isActive && <span className="ml-1 text-emerald-400">●</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {providerErr && <span className="text-[9px] text-red-400 font-orbitron">{providerErr}</span>}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <select value={days} onChange={e => setDays(parseInt(e.target.value))} className="bg-slate-900 border border-slate-700 text-cyan-300 text-[10px] font-orbitron px-2 py-1 rounded-sm" data-testid="days-select">

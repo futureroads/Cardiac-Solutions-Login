@@ -1475,6 +1475,67 @@ def _extract_sg_message_id(resp) -> str:
     return ""
 
 
+@api_router.get("/admin/email-provider")
+async def get_email_provider(current_user: dict = Depends(get_current_user)):
+    """Return the active email provider + whether each one has credentials configured.
+    Available providers: 'sendgrid', 'mailgun'."""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    doc = await _db.app_settings.find_one({"_id": "email_provider"}) or {}
+    active = doc.get("provider", "sendgrid")
+    return {
+        "active": active,
+        "providers": {
+            "sendgrid": {
+                "label": "SendGrid",
+                "configured": bool(os.environ.get("SENDGRID_API_KEY", "").strip()),
+            },
+            "mailgun": {
+                "label": "Mailgun",
+                "configured": bool(os.environ.get("MAILGUN_API_KEY", "").strip() and os.environ.get("MAILGUN_DOMAIN", "").strip()),
+            },
+        },
+        "updated_at": doc.get("updated_at"),
+        "updated_by": doc.get("updated_by"),
+    }
+
+
+@api_router.put("/admin/email-provider")
+async def set_email_provider(data: dict, current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    provider = (data.get("provider") or "").strip().lower()
+    if provider not in ("sendgrid", "mailgun"):
+        raise HTTPException(status_code=400, detail="provider must be 'sendgrid' or 'mailgun'")
+    if provider == "mailgun" and not (os.environ.get("MAILGUN_API_KEY", "").strip() and os.environ.get("MAILGUN_DOMAIN", "").strip()):
+        raise HTTPException(status_code=400, detail="Mailgun is not configured (MAILGUN_API_KEY / MAILGUN_DOMAIN missing)")
+    if provider == "sendgrid" and not os.environ.get("SENDGRID_API_KEY", "").strip():
+        raise HTTPException(status_code=400, detail="SendGrid is not configured (SENDGRID_API_KEY missing)")
+    await _db.app_settings.update_one(
+        {"_id": "email_provider"},
+        {"$set": {
+            "provider": provider,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": current_user.get("username", ""),
+        }},
+        upsert=True,
+    )
+    logger.info(f"Email provider switched to '{provider}' by {current_user.get('username','')}")
+    return {"ok": True, "active": provider}
+
+
+async def get_active_email_provider() -> str:
+    """Read the saved email provider from MongoDB. Falls back to env or 'sendgrid'."""
+    try:
+        doc = await _db.app_settings.find_one({"_id": "email_provider"}) or {}
+        p = (doc.get("provider") or "").strip().lower()
+        if p in ("sendgrid", "mailgun"):
+            return p
+    except Exception:
+        pass
+    return "sendgrid"
+
+
 @api_router.post("/support/test-email")
 async def send_test_email(data: dict, current_user: dict = Depends(get_current_user)):
     """Send a test email to verify SendGrid is working — and create a
