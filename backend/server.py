@@ -1478,7 +1478,7 @@ def _extract_sg_message_id(resp) -> str:
 @api_router.get("/admin/email-provider")
 async def get_email_provider(current_user: dict = Depends(get_current_user)):
     """Return the active email provider + whether each one has credentials configured.
-    Available providers: 'sendgrid', 'mailgun'."""
+    Available providers: 'sendgrid', 'mailgun', 'resend'."""
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     doc = await _db.app_settings.find_one({"_id": "email_provider"}) or {}
@@ -1494,6 +1494,10 @@ async def get_email_provider(current_user: dict = Depends(get_current_user)):
                 "label": "Mailgun",
                 "configured": bool(os.environ.get("MAILGUN_API_KEY", "").strip() and os.environ.get("MAILGUN_DOMAIN", "").strip()),
             },
+            "resend": {
+                "label": "Resend",
+                "configured": bool(os.environ.get("RESEND_API_KEY", "").strip()),
+            },
         },
         "updated_at": doc.get("updated_at"),
         "updated_by": doc.get("updated_by"),
@@ -1505,12 +1509,14 @@ async def set_email_provider(data: dict, current_user: dict = Depends(get_curren
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     provider = (data.get("provider") or "").strip().lower()
-    if provider not in ("sendgrid", "mailgun"):
-        raise HTTPException(status_code=400, detail="provider must be 'sendgrid' or 'mailgun'")
+    if provider not in ("sendgrid", "mailgun", "resend"):
+        raise HTTPException(status_code=400, detail="provider must be 'sendgrid', 'mailgun' or 'resend'")
     if provider == "mailgun" and not (os.environ.get("MAILGUN_API_KEY", "").strip() and os.environ.get("MAILGUN_DOMAIN", "").strip()):
         raise HTTPException(status_code=400, detail="Mailgun is not configured (MAILGUN_API_KEY / MAILGUN_DOMAIN missing)")
     if provider == "sendgrid" and not os.environ.get("SENDGRID_API_KEY", "").strip():
         raise HTTPException(status_code=400, detail="SendGrid is not configured (SENDGRID_API_KEY missing)")
+    if provider == "resend" and not os.environ.get("RESEND_API_KEY", "").strip():
+        raise HTTPException(status_code=400, detail="Resend is not configured (RESEND_API_KEY missing)")
     await _db.app_settings.update_one(
         {"_id": "email_provider"},
         {"$set": {
@@ -1529,7 +1535,7 @@ async def get_active_email_provider() -> str:
     try:
         doc = await _db.app_settings.find_one({"_id": "email_provider"}) or {}
         p = (doc.get("provider") or "").strip().lower()
-        if p in ("sendgrid", "mailgun"):
+        if p in ("sendgrid", "mailgun", "resend"):
             return p
     except Exception:
         pass

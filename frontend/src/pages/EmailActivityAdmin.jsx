@@ -114,7 +114,7 @@ export default function EmailActivityAdmin() {
             <div className="flex items-center gap-2 ml-3 pl-3 border-l border-slate-700/60" data-testid="email-provider-toggle">
               <span className="font-orbitron text-[9px] text-slate-500 tracking-widest">PROVIDER:</span>
               <div className="flex items-center border border-slate-700 rounded-sm overflow-hidden">
-                {["sendgrid", "mailgun"].map((p) => {
+                {["sendgrid", "mailgun", "resend"].map((p) => {
                   const isActive = provider.active === p;
                   const isConfigured = provider.providers?.[p]?.configured;
                   const label = provider.providers?.[p]?.label || p.toUpperCase();
