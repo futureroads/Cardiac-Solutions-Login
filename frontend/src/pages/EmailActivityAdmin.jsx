@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, AlertCircle, CheckCircle2, Mail, X, Loader2, Search } from "lucide-react";
+import { ArrowLeft, RefreshCw, AlertCircle, CheckCircle2, Mail, X, Loader2, Search, Send } from "lucide-react";
 import API_BASE from "@/apiBase";
 
 const API = `${API_BASE}/api`;
@@ -50,6 +50,42 @@ export default function EmailActivityAdmin() {
   };
 
   useEffect(() => { loadProvider(); }, []);
+
+  // Test email modal
+  const [testModalOpen, setTestModalOpen] = useState(false);
+  const [testEmail, setTestEmail] = useState("");
+  const [testSending, setTestSending] = useState(false);
+  const [testResult, setTestResult] = useState(null); // {success, message, provider}
+
+  const sendTestEmail = async () => {
+    const target = (testEmail || "").trim();
+    if (!target) {
+      setTestResult({ success: false, message: "Enter a recipient email." });
+      return;
+    }
+    setTestSending(true);
+    setTestResult(null);
+    try {
+      const token = localStorage.getItem("token");
+      const r = await fetch(`${API}/support/test-email`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ to_email: target }),
+      });
+      const d = await r.json();
+      if (!r.ok || d.success === false) {
+        setTestResult({ success: false, message: d.message || d.detail || `HTTP ${r.status}`, provider: d.provider });
+      } else {
+        setTestResult({ success: true, message: d.message || `Sent via ${d.provider}`, provider: d.provider });
+        // Refresh the activity list so the new send appears
+        load();
+      }
+    } catch (e) {
+      setTestResult({ success: false, message: e.message || "Network error" });
+    } finally {
+      setTestSending(false);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -174,6 +210,13 @@ export default function EmailActivityAdmin() {
           </div>
           <button onClick={load} className="font-orbitron text-[9px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 inline-flex items-center gap-1" data-testid="reload-btn">
             <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} /> RELOAD
+          </button>
+          <button
+            onClick={() => { setTestResult(null); setTestModalOpen(true); }}
+            data-testid="send-test-email-btn"
+            className="font-orbitron text-[9px] px-2 py-1 border border-emerald-500/40 text-emerald-300 rounded-sm hover:bg-emerald-500/10 inline-flex items-center gap-1"
+          >
+            <Send className="w-3 h-3" /> SEND TEST
           </button>
         </div>
       </div>
@@ -340,6 +383,70 @@ export default function EmailActivityAdmin() {
                   <Pill ok={detailRow.spam_reported} label="SPAM" color="orange" />
                 </div>
               </Section>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Test Email Modal */}
+      {testModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4" onClick={() => !testSending && setTestModalOpen(false)} data-testid="test-email-modal">
+          <div className="bg-[#0d1526] border border-emerald-500/40 rounded-md w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Send className="w-4 h-4 text-emerald-300" />
+                <div className="font-orbitron text-sm text-emerald-300 tracking-widest">SEND TEST EMAIL</div>
+              </div>
+              <button onClick={() => setTestModalOpen(false)} className="text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+
+            <div className="text-[11px] text-slate-400 mb-3">
+              Sends through the active provider <span className="text-cyan-300 font-bold">{provider?.active?.toUpperCase() || "—"}</span>.
+              The send will appear in the activity table below.
+            </div>
+
+            <label className="font-orbitron text-[9px] text-slate-500 tracking-wider">RECIPIENT</label>
+            <input
+              type="email"
+              autoFocus
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !testSending) sendTestEmail(); }}
+              data-testid="test-email-input"
+              placeholder="recipient@example.com"
+              className="w-full mt-1 mb-3 bg-[#020617] border border-emerald-500/30 text-emerald-100 rounded px-3 py-2.5 text-sm font-mono"
+            />
+
+            {testResult && (
+              <div
+                className={`mb-3 p-2.5 rounded text-[12px] ${
+                  testResult.success
+                    ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                    : "border border-red-500/40 bg-red-500/10 text-red-300"
+                }`}
+                data-testid="test-email-result"
+              >
+                {testResult.success ? "✓ " : "✗ "}{testResult.message}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 mt-2">
+              <button
+                onClick={() => setTestModalOpen(false)}
+                disabled={testSending}
+                className="font-orbitron text-[10px] px-3 py-2 border border-slate-700 text-slate-400 rounded hover:bg-slate-800 tracking-wider"
+              >
+                CLOSE
+              </button>
+              <button
+                onClick={sendTestEmail}
+                disabled={testSending || !testEmail.trim()}
+                data-testid="test-email-send"
+                className="font-orbitron text-[10px] px-4 py-2 border border-emerald-500/50 bg-emerald-500/15 text-emerald-200 rounded hover:bg-emerald-500/30 disabled:opacity-50 tracking-wider inline-flex items-center gap-1.5"
+              >
+                {testSending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                {testSending ? "SENDING…" : "SEND"}
+              </button>
             </div>
           </div>
         </div>
