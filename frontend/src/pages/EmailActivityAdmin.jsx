@@ -150,7 +150,7 @@ export default function EmailActivityAdmin() {
             <div className="flex items-center gap-2 ml-3 pl-3 border-l border-slate-700/60" data-testid="email-provider-toggle">
               <span className="font-orbitron text-[9px] text-slate-500 tracking-widest">PROVIDER:</span>
               <div className="flex items-center border border-slate-700 rounded-sm overflow-hidden">
-                {["sendgrid", "mailgun", "resend"].map((p) => {
+                {["sendgrid", "mailgun", "resend", "ses"].map((p) => {
                   const isActive = provider.active === p;
                   const isConfigured = provider.providers?.[p]?.configured;
                   const label = provider.providers?.[p]?.label || p.toUpperCase();
@@ -484,6 +484,7 @@ function EmailStatusBadges({ row }) {
     resend: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
     sendgrid: "bg-blue-500/15 text-blue-300 border-blue-500/30",
     mailgun: "bg-orange-500/15 text-orange-300 border-orange-500/30",
+    ses: "bg-yellow-500/15 text-yellow-300 border-yellow-500/30",
   }[provider] || "bg-slate-700/40 text-slate-400 border-slate-600/40";
   const providerLabel = provider ? provider.toUpperCase() : "?";
 

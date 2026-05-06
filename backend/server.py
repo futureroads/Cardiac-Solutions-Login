@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 import logging
 import asyncio
 import hashlib
@@ -1498,6 +1499,14 @@ async def get_email_provider(current_user: dict = Depends(get_current_user)):
                 "label": "Resend",
                 "configured": bool(os.environ.get("RESEND_API_KEY", "").strip()),
             },
+            "ses": {
+                "label": "Amazon SES",
+                "configured": bool(
+                    os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
+                    and os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
+                    and os.environ.get("SES_FROM_EMAIL", "").strip()
+                ),
+            },
         },
         "updated_at": doc.get("updated_at"),
         "updated_by": doc.get("updated_by"),
@@ -1509,14 +1518,20 @@ async def set_email_provider(data: dict, current_user: dict = Depends(get_curren
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     provider = (data.get("provider") or "").strip().lower()
-    if provider not in ("sendgrid", "mailgun", "resend"):
-        raise HTTPException(status_code=400, detail="provider must be 'sendgrid', 'mailgun' or 'resend'")
+    if provider not in ("sendgrid", "mailgun", "resend", "ses"):
+        raise HTTPException(status_code=400, detail="provider must be 'sendgrid', 'mailgun', 'resend' or 'ses'")
     if provider == "mailgun" and not (os.environ.get("MAILGUN_API_KEY", "").strip() and os.environ.get("MAILGUN_DOMAIN", "").strip()):
         raise HTTPException(status_code=400, detail="Mailgun is not configured (MAILGUN_API_KEY / MAILGUN_DOMAIN missing)")
     if provider == "sendgrid" and not os.environ.get("SENDGRID_API_KEY", "").strip():
         raise HTTPException(status_code=400, detail="SendGrid is not configured (SENDGRID_API_KEY missing)")
     if provider == "resend" and not os.environ.get("RESEND_API_KEY", "").strip():
         raise HTTPException(status_code=400, detail="Resend is not configured (RESEND_API_KEY missing)")
+    if provider == "ses" and not (
+        os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
+        and os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
+        and os.environ.get("SES_FROM_EMAIL", "").strip()
+    ):
+        raise HTTPException(status_code=400, detail="Amazon SES is not configured (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / SES_FROM_EMAIL missing)")
     await _db.app_settings.update_one(
         {"_id": "email_provider"},
         {"$set": {
@@ -1535,7 +1550,7 @@ async def get_active_email_provider() -> str:
     try:
         doc = await _db.app_settings.find_one({"_id": "email_provider"}) or {}
         p = (doc.get("provider") or "").strip().lower()
-        if p in ("sendgrid", "mailgun", "resend"):
+        if p in ("sendgrid", "mailgun", "resend", "ses"):
             return p
     except Exception:
         pass
@@ -1640,6 +1655,62 @@ def _resend_send(*, sender_name, sender_email, to_emails, cc_emails, bcc_emails,
     return success, f"Resend {resp.status_code}", msg_id
 
 
+def _ses_send(*, sender_name, sender_email, to_emails, cc_emails, bcc_emails, subject, html_body, plain_text):
+    """Send via Amazon SES v2 with Configuration Set so events flow through SNS.
+    Returns (success, status_text, message_id)."""
+    try:
+        import boto3
+        from botocore.exceptions import ClientError, BotoCoreError
+    except Exception as e:
+        return False, f"SES boto3 import failed: {e}", ""
+
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    config_set = os.environ.get("SES_CONFIGURATION_SET", "").strip()
+    access_key = os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
+    secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
+    if not access_key or not secret_key:
+        return False, "SES not configured (AWS credentials missing)", ""
+
+    sender = f"{sender_name} <{sender_email}>" if sender_name else sender_email
+    body = {"Html": {"Data": html_body, "Charset": "UTF-8"}}
+    if plain_text:
+        body["Text"] = {"Data": plain_text, "Charset": "UTF-8"}
+
+    destination = {"ToAddresses": to_emails}
+    if cc_emails: destination["CcAddresses"] = cc_emails
+    if bcc_emails: destination["BccAddresses"] = bcc_emails
+
+    params = {
+        "FromEmailAddress": sender,
+        "Destination": destination,
+        "Content": {"Simple": {
+            "Subject": {"Data": subject, "Charset": "UTF-8"},
+            "Body": body,
+        }},
+    }
+    if config_set:
+        params["ConfigurationSetName"] = config_set
+
+    try:
+        client = boto3.client(
+            "sesv2",
+            region_name=region,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+        )
+        resp = client.send_email(**params)
+        msg_id = resp.get("MessageId", "") or ""
+        return True, "SES 200", msg_id
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "ClientError")
+        msg = e.response.get("Error", {}).get("Message", str(e))
+        return False, f"SES {code}: {msg}", ""
+    except BotoCoreError as e:
+        return False, f"SES boto error: {e}", ""
+    except Exception as e:
+        return False, f"SES error: {e}", ""
+
+
 async def send_email_unified(
     *,
     to_email,
@@ -1681,6 +1752,8 @@ async def send_email_unified(
             success, status_text, mid = _mailgun_send(**kwargs)
         elif provider == "resend":
             success, status_text, mid = _resend_send(**kwargs)
+        elif provider == "ses":
+            success, status_text, mid = _ses_send(**kwargs)
         else:
             success, status_text, mid = _sendgrid_send(**kwargs)
         return {"success": success, "status_text": status_text, "message_id": mid, "provider": provider}
@@ -2542,6 +2615,271 @@ async def resend_event_webhook(request: Request):
         asyncio.create_task(_send_bounce_alert_email(rec, ev))
 
     return {"received": 1, "processed": 1, "matched": matched}
+
+
+# ---------- AWS SES via SNS webhook ----------
+_AWS_SNS_TRUSTED_HOST_RE = re.compile(r"^sns\.[a-z0-9\-]+\.amazonaws\.com$")
+_SES_EVENT_MAP = {
+    "send": "processed",
+    "delivery": "delivered",
+    "open": "open",
+    "click": "click",
+    "bounce": "bounce",
+    "complaint": "spamreport",
+    "reject": "bounce",
+    "renderingfailure": "deferred",
+    "deliverydelay": "deferred",
+}
+
+
+def _verify_sns_signature(sns_msg: dict) -> bool:
+    """Verify an AWS SNS message signature (Signature Version 1, SHA256/RSA).
+    Returns True if signature is valid, False otherwise."""
+    try:
+        import base64, urllib.request
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography import x509
+    except Exception as e:
+        logger.warning(f"[sns-webhook] cryptography lib missing: {e}")
+        return False
+
+    cert_url = sns_msg.get("SigningCertURL") or sns_msg.get("SigningCertUrl") or ""
+    sig_b64 = sns_msg.get("Signature") or ""
+    if not cert_url or not sig_b64:
+        return False
+
+    # Validate cert URL host is an AWS SNS host
+    try:
+        from urllib.parse import urlparse
+        host = (urlparse(cert_url).hostname or "").lower()
+        if not _AWS_SNS_TRUSTED_HOST_RE.match(host):
+            logger.warning(f"[sns-webhook] untrusted cert host: {host}")
+            return False
+    except Exception:
+        return False
+
+    msg_type = sns_msg.get("Type", "")
+    # Build the canonical signing string per AWS docs
+    if msg_type == "Notification":
+        keys = ["Message", "MessageId", "Subject", "Timestamp", "TopicArn", "Type"]
+    elif msg_type in ("SubscriptionConfirmation", "UnsubscribeConfirmation"):
+        keys = ["Message", "MessageId", "SubscribeURL", "Timestamp", "Token", "TopicArn", "Type"]
+    else:
+        return False
+
+    parts = []
+    for k in keys:
+        v = sns_msg.get(k)
+        if v is None:
+            continue  # Skip missing optional fields like Subject
+        parts.append(f"{k}\n{v}\n")
+    signing_string = "".join(parts).encode("utf-8")
+
+    try:
+        with urllib.request.urlopen(cert_url, timeout=5) as resp:
+            cert_pem = resp.read()
+        cert = x509.load_pem_x509_certificate(cert_pem)
+        public_key = cert.public_key()
+        signature = base64.b64decode(sig_b64)
+        public_key.verify(
+            signature,
+            signing_string,
+            padding.PKCS1v15(),
+            hashes.SHA256(),
+        )
+        return True
+    except Exception as e:
+        logger.warning(f"[sns-webhook] signature verify failed: {e}")
+        return False
+
+
+@api_router.post("/webhooks/ses")
+async def ses_sns_webhook(request: Request):
+    """Receive AWS SNS notifications for SES Configuration Set events
+    (send/delivery/open/click/bounce/complaint/reject).
+
+    Auto-confirms SNS subscriptions and maps each event to the same
+    `notification_history` fields used by the SendGrid/Resend handlers.
+    """
+    raw_body = await request.body()
+    try:
+        import json as _json
+        sns_msg = _json.loads(raw_body.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    # Some clients use header `x-amz-sns-message-type` instead of body Type
+    msg_type = sns_msg.get("Type") or request.headers.get("x-amz-sns-message-type", "")
+    sns_msg["Type"] = msg_type
+
+    # Skip signature verification only if explicitly disabled (testing)
+    skip_verify = os.environ.get("SES_SNS_SKIP_VERIFY", "").strip().lower() == "true"
+    if not skip_verify and not _verify_sns_signature(sns_msg):
+        raise HTTPException(status_code=401, detail="Invalid SNS signature")
+
+    # Handle SubscriptionConfirmation: auto-confirm by GETing the SubscribeURL
+    if msg_type == "SubscriptionConfirmation":
+        subscribe_url = sns_msg.get("SubscribeURL", "")
+        try:
+            import requests as _req
+            resp = _req.get(subscribe_url, timeout=10)
+            ok = resp.status_code == 200
+            logger.info(f"[ses-sns] subscription confirmed status={resp.status_code}")
+            return {"confirmed": ok, "status_code": resp.status_code}
+        except Exception as e:
+            logger.error(f"[ses-sns] subscription confirm failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Subscription confirm failed: {e}")
+
+    if msg_type == "UnsubscribeConfirmation":
+        logger.warning(f"[ses-sns] received UnsubscribeConfirmation topic={sns_msg.get('TopicArn')}")
+        return {"received": 1}
+
+    if msg_type != "Notification":
+        return {"received": 0, "ignored": msg_type}
+
+    # Parse the inner SES event JSON
+    try:
+        import json as _json
+        ses_event = _json.loads(sns_msg.get("Message", "{}"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid SES event JSON")
+
+    event_type_raw = (ses_event.get("eventType") or ses_event.get("notificationType") or "").lower()
+    event_type = _SES_EVENT_MAP.get(event_type_raw, event_type_raw)
+
+    mail = ses_event.get("mail") or {}
+    msg_id = mail.get("messageId") or ""
+    destinations = mail.get("destination") or []
+    recipient = destinations[0] if destinations else ""
+    iso_ts = mail.get("timestamp") or datetime.now(timezone.utc).isoformat()
+
+    # Extract event-specific fields
+    click_url = None
+    bounce_reason = None
+    user_agent = None
+    ip_addr = None
+    if event_type_raw == "click":
+        click = ses_event.get("click") or {}
+        click_url = click.get("link")
+        user_agent = click.get("userAgent")
+        ip_addr = click.get("ipAddress")
+    elif event_type_raw == "open":
+        opn = ses_event.get("open") or {}
+        user_agent = opn.get("userAgent")
+        ip_addr = opn.get("ipAddress")
+    elif event_type_raw == "bounce":
+        bounce = ses_event.get("bounce") or {}
+        bounced = (bounce.get("bouncedRecipients") or [{}])[0]
+        recipient = bounced.get("emailAddress") or recipient
+        bounce_reason = bounced.get("diagnosticCode") or bounce.get("bounceSubType", "")
+    elif event_type_raw == "complaint":
+        complaint = ses_event.get("complaint") or {}
+        complained = (complaint.get("complainedRecipients") or [{}])[0]
+        recipient = complained.get("emailAddress") or recipient
+        bounce_reason = complaint.get("complaintFeedbackType")
+    elif event_type_raw == "reject":
+        bounce_reason = (ses_event.get("reject") or {}).get("reason")
+
+    log_record = {
+        "received_at": datetime.now(timezone.utc).isoformat(),
+        "provider": "ses",
+        "event": event_type,
+        "raw_event": event_type_raw,
+        "email": recipient,
+        "sg_message_id": msg_id,
+        "url": click_url,
+        "reason": bounce_reason,
+        "timestamp": iso_ts,
+        "matched_history": False,
+    }
+
+    matched = 0
+    bounce_record_event = None
+    if msg_id:
+        query = {"sg_message_id": msg_id}
+        event_record = {
+            "event": event_type,
+            "email": recipient,
+            "timestamp": iso_ts,
+            "provider": "ses",
+            "url": click_url,
+            "reason": bounce_reason,
+            "useragent": user_agent,
+            "ip": ip_addr,
+        }
+        event_record = {k: v for k, v in event_record.items() if v is not None}
+        update = {"$push": {"events": event_record}}
+        if event_type == "delivered":
+            update.setdefault("$set", {})["delivered_at"] = iso_ts
+        elif event_type == "open":
+            update["$inc"] = {"open_count": 1}
+            update.setdefault("$set", {})["last_opened_at"] = iso_ts
+            update["$min"] = {"first_opened_at": iso_ts}
+        elif event_type == "click":
+            update["$inc"] = {"click_count": 1}
+            update.setdefault("$set", {})["last_clicked_at"] = iso_ts
+        elif event_type in ("bounce", "blocked", "dropped"):
+            update.setdefault("$set", {})["bounced"] = True
+            update["$set"]["bounce_reason"] = bounce_reason or ""
+        elif event_type == "spamreport":
+            update.setdefault("$set", {})["spam_reported"] = True
+
+        res = await _db.notification_history.update_one(query, update)
+        if res.matched_count:
+            matched = 1
+            log_record["matched_history"] = True
+            # OPEN event: propagate to linked AEDs (TO-recipient only)
+            if event_type == "open":
+                rec = await _db.notification_history.find_one(
+                    query,
+                    {"_id": 0, "subscriber": 1, "linked_sentinel_ids": 1, "to_email": 1},
+                )
+                if rec and rec.get("linked_sentinel_ids"):
+                    to_email_norm = (rec.get("to_email") or "").strip().lower()
+                    ev_email_norm = (recipient or "").strip().lower()
+                    if to_email_norm and ev_email_norm and to_email_norm == ev_email_norm:
+                        sub = rec.get("subscriber")
+                        for sid in rec["linked_sentinel_ids"]:
+                            try:
+                                await _db.notified_aeds.update_one(
+                                    {"sentinel_id": sid, "subscriber": sub, "email_opened": {"$ne": True}},
+                                    {"$set": {"email_opened": True, "email_opened_at": iso_ts}},
+                                )
+                            except Exception:
+                                pass
+            if event_type in ("bounce", "blocked", "dropped"):
+                rec = await _db.notification_history.find_one(query, {"_id": 0, "sg_message_id": 1})
+                if rec:
+                    bounce_record_event = (rec, {
+                        "event": event_type,
+                        "reason": bounce_reason or "",
+                        "timestamp": iso_ts,
+                    })
+
+    # Persist diagnostic log (cap last 500)
+    try:
+        await _db.sendgrid_event_log.insert_one(log_record)
+        count = await _db.sendgrid_event_log.count_documents({})
+        if count > 500:
+            excess = count - 500
+            old_ids = [
+                d["_id"] async for d in _db.sendgrid_event_log.find({}, {"_id": 1}).sort("received_at", 1).limit(excess)
+            ]
+            if old_ids:
+                await _db.sendgrid_event_log.delete_many({"_id": {"$in": old_ids}})
+    except Exception as e:
+        logger.warning(f"[ses-sns] failed to log event: {e}")
+
+    logger.info(f"[ses-sns] event={event_type_raw} msg_id={msg_id} matched={matched}")
+
+    if bounce_record_event:
+        rec, ev = bounce_record_event
+        asyncio.create_task(_send_bounce_alert_email(rec, ev))
+
+    return {"received": 1, "processed": 1, "matched": matched}
+
+
 
 
 @api_router.get("/support/sendgrid-debug")
