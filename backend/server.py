@@ -2369,6 +2369,181 @@ async def sendgrid_event_webhook(request: Request):
     return {"received": len(events), "processed": processed, "matched": matched}
 
 
+def _verify_resend_signature(secret: str, payload_bytes: bytes, headers: dict) -> bool:
+    """Verify a Resend (Svix) webhook signature.
+    Headers: svix-id, svix-timestamp, svix-signature.
+    Signature format: 'v1,<base64>' or multiple space-separated entries."""
+    import base64, hashlib, hmac
+    if not secret:
+        return False
+    # Resend prefixes with 'whsec_'; strip and base64-decode the secret
+    raw = secret
+    if raw.startswith("whsec_"):
+        raw = raw[len("whsec_"):]
+    try:
+        secret_bytes = base64.b64decode(raw)
+    except Exception:
+        return False
+
+    svix_id = headers.get("svix-id") or headers.get("Svix-Id")
+    svix_ts = headers.get("svix-timestamp") or headers.get("Svix-Timestamp")
+    svix_sig = headers.get("svix-signature") or headers.get("Svix-Signature")
+    if not svix_id or not svix_ts or not svix_sig:
+        return False
+
+    signed_str = f"{svix_id}.{svix_ts}.{payload_bytes.decode('utf-8')}".encode("utf-8")
+    expected = base64.b64encode(hmac.new(secret_bytes, signed_str, hashlib.sha256).digest()).decode()
+    # Header may contain "v1,abc v1,def" — accept any match
+    for token in svix_sig.split(" "):
+        version, _, sig = token.partition(",")
+        if version.strip() == "v1" and hmac.compare_digest(sig.strip(), expected):
+            return True
+    return False
+
+
+@api_router.post("/webhooks/resend")
+async def resend_event_webhook(request: Request):
+    """Receive Resend (Svix) webhook events: email.delivered, email.opened,
+    email.clicked, email.bounced, email.complained, email.delivery_delayed.
+
+    Maps each event into the same `notification_history` fields used by the
+    SendGrid handler so the existing UI works for both providers.
+    """
+    secret = os.environ.get("RESEND_WEBHOOK_SECRET", "").strip()
+    raw_body = await request.body()
+    if secret:
+        # Build a case-insensitive header dict
+        hdrs = {k.lower(): v for k, v in request.headers.items()}
+        if not _verify_resend_signature(secret, raw_body, hdrs):
+            raise HTTPException(status_code=401, detail="Invalid Resend webhook signature")
+
+    try:
+        import json as _json
+        envelope = _json.loads(raw_body.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    # Resend sends a single event per webhook (envelope = {type, data, created_at})
+    event_type_raw = (envelope.get("type") or "").lower()  # e.g. "email.delivered"
+    data = envelope.get("data") or {}
+    msg_id = data.get("email_id") or data.get("id") or ""
+    to_field = data.get("to") or []
+    if isinstance(to_field, list):
+        recipient = to_field[0] if to_field else ""
+    else:
+        recipient = to_field
+    iso_ts = envelope.get("created_at") or data.get("created_at") or datetime.now(timezone.utc).isoformat()
+
+    # Map Resend event type → internal event name
+    mapping = {
+        "email.sent": "processed",
+        "email.delivered": "delivered",
+        "email.opened": "open",
+        "email.clicked": "click",
+        "email.bounced": "bounce",
+        "email.complained": "spamreport",
+        "email.delivery_delayed": "deferred",
+    }
+    event_type = mapping.get(event_type_raw, event_type_raw.replace("email.", ""))
+
+    log_record = {
+        "received_at": datetime.now(timezone.utc).isoformat(),
+        "provider": "resend",
+        "event": event_type,
+        "raw_event": event_type_raw,
+        "email": recipient,
+        "sg_message_id": msg_id,
+        "url": (data.get("click") or {}).get("link") if isinstance(data.get("click"), dict) else data.get("link"),
+        "reason": (data.get("bounce") or {}).get("message") if isinstance(data.get("bounce"), dict) else data.get("reason"),
+        "timestamp": iso_ts,
+        "matched_history": False,
+    }
+
+    matched = 0
+    bounce_record_event = None
+    if msg_id:
+        query = {"sg_message_id": msg_id}
+        event_record = {
+            "event": event_type,
+            "email": recipient,
+            "timestamp": iso_ts,
+            "provider": "resend",
+            "url": log_record.get("url"),
+            "reason": log_record.get("reason"),
+            "useragent": (data.get("click") or {}).get("userAgent") if isinstance(data.get("click"), dict) else None,
+            "ip": (data.get("click") or {}).get("ipAddress") if isinstance(data.get("click"), dict) else None,
+        }
+        event_record = {k: v for k, v in event_record.items() if v is not None}
+        update = {"$push": {"events": event_record}}
+        if event_type == "delivered":
+            update.setdefault("$set", {})["delivered_at"] = iso_ts
+        elif event_type == "open":
+            update["$inc"] = {"open_count": 1}
+            update.setdefault("$set", {})["last_opened_at"] = iso_ts
+            update["$min"] = {"first_opened_at": iso_ts}
+        elif event_type == "click":
+            update["$inc"] = {"click_count": 1}
+            update.setdefault("$set", {})["last_clicked_at"] = iso_ts
+        elif event_type in ("bounce", "blocked", "dropped"):
+            update.setdefault("$set", {})["bounced"] = True
+            update["$set"]["bounce_reason"] = log_record.get("reason", "")
+        elif event_type == "spamreport":
+            update.setdefault("$set", {})["spam_reported"] = True
+        res = await _db.notification_history.update_one(query, update)
+        if res.matched_count:
+            matched = 1
+            log_record["matched_history"] = True
+            # OPEN event: propagate to linked AEDs (TO-recipient only)
+            if event_type == "open":
+                rec = await _db.notification_history.find_one(
+                    query,
+                    {"_id": 0, "subscriber": 1, "linked_sentinel_ids": 1, "to_email": 1},
+                )
+                if rec and rec.get("linked_sentinel_ids"):
+                    to_email_norm = (rec.get("to_email") or "").strip().lower()
+                    ev_email_norm = (recipient or "").strip().lower()
+                    if to_email_norm and ev_email_norm and to_email_norm == ev_email_norm:
+                        sub = rec.get("subscriber")
+                        for sid in rec["linked_sentinel_ids"]:
+                            try:
+                                await _db.notified_aeds.update_one(
+                                    {"sentinel_id": sid, "subscriber": sub, "email_opened": {"$ne": True}},
+                                    {"$set": {"email_opened": True, "email_opened_at": iso_ts}},
+                                )
+                            except Exception:
+                                pass
+            if event_type in ("bounce", "blocked", "dropped"):
+                rec = await _db.notification_history.find_one(query, {"_id": 0, "sg_message_id": 1})
+                if rec:
+                    bounce_record_event = (rec, {
+                        "event": event_type,
+                        "reason": log_record.get("reason") or "",
+                        "timestamp": iso_ts,
+                    })
+
+    # Persist the diagnostic log (cap last 500)
+    try:
+        await _db.sendgrid_event_log.insert_one(log_record)
+        count = await _db.sendgrid_event_log.count_documents({})
+        if count > 500:
+            excess = count - 500
+            old_ids = [
+                d["_id"] async for d in _db.sendgrid_event_log.find({}, {"_id": 1}).sort("received_at", 1).limit(excess)
+            ]
+            if old_ids:
+                await _db.sendgrid_event_log.delete_many({"_id": {"$in": old_ids}})
+    except Exception as e:
+        logger.warning(f"[resend-webhook] failed to log event: {e}")
+
+    logger.info(f"[resend-webhook] event={event_type_raw} msg_id={msg_id} matched={matched}")
+
+    if bounce_record_event:
+        rec, ev = bounce_record_event
+        asyncio.create_task(_send_bounce_alert_email(rec, ev))
+
+    return {"received": 1, "processed": 1, "matched": matched}
+
+
 @api_router.get("/support/sendgrid-debug")
 async def sendgrid_debug(current_user: dict = Depends(get_current_user)):
     """Return recent SendGrid webhook events + recent notification_history sg_message_ids for diagnostic correlation."""
