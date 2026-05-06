@@ -1542,6 +1542,153 @@ async def get_active_email_provider() -> str:
     return "sendgrid"
 
 
+def _split_emails(s):
+    """Accepts a string or list, returns a clean list of email addresses."""
+    if not s:
+        return []
+    if isinstance(s, list):
+        return [e.strip() for e in s if e and e.strip()]
+    return [e.strip() for e in str(s).split(",") if e.strip()]
+
+
+def _sendgrid_send(*, sender_name, sender_email, to_emails, cc_emails, bcc_emails, subject, html_body, plain_text):
+    """Send via SendGrid. Returns (success, status_text, message_id)."""
+    from sendgrid import SendGridAPIClient
+    from sendgrid.helpers.mail import Mail, To, Cc, Bcc
+    sg_key = os.environ.get("SENDGRID_API_KEY", "")
+    if not sg_key:
+        return False, "SendGrid not configured", ""
+    message = Mail(
+        from_email=f"{sender_name} <{sender_email}>" if sender_name else sender_email,
+        to_emails=[To(e) for e in to_emails],
+        subject=subject,
+        html_content=html_body,
+        plain_text_content=plain_text or None,
+    )
+    for cc in cc_emails:
+        message.add_cc(Cc(cc))
+    for bcc in bcc_emails:
+        message.add_bcc(Bcc(bcc))
+    sg = SendGridAPIClient(sg_key)
+    resp = sg.send(message)
+    success = resp.status_code in (200, 201, 202)
+    return success, f"SendGrid {resp.status_code}", _extract_sg_message_id(resp)
+
+
+def _mailgun_send(*, sender_name, sender_email, to_emails, cc_emails, bcc_emails, subject, html_body, plain_text):
+    """Send via Mailgun HTTP API. Returns (success, status_text, message_id)."""
+    import requests
+    api_key = os.environ.get("MAILGUN_API_KEY", "")
+    domain = os.environ.get("MAILGUN_DOMAIN", "")
+    base = (os.environ.get("MAILGUN_BASE_URL") or "https://api.mailgun.net/v3").rstrip("/")
+    if not api_key or not domain:
+        return False, "Mailgun not configured", ""
+    url = f"{base}/{domain}/messages"
+    data = [
+        ("from", f"{sender_name} <{sender_email}>" if sender_name else sender_email),
+        ("subject", subject),
+        ("html", html_body),
+    ]
+    if plain_text:
+        data.append(("text", plain_text))
+    for e in to_emails: data.append(("to", e))
+    for e in cc_emails: data.append(("cc", e))
+    for e in bcc_emails: data.append(("bcc", e))
+    # Enable delivery tracking events
+    data.append(("o:tracking", "yes"))
+    data.append(("o:tracking-clicks", "yes"))
+    data.append(("o:tracking-opens", "yes"))
+    resp = requests.post(url, auth=("api", api_key), data=data, timeout=30)
+    success = resp.status_code in (200, 201, 202)
+    msg_id = ""
+    try:
+        body = resp.json() or {}
+        msg_id = (body.get("id") or "").strip("<>")
+    except Exception:
+        pass
+    return success, f"Mailgun {resp.status_code}", msg_id
+
+
+def _resend_send(*, sender_name, sender_email, to_emails, cc_emails, bcc_emails, subject, html_body, plain_text):
+    """Send via Resend HTTP API. Returns (success, status_text, message_id)."""
+    import requests
+    api_key = os.environ.get("RESEND_API_KEY", "")
+    if not api_key:
+        return False, "Resend not configured", ""
+    payload = {
+        "from": f"{sender_name} <{sender_email}>" if sender_name else sender_email,
+        "to": to_emails,
+        "subject": subject,
+        "html": html_body,
+    }
+    if plain_text: payload["text"] = plain_text
+    if cc_emails: payload["cc"] = cc_emails
+    if bcc_emails: payload["bcc"] = bcc_emails
+    resp = requests.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json=payload,
+        timeout=30,
+    )
+    success = resp.status_code in (200, 201, 202)
+    msg_id = ""
+    try:
+        body = resp.json() or {}
+        msg_id = body.get("id", "")
+    except Exception:
+        pass
+    return success, f"Resend {resp.status_code}", msg_id
+
+
+async def send_email_unified(
+    *,
+    to_email,
+    subject,
+    html_body,
+    cc_email="",
+    bcc_emails="",
+    plain_text="",
+    sender_email=None,
+    sender_name="Cardiac Solutions",
+    force_provider=None,
+):
+    """Unified email send that honors the active provider toggle.
+    Returns dict: { success, status_text, message_id, provider }.
+    Auto-deduplicates to/cc/bcc to prevent duplicate-recipient 4xx errors.
+    """
+    provider = (force_provider or await get_active_email_provider() or "sendgrid").lower()
+    sender = sender_email or os.environ.get("DISPATCH_SENDER", "no-reply@cardiac-solutions.ai")
+
+    to_list = _split_emails(to_email)
+    cc_list = _split_emails(cc_email)
+    bcc_list = _split_emails(bcc_emails)
+    # De-duplicate: a recipient can't appear in to+cc+bcc simultaneously
+    to_set = {e.lower() for e in to_list}
+    cc_list = [e for e in cc_list if e.lower() not in to_set]
+    cc_set = to_set | {e.lower() for e in cc_list}
+    bcc_list = [e for e in bcc_list if e.lower() not in cc_set]
+
+    if not to_list:
+        return {"success": False, "status_text": "No recipients", "message_id": "", "provider": provider}
+
+    kwargs = dict(
+        sender_name=sender_name, sender_email=sender,
+        to_emails=to_list, cc_emails=cc_list, bcc_emails=bcc_list,
+        subject=subject, html_body=html_body, plain_text=plain_text,
+    )
+    try:
+        if provider == "mailgun":
+            success, status_text, mid = _mailgun_send(**kwargs)
+        elif provider == "resend":
+            success, status_text, mid = _resend_send(**kwargs)
+        else:
+            success, status_text, mid = _sendgrid_send(**kwargs)
+        return {"success": success, "status_text": status_text, "message_id": mid, "provider": provider}
+    except Exception as e:
+        logger.error(f"send_email_unified failed via {provider}: {e}")
+        return {"success": False, "status_text": f"{provider} error: {e}", "message_id": "", "provider": provider}
+
+
 @api_router.post("/support/test-email")
 async def send_test_email(data: dict, current_user: dict = Depends(get_current_user)):
     """Send a test email to verify SendGrid is working — and create a
@@ -1552,42 +1699,29 @@ async def send_test_email(data: dict, current_user: dict = Depends(get_current_u
     if not to_email:
         raise HTTPException(status_code=400, detail="to_email is required")
 
-    sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
-    sender = os.environ.get("DISPATCH_SENDER", "no-reply@cardiac-solutions.ai")
-    if not sendgrid_key:
-        raise HTTPException(status_code=500, detail="SendGrid not configured")
-
     sent_by = current_user.get("username", "unknown")
     # Include a clickable link so we can demo CLICK tracking too
     html = (
         "<div style=\"font-family:Arial,sans-serif;max-width:520px;margin:0 auto;background:#0d1526;border:1px solid rgba(6,182,212,0.3);border-radius:4px;padding:32px;\">"
         "<div style=\"color:#06b6d4;font-size:14px;letter-spacing:2px;font-weight:bold;margin-bottom:8px;\">CARDIAC SOLUTIONS</div>"
         "<div style=\"color:#22c55e;font-size:18px;font-weight:bold;margin-bottom:16px;\">Email Tracking Test</div>"
-        "<div style=\"color:#94a3b8;font-size:13px;line-height:1.6;\">This message was sent from the Support Dashboard to verify SendGrid delivery and tracking is working.</div>"
+        "<div style=\"color:#94a3b8;font-size:13px;line-height:1.6;\">This message was sent from the Support Dashboard to verify email delivery and tracking is working.</div>"
         "<div style=\"margin-top:20px;\"><a href=\"https://cardiac-solutions.ai\" style=\"display:inline-block;padding:10px 18px;background:#06b6d4;color:#02131c;border-radius:4px;font-weight:bold;text-decoration:none;font-size:13px;\">Click to verify CLICK tracking</a></div>"
         f"<div style=\"color:#475569;font-size:11px;margin-top:24px;padding-top:12px;border-top:1px solid rgba(100,116,139,0.2);\">Sent by: {sent_by}</div>"
         "</div>"
     )
 
     try:
-        from sendgrid import SendGridAPIClient
-        from sendgrid.helpers.mail import Mail
-        message = Mail(
-            from_email=f"Cardiac Solutions <{sender}>",
-            to_emails=[to_email],
+        result = await send_email_unified(
+            to_email=to_email,
             subject="Cardiac Solutions - Email Tracking Test",
-            html_content=html,
+            html_body=html,
         )
-        sg = SendGridAPIClient(sendgrid_key)
-        resp = sg.send(message)
-        success = resp.status_code in (200, 201, 202)
-        sg_message_id = _extract_sg_message_id(resp)
-        # Diagnostic: dump the full set of header keys we see (helps if header name differs)
-        try:
-            hdr_keys = list(dict(resp.headers).keys()) if hasattr(resp, "headers") else []
-        except Exception:
-            hdr_keys = []
-        logger.info(f"Test email to {to_email}: SendGrid {resp.status_code} msgid={sg_message_id!r} hdr_keys={hdr_keys}")
+        success = result["success"]
+        provider = result["provider"]
+        status_text = result["status_text"]
+        message_id = result["message_id"]
+        logger.info(f"Test email to {to_email} via {provider}: {status_text} msgid={message_id!r}")
 
         history_id = None
         if success:
@@ -1601,8 +1735,9 @@ async def send_test_email(data: dict, current_user: dict = Depends(get_current_u
                 "sent_by": sent_by,
                 "sent_at": datetime.now(timezone.utc).isoformat(),
                 "success": True,
-                "email_response": f"SendGrid {resp.status_code}",
-                "sg_message_id": sg_message_id,
+                "email_response": status_text,
+                "sg_message_id": message_id,
+                "email_provider": provider,
                 "is_test": True,
                 "events": [],
                 "delivered_at": None,
@@ -1616,10 +1751,11 @@ async def send_test_email(data: dict, current_user: dict = Depends(get_current_u
 
         return {
             "success": success,
-            "status_code": resp.status_code,
+            "status_code": status_text,
             "history_id": history_id,
-            "sg_message_id": sg_message_id,
-            "message": f"Test email sent to {to_email}" if success else f"SendGrid returned {resp.status_code}",
+            "sg_message_id": message_id,
+            "provider": provider,
+            "message": f"Test email sent to {to_email} via {provider}" if success else f"{provider} returned: {status_text}",
         }
     except Exception as e:
         logger.error(f"Test email error: {e}")
@@ -1633,15 +1769,9 @@ async def _send_send_failure_alert(*, sent_by: str, subscriber: str, to_email: s
     Best-effort — logs and swallows errors so it never breaks the parent request.
     """
     try:
-        sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
-        sender = os.environ.get("DISPATCH_SENDER", "no-reply@cardiac-solutions.ai")
         recipient = os.environ.get("SEND_FAILURE_ALERT_TO", "iq.ai.solutions@gmail.com")
-        if not sendgrid_key or not recipient:
-            logger.warning("[send-failure-alert] SendGrid or recipient not configured; skipping")
+        if not recipient:
             return
-
-        from sendgrid import SendGridAPIClient
-        from sendgrid.helpers.mail import Mail
 
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         body_rows = [
@@ -1669,7 +1799,7 @@ async def _send_send_failure_alert(*, sent_by: str, subscriber: str, to_email: s
         <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;padding:24px;">
           <div style="max-width:680px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
             <div style="background:#7f1d1d;color:#fff;padding:16px 24px;">
-              <div style="font-size:14px;font-weight:700;letter-spacing:.05em;">⚠ EMAIL SEND FAILED</div>
+              <div style="font-size:14px;font-weight:700;letter-spacing:.05em;">EMAIL SEND FAILED</div>
               <div style="font-size:11px;opacity:.8;margin-top:2px;">Cardiac Solutions — automated diagnostic alert</div>
             </div>
             <table style="width:100%;border-collapse:collapse;">{rows_html}</table>
@@ -1680,15 +1810,13 @@ async def _send_send_failure_alert(*, sent_by: str, subscriber: str, to_email: s
         </div>
         """
 
-        msg = Mail(
-            from_email=f"Cardiac Solutions Alerts <{sender}>",
-            to_emails=recipient,
+        result = await send_email_unified(
+            to_email=recipient,
             subject=f"[ALERT] Email send failed — {subscriber or to_email or 'unknown'}",
-            html_content=html,
+            html_body=html,
+            sender_name="Cardiac Solutions Alerts",
         )
-        sg = SendGridAPIClient(sendgrid_key)
-        sg.send(msg)
-        logger.info(f"[send-failure-alert] Alert dispatched to {recipient} (subscriber={subscriber})")
+        logger.info(f"[send-failure-alert] Alert dispatched to {recipient} via {result['provider']} (subscriber={subscriber})")
     except Exception as e:
         logger.warning(f"[send-failure-alert] Failed to dispatch alert: {e}")
 
@@ -1705,38 +1833,20 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
 
     if not to_email or not subject or not html_body:
         raise HTTPException(status_code=400, detail="Missing required fields: to_email, subject, html_body")
-    sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
-    sender = os.environ.get("DISPATCH_SENDER", "no-reply@cardiac-solutions.ai")
-
-    if not sendgrid_key:
-        raise HTTPException(status_code=500, detail="SendGrid not configured")
 
     try:
-        from sendgrid import SendGridAPIClient
-        from sendgrid.helpers.mail import Mail, To, Cc, Bcc
-
-        to_list = [To(to_email)]
-        cc_list = [Cc(e.strip()) for e in (cc_email or "").split(",") if e.strip()]
-        bcc_list = [Bcc(e.strip()) for e in (bcc_emails or "").split(",") if e.strip()]
-
-        message = Mail(
-            from_email=f"Cardiac Solutions <{sender}>",
-            to_emails=to_list,
+        result = await send_email_unified(
+            to_email=to_email,
+            cc_email=cc_email,
+            bcc_emails=bcc_emails,
             subject=subject,
-            html_content=html_body,
+            html_body=html_body,
         )
-        if cc_list:
-            for cc in cc_list:
-                message.add_cc(cc)
-        if bcc_list:
-            for bcc in bcc_list:
-                message.add_bcc(bcc)
-
-        sg = SendGridAPIClient(sendgrid_key)
-        resp = sg.send(message)
-        success = resp.status_code in (200, 201, 202)
-        sg_message_id = _extract_sg_message_id(resp)
-        logger.info(f"Support notification to {to_email} for {subscriber}: SendGrid {resp.status_code} (msgid={sg_message_id!r})")
+        success = result["success"]
+        provider = result["provider"]
+        status_text = result["status_text"]
+        sg_message_id = result["message_id"]
+        logger.info(f"Support notification to {to_email} for {subscriber} via {provider}: {status_text} (msgid={sg_message_id!r})")
 
         # Log to DB — capture device list so webhook events can update related AEDs
         notified_devices = data.get("devices", [])
@@ -1751,8 +1861,9 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
             "sent_by": current_user.get("username", ""),
             "sent_at": datetime.now(timezone.utc).isoformat(),
             "success": success,
-            "email_response": f"SendGrid {resp.status_code}",
+            "email_response": status_text,
             "sg_message_id": sg_message_id,
+            "email_provider": provider,
             "linked_sentinel_ids": linked_sentinel_ids,
             "events": [],
             "delivered_at": None,
@@ -1763,7 +1874,7 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
             "spam_reported": False,
         })
 
-        # Fire alert if the SendGrid call returned a non-success status
+        # Fire alert if the send returned a non-success status
         if not success:
             try:
                 await _send_send_failure_alert(
@@ -1773,7 +1884,7 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
                     cc_email=cc_email,
                     bcc_emails=bcc_emails,
                     subject=subject,
-                    response_summary=f"SendGrid {resp.status_code}",
+                    response_summary=status_text,
                 )
             except Exception as ae:
                 logger.warning(f"failure-alert dispatch error: {ae}")
@@ -1996,12 +2107,6 @@ async def _send_bounce_alert_email(record: dict, event: dict) -> None:
     Idempotent — checks `bounce_alert_sent` on the record before sending.
     """
     try:
-        sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
-        sender = os.environ.get("DISPATCH_SENDER", "no-reply@cardiac-solutions.ai")
-        if not sendgrid_key:
-            logger.warning("[bounce-alert] SENDGRID_API_KEY not configured")
-            return
-
         # Re-fetch the record to check bounce_alert_sent (idempotency)
         sg_id = record.get("sg_message_id", "")
         if not sg_id:
@@ -2036,7 +2141,7 @@ async def _send_bounce_alert_email(record: dict, event: dict) -> None:
             advice = "The recipient email address does not exist. Please update the subscriber's contact email and re-send the notification."
         elif any(p in rl for p in ["quota", "mailbox full", "452", "4.2.2"]):
             category = "SOFT BOUNCE — mailbox full"
-            advice = "The recipient mailbox is over quota. SendGrid will retry for ~72 hours; no immediate action required."
+            advice = "The recipient mailbox is over quota. The provider will retry for ~72 hours; no immediate action required."
         elif any(p in rl for p in ["spam", "blacklist", "reputation", "policy", "550 5.7", "blocked"]):
             category = "BLOCKED — recipient policy"
             advice = "The recipient mail server rejected based on policy (spam filter, IP reputation, or attachment scanning). Verify the address is correct and consider asking the recipient to whitelist no-reply@cardiac-solutions.ai."
@@ -2059,7 +2164,7 @@ async def _send_bounce_alert_email(record: dict, event: dict) -> None:
             <tr><td style="padding:6px 0;color:#94a3b8;">Original subject</td><td style="padding:6px 0;">{subject_orig}</td></tr>
             <tr><td style="padding:6px 0;color:#94a3b8;">Sent</td><td style="padding:6px 0;color:#cbd5e1;">{sent_at} by {sent_by}</td></tr>
             <tr><td style="padding:6px 0;color:#94a3b8;">Bounced at</td><td style="padding:6px 0;color:#fca5a5;">{bounce_human}</td></tr>
-            <tr><td style="padding:6px 0;color:#94a3b8;">SendGrid event</td><td style="padding:6px 0;color:#cbd5e1;font-family:monospace;">{event_type.lower()}</td></tr>
+            <tr><td style="padding:6px 0;color:#94a3b8;">Event</td><td style="padding:6px 0;color:#cbd5e1;font-family:monospace;">{event_type.lower()}</td></tr>
           </table>
 
           <div style="margin-top:18px;padding:12px 14px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:3px;">
@@ -2083,32 +2188,15 @@ async def _send_bounce_alert_email(record: dict, event: dict) -> None:
         </div>
         """
 
-        from sendgrid import SendGridAPIClient
-        from sendgrid.helpers.mail import Mail
-        message = Mail(
-            from_email=f"Cardiac Solutions Alerts <{sender}>",
-            to_emails=[alert_to],
+        result = await send_email_unified(
+            to_email=alert_to,
+            cc_email=alert_cc,
             subject=alert_subject,
-            html_content=html,
+            html_body=html,
+            sender_name="Cardiac Solutions Alerts",
         )
-        # Add CC
-        from sendgrid.helpers.mail import Personalization, Email as SgEmail, Cc
-        try:
-            personalization = message.personalizations[0]
-            personalization.add_cc(Cc(alert_cc))
-        except Exception:
-            try:
-                p = Personalization()
-                p.add_to(SgEmail(alert_to))
-                p.add_cc(SgEmail(alert_cc))
-                message.add_personalization(p)
-            except Exception as e:
-                logger.warning(f"[bounce-alert] could not add CC: {e}")
-
-        sg = SendGridAPIClient(sendgrid_key)
-        resp = sg.send(message)
-        success = resp.status_code in (200, 201, 202)
-        logger.info(f"[bounce-alert] subscriber={subscriber} to={to_email} -> SendGrid {resp.status_code}")
+        success = result["success"]
+        logger.info(f"[bounce-alert] subscriber={subscriber} to={to_email} -> {result['provider']} {result['status_text']}")
         if success:
             await _db.notification_history.update_one(
                 {"_id": latest["_id"]},
@@ -5839,16 +5927,7 @@ async def dispatch_ticket(ticket_id: str, data: dict, current_user: dict = Depen
 
 
 async def _send_dispatch_email(ticket: dict, tech_name: str, tech_email: str, dispatch_token: str):
-    """Send styled dispatch email via SendGrid."""
-    from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Mail
-
-    sg_key = os.environ.get("SENDGRID_API_KEY")
-    sender = os.environ.get("DISPATCH_SENDER", "no-reply@cardiac-solutions.ai")
-    if not sg_key:
-        logger.warning("SendGrid not configured — skipping email")
-        return False
-
+    """Send styled dispatch email via the active provider."""
     # Build the tech response URL
     app_url = os.environ.get("APP_URL", "https://cardiac-command.preview.emergentagent.com")
     view_url = f"{app_url}/tech/{ticket['id']}?token={dispatch_token}"
@@ -5897,18 +5976,16 @@ async def _send_dispatch_email(ticket: dict, tech_name: str, tech_email: str, di
 </html>"""
 
     try:
-        message = Mail(
-            from_email=f"Cardiac Dispatch <{sender}>",
-            to_emails=[tech_email],
+        result = await send_email_unified(
+            to_email=tech_email,
             subject=subject,
-            html_content=html,
+            html_body=html,
+            sender_name="Cardiac Dispatch",
         )
-        sg = SendGridAPIClient(sg_key)
-        resp = sg.send(message)
-        logger.info(f"SendGrid dispatch email: {resp.status_code}")
-        return resp.status_code in (200, 201, 202)
+        logger.info(f"Dispatch email via {result['provider']}: {result['status_text']}")
+        return result["success"]
     except Exception as e:
-        logger.error(f"SendGrid dispatch email error: {e}")
+        logger.error(f"Dispatch email error: {e}")
         return False
 
 
