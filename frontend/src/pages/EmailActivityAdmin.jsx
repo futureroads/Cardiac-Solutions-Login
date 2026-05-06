@@ -479,23 +479,37 @@ function Pill({ ok, label, color = "cyan" }) {
 
 function EmailStatusBadges({ row }) {
   if (!row) return null;
+  const provider = (row.email_provider || "").toLowerCase();
+  const providerStyle = {
+    resend: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
+    sendgrid: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+    mailgun: "bg-orange-500/15 text-orange-300 border-orange-500/30",
+  }[provider] || "bg-slate-700/40 text-slate-400 border-slate-600/40";
+  const providerLabel = provider ? provider.toUpperCase() : "?";
+
   const badges = [];
   if (row.bounced) badges.push({ label: "BOUNCED", cls: "bg-red-500/20 text-red-300 border-red-500/40" });
   if (row.spam_reported) badges.push({ label: "SPAM", cls: "bg-orange-500/20 text-orange-300 border-orange-500/40" });
   if (row.click_count > 0) badges.push({ label: row.click_count > 1 ? `CLICKED ×${row.click_count}` : "CLICKED", cls: "bg-purple-500/20 text-purple-300 border-purple-500/40" });
   if (row.open_count > 0) badges.push({ label: row.open_count > 1 ? `OPENED ×${row.open_count}` : "OPENED", cls: "bg-amber-500/20 text-amber-300 border-amber-500/40" });
   if (row.delivered_at) badges.push({ label: "DELIVERED", cls: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" });
-  if (badges.length === 0) {
-    if (row.success) {
-      return <span className="px-2 py-0.5 rounded-sm border bg-slate-800/80 text-slate-500 border-slate-700 font-orbitron text-[9px] tracking-wider">PENDING</span>;
-    }
-    return <span className="text-slate-600 font-orbitron text-[9px] tracking-wider">—</span>;
-  }
+
   return (
-    <div className="flex flex-wrap gap-1">
-      {badges.map(b => (
-        <span key={b.label} className={`px-1.5 py-0.5 rounded-sm border font-orbitron text-[9px] tracking-wider ${b.cls}`}>{b.label}</span>
-      ))}
+    <div className="flex flex-wrap gap-1 items-center">
+      <span className={`px-1.5 py-0.5 rounded-sm border font-orbitron text-[8px] tracking-wider ${providerStyle}`} title={`Sent via ${providerLabel}`}>
+        {providerLabel}
+      </span>
+      {badges.length === 0 ? (
+        row.success ? (
+          <span className="px-2 py-0.5 rounded-sm border bg-slate-800/80 text-slate-500 border-slate-700 font-orbitron text-[9px] tracking-wider">PENDING</span>
+        ) : (
+          <span className="text-slate-600 font-orbitron text-[9px] tracking-wider">—</span>
+        )
+      ) : (
+        badges.map(b => (
+          <span key={b.label} className={`px-1.5 py-0.5 rounded-sm border font-orbitron text-[9px] tracking-wider ${b.cls}`}>{b.label}</span>
+        ))
+      )}
     </div>
   );
 }
