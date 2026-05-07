@@ -6,6 +6,7 @@ import {
   Activity,
   Bell,
   FileCheck,
+  FileSpreadsheet,
   Lightbulb,
   LayoutDashboard,
   LogOut,
@@ -146,6 +147,17 @@ const ALL_MODULES = [
     futureroadsOnly: true,
     description:
       "Track who is currently using the system (live), what page they're on, and a 90-day history of every login session, page visited, and AEDA voice usage. CSV export available.",
+    badgeCount: null,
+  },
+  {
+    moduleKey: "reports",
+    title: "REPORTS",
+    status: "LIVE",
+    icon: FileSpreadsheet,
+    route: "/admin/reports",
+    adminOnly: true,
+    description:
+      "Admin-only fleet reporting. Run a By-Model report — every AED of a chosen model, its subscriber, status, and battery / pads expiration. Export to Excel.",
     badgeCount: null,
   },
   {

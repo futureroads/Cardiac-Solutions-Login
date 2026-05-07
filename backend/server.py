@@ -7405,6 +7405,184 @@ async def activity_export_csv(
         headers={"Content-Disposition": f'attachment; filename="user-activity-{days}d.csv"'},
     )
 
+
+# ------------------------------------------------------------------
+# Admin Reports — By Model
+# ------------------------------------------------------------------
+_by_model_cache: dict = {"data": None, "ts": 0.0}
+_BY_MODEL_TTL = 300  # 5 minutes
+
+
+async def _fetch_all_devices_flat() -> list[dict]:
+    """Fetch every device across every active subscriber from Readisys voice API.
+    Returns a flat list of {subscriber, sentinel_id, site, building, placement,
+    detailed_status, model, battery_expiration, pad_expiration}.
+    Cached for 5 minutes."""
+    import time, httpx, urllib.parse
+    now = time.time()
+    if _by_model_cache["data"] and (now - _by_model_cache["ts"]) < _BY_MODEL_TTL:
+        return _by_model_cache["data"]
+
+    headers = _readisys_auth_headers()
+    sub_list: list[dict] = []
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get("https://readisys.survivalpath.ai/api/voice/subscribers", headers=headers)
+            if r.status_code == 200:
+                sub_list = [s for s in (r.json().get("subscribers") or []) if s.get("has_data")]
+    except Exception as e:
+        logger.warning(f"[reports/by-model] subscriber list fetch failed: {e}")
+        return []
+
+    async def _fetch_one(sub_name: str) -> list[dict]:
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                enc = urllib.parse.quote(sub_name)
+                r = await client.get(
+                    f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc}/devices?limit=2000",
+                    headers=_readisys_auth_headers(),
+                )
+                if r.status_code == 200:
+                    return r.json().get("devices", []) or []
+        except Exception as e:
+            logger.warning(f"[reports/by-model] devices fetch failed for {sub_name}: {e}")
+        return []
+
+    # Fetch in batches of 8 to be friendly to the upstream API
+    all_devs: list[dict] = []
+    batch = 8
+    for i in range(0, len(sub_list), batch):
+        chunk = sub_list[i:i + batch]
+        results = await asyncio.gather(*[_fetch_one(s["name"]) for s in chunk], return_exceptions=True)
+        for sub_obj, devs in zip(chunk, results):
+            if isinstance(devs, Exception) or not isinstance(devs, list):
+                continue
+            for d in devs:
+                all_devs.append({
+                    "subscriber": d.get("subscriber") or sub_obj.get("name") or "",
+                    "sentinel_id": d.get("sentinel_id") or "",
+                    "site": d.get("site") or "",
+                    "building": d.get("building") or "",
+                    "placement": d.get("placement") or "",
+                    "detailed_status": d.get("detailed_status") or "",
+                    "model": d.get("model") or "",
+                    "battery_expiration": d.get("battery_expiration") or "",
+                    "pad_expiration": d.get("pad_expiration") or "",
+                })
+
+    _by_model_cache["data"] = all_devs
+    _by_model_cache["ts"] = now
+    return all_devs
+
+
+@api_router.get("/admin/reports/by-model/models")
+async def reports_by_model_models(current_user: dict = Depends(get_current_user)):
+    """Return distinct AED models present across the live device fleet."""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    devs = await _fetch_all_devices_flat()
+    models = sorted({d["model"] for d in devs if d.get("model")})
+    return {"models": models, "device_count": len(devs)}
+
+
+def _filter_by_model(devs: list[dict], model: str) -> list[dict]:
+    m = (model or "").strip().lower()
+    if not m:
+        return []
+    out = [d for d in devs if (d.get("model") or "").strip().lower() == m]
+    out.sort(key=lambda x: ((x.get("subscriber") or "").lower(), (x.get("sentinel_id") or "")))
+    return out
+
+
+@api_router.get("/admin/reports/by-model")
+async def reports_by_model(
+    model: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """JSON: every AED of the given model, with subscriber, status, B/P expirations."""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    devs = await _fetch_all_devices_flat()
+    rows = _filter_by_model(devs, model)
+    return {
+        "model": model,
+        "count": len(rows),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "rows": rows,
+    }
+
+
+@api_router.get("/admin/reports/by-model.xlsx")
+async def reports_by_model_xlsx(
+    model: str,
+    token: str = "",
+):
+    """XLSX download — accepts token via query param so window.location.href works."""
+    user_doc = await _decode_token_user(token)
+    if not user_doc or user_doc.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    devs = await _fetch_all_devices_flat()
+    rows = _filter_by_model(devs, model)
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    import io as _io
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = (model or "Report")[:31] or "Report"
+
+    ws["A1"] = f"AEDs by Model — {model}"
+    ws["A1"].font = Font(size=14, bold=True)
+    ws.merge_cells("A1:F1")
+    ws["A2"] = f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}   ·   {len(rows)} device(s)"
+    ws["A2"].font = Font(size=10, italic=True, color="666666")
+    ws.merge_cells("A2:F2")
+
+    headers_row = [
+        "Subscriber", "Sentinel ID", "Site / Building / Placement",
+        "Status", "Battery Expiration", "Pads Expiration",
+    ]
+    ws.append([])  # row 3 spacer
+    ws.append(headers_row)
+    header_idx = 4
+    header_fill = PatternFill("solid", fgColor="0F172A")
+    header_font = Font(bold=True, color="FFFFFF")
+    for col in range(1, len(headers_row) + 1):
+        c = ws.cell(row=header_idx, column=col)
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="left", vertical="center")
+
+    for r in rows:
+        loc = " / ".join([p for p in [r.get("site"), r.get("building"), r.get("placement")] if p])
+        ws.append([
+            r.get("subscriber") or "",
+            r.get("sentinel_id") or "",
+            loc,
+            r.get("detailed_status") or "",
+            r.get("battery_expiration") or "",
+            r.get("pad_expiration") or "",
+        ])
+
+    widths = [32, 18, 50, 22, 20, 20]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[chr(64 + i)].width = w
+    ws.freeze_panes = "A5"
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    safe_model = re.sub(r"[^A-Za-z0-9._-]+", "-", (model or "report")).strip("-") or "report"
+    filename = f"AED-By-Model-{safe_model}.xlsx"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+
 # ------------------------------------------------------------------
 # Sales Routes (upload + view + map)
 # ------------------------------------------------------------------
