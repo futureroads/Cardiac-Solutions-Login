@@ -15,6 +15,7 @@ export default function LocationContacts() {
 
   // Subscriber list — start with GP, allow other subscribers later
   const [subscriber, setSubscriber] = useState("Georgia Power");
+  const [allSubscribers, setAllSubscribers] = useState(["Georgia Power"]);
   const [notifyMode, setNotifyMode] = useState("subscriber");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
