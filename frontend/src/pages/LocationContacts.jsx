@@ -52,6 +52,28 @@ export default function LocationContacts() {
 
   useEffect(() => { load(); }, [subscriber]);
 
+  // Fetch the full real subscriber list once
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${API}/support/dashboard-data`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        const names = Array.from(
+          new Set((d.subscribers || []).map((s) => s.subscriber).filter(Boolean)),
+        ).sort();
+        if (names.length) {
+          // Keep Georgia Power pinned at the top, then the rest alphabetically
+          const rest = names.filter((n) => n !== "Georgia Power");
+          const hasGp = names.includes("Georgia Power");
+          setAllSubscribers(hasGp ? ["Georgia Power", ...rest] : rest);
+        }
+      } catch {/* swallow */}
+    })();
+  }, [token]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((it) => {
@@ -180,7 +202,9 @@ export default function LocationContacts() {
                 data-testid="loc-subscriber-select"
                 className="w-full bg-slate-950 border border-slate-700 text-cyan-200 text-sm font-orbitron px-3 py-2 rounded-sm focus:outline-none focus:border-cyan-500/60"
               >
-                <option value="Georgia Power">Georgia Power</option>
+                {allSubscribers.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
               </select>
             </div>
 
