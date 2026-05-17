@@ -2216,6 +2216,27 @@ async def delete_location_contact(
     return {"deleted": res.deleted_count}
 
 
+@api_router.delete("/admin/location-contacts/{subscriber}/all")
+async def delete_all_location_contacts(
+    subscriber: str, current_user: dict = Depends(get_current_user)
+):
+    """Wipe every location_contacts row for a subscriber + clear notify_mode."""
+    if not _can_manage_location_contacts(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Location Contacts permission required")
+    res = await _db.location_contacts.delete_many({"subscriber": subscriber})
+    # Also reset notify_mode back to 'subscriber'
+    await _db.subscriber_settings.update_one(
+        {"_id": subscriber},
+        {"$set": {
+            "notify_mode": "subscriber",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": current_user.get("username", ""),
+        }},
+        upsert=True,
+    )
+    return {"deleted": res.deleted_count, "subscriber": subscriber}
+
+
 @api_router.post("/admin/location-contacts/{subscriber}/import")
 async def import_location_contacts(
     subscriber: str, request: Request, current_user: dict = Depends(get_current_user)

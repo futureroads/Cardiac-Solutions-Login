@@ -169,6 +169,30 @@ export default function LocationContacts() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (items.length === 0) return;
+    const confirmText = `DELETE`;
+    const typed = window.prompt(
+      `⚠️  This will permanently delete ALL ${items.length} location contact(s) for "${subscriber}" and reset their notification mode to BY SUBSCRIBER.\n\nType ${confirmText} to confirm:`,
+    );
+    if (typed !== confirmText) {
+      if (typed !== null) setErr(`Type "${confirmText}" exactly to confirm.`);
+      return;
+    }
+    try {
+      const r = await fetch(
+        `${API}/admin/location-contacts/${encodeURIComponent(subscriber)}/all`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+      );
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+      setInfo(`Deleted ${d.deleted} location contact(s) for ${subscriber}. Notify mode reset to BY SUBSCRIBER.`);
+      await load();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
       <div className="sticky top-0 z-20 border-b border-slate-800 bg-slate-950/95 backdrop-blur">
@@ -259,6 +283,16 @@ export default function LocationContacts() {
               >
                 <Plus className="w-3 h-3 inline mr-1.5" />
                 ADD
+              </button>
+              <button
+                onClick={handleDeleteAll}
+                disabled={items.length === 0}
+                data-testid="loc-delete-all-btn"
+                title={`Delete every location contact for ${subscriber}`}
+                className="font-orbitron text-[10px] tracking-widest px-3 py-2 rounded-sm border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-3 h-3 inline mr-1.5" />
+                DELETE ALL
               </button>
             </div>
           </div>
