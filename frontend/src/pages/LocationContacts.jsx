@@ -13,9 +13,9 @@ export default function LocationContacts() {
   const fileInputRef = useRef(null);
   const token = localStorage.getItem("token") || "";
 
-  // Subscriber list — start with GP, allow other subscribers later
-  const [subscriber, setSubscriber] = useState("Georgia Power");
-  const [allSubscribers, setAllSubscribers] = useState(["Georgia Power"]);
+  // Subscriber list — start with GPC, allow other subscribers later
+  const [subscriber, setSubscriber] = useState("GPC");
+  const [allSubscribers, setAllSubscribers] = useState(["GPC"]);
   const [notifyMode, setNotifyMode] = useState("subscriber");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -66,10 +66,10 @@ export default function LocationContacts() {
           new Set((d.subscribers || []).map((s) => s.subscriber).filter(Boolean)),
         ).sort();
         if (names.length) {
-          // Keep Georgia Power pinned at the top, then the rest alphabetically
-          const rest = names.filter((n) => n !== "Georgia Power");
-          const hasGp = names.includes("Georgia Power");
-          setAllSubscribers(hasGp ? ["Georgia Power", ...rest] : rest);
+          // Keep GPC pinned at the top, then the rest alphabetically
+          const rest = names.filter((n) => n !== "GPC");
+          const hasGpc = names.includes("GPC");
+          setAllSubscribers(hasGpc ? ["GPC", ...rest] : rest);
         }
       } catch {/* swallow */}
     })();
