@@ -1358,7 +1358,14 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
   useEffect(() => {
     if (notifyMode !== "location") { setLocationLookup(null); return; }
     if (loadingDevices) return;
-    const activeForLookup = devices.filter(d => !removedDevices.has(d.sentinel_id));
+    // Respect the EMAIL TYPE filter — only include devices that match the
+    // currently selected status (or all, if "all"). This keeps the per-location
+    // preview in sync with the table the user is about to send.
+    const activeForLookup = devices.filter(d => {
+      if (removedDevices.has(d.sentinel_id)) return false;
+      if (emailType === "all") return true;
+      return (d.detailed_status || "UNKNOWN") === emailType;
+    });
     if (activeForLookup.length === 0) { setLocationLookup({ groups: [], orphan_devices: [], orphan_count: 0 }); return; }
     (async () => {
       setLocLoading(true);
@@ -1386,7 +1393,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notifyMode, loadingDevices, devices, removedDevices, subscriber]);
+  }, [notifyMode, loadingDevices, devices, removedDevices, subscriber, emailType]);
 
   const buildEmailHtml = (sentinelFilter = null) => {
     const s = `style`;
