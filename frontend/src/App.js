@@ -209,7 +209,10 @@ function App() {
           <Route
             path="/admin/location-contacts"
             element={
-              isAuthenticated && user?.role === "admin" ?
+              isAuthenticated && (
+                user?.role === "admin" ||
+                (user?.allowed_modules || []).includes("location_contacts")
+              ) ?
                 <LocationContacts /> :
                 <Navigate to="/hub" replace />
             }

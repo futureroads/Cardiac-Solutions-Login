@@ -104,7 +104,7 @@ async def log_to_db(level, message, context=""):
         pass  # Can't log the log failure
 
 # All available module IDs
-ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path", "hybrid_training", "customer_portal", "map", "sales"]
+ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path", "hybrid_training", "customer_portal", "map", "sales", "location_contacts"]
 
 # Create the main app
 app = FastAPI(title="Cardiac Solutions API")
@@ -2093,6 +2093,13 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
 EMAIL_RE_LOC = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$")
 
 
+def _can_manage_location_contacts(user: dict) -> bool:
+    """Admins OR users with the `location_contacts` module permission."""
+    if (user.get("role") or "").lower() == "admin":
+        return True
+    return "location_contacts" in (user.get("allowed_modules") or [])
+
+
 def _norm_loc_emails(emails) -> list[str]:
     """Accept a list or comma/semicolon-separated string; return de-duped lowercase emails."""
     if isinstance(emails, str):
@@ -2123,8 +2130,8 @@ def _loc_key(site: str, building: str) -> str:
 
 @api_router.get("/admin/subscriber-settings/{subscriber}")
 async def get_subscriber_settings(subscriber: str, current_user: dict = Depends(get_current_user)):
-    if (current_user.get("role") or "").lower() != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
+    if not _can_manage_location_contacts(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Location Contacts permission required")
     doc = await _db.subscriber_settings.find_one({"_id": subscriber}, {"_id": 0}) or {}
     return {
         "subscriber": subscriber,
@@ -2138,8 +2145,8 @@ async def get_subscriber_settings(subscriber: str, current_user: dict = Depends(
 async def set_subscriber_settings(
     subscriber: str, data: dict, current_user: dict = Depends(get_current_user)
 ):
-    if (current_user.get("role") or "").lower() != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
+    if not _can_manage_location_contacts(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Location Contacts permission required")
     mode = (data.get("notify_mode") or "").strip().lower()
     if mode not in ("subscriber", "location"):
         raise HTTPException(status_code=400, detail="notify_mode must be 'subscriber' or 'location'")
@@ -2157,8 +2164,8 @@ async def set_subscriber_settings(
 
 @api_router.get("/admin/location-contacts/{subscriber}")
 async def list_location_contacts(subscriber: str, current_user: dict = Depends(get_current_user)):
-    if (current_user.get("role") or "").lower() != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
+    if not _can_manage_location_contacts(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Location Contacts permission required")
     items: list[dict] = []
     async for d in _db.location_contacts.find({"subscriber": subscriber}, {"_id": 0}).sort([("site", 1), ("building", 1)]):
         items.append(d)
@@ -2169,8 +2176,8 @@ async def list_location_contacts(subscriber: str, current_user: dict = Depends(g
 async def upsert_location_contact(
     subscriber: str, data: dict, current_user: dict = Depends(get_current_user)
 ):
-    if (current_user.get("role") or "").lower() != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
+    if not _can_manage_location_contacts(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Location Contacts permission required")
     site = (data.get("site") or "").strip()
     building = (data.get("building") or "").strip()
     if not site or not building:
@@ -2201,8 +2208,8 @@ async def delete_location_contact(
     building: str = "",
     current_user: dict = Depends(get_current_user),
 ):
-    if (current_user.get("role") or "").lower() != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
+    if not _can_manage_location_contacts(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Location Contacts permission required")
     if not site or not building:
         raise HTTPException(status_code=400, detail="site and building query params required")
     res = await _db.location_contacts.delete_one({"subscriber": subscriber, "loc_key": _loc_key(site, building)})
@@ -2216,8 +2223,8 @@ async def import_location_contacts(
     """Upload XLSX with columns: SentinelId, LocationGroup, Site, Building, PlacementLocation,
     Email1, Email2, ... (any number of email columns after the 5 fixed cols).
     Deduplicates by (Site, Building) — all emails for the same building are merged."""
-    if (current_user.get("role") or "").lower() != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
+    if not _can_manage_location_contacts(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Location Contacts permission required")
     form = await request.form()
     upload = form.get("file")
     if not upload or not getattr(upload, "filename", None):
@@ -2327,8 +2334,8 @@ async def lookup_location_contacts(
 
     Used by the Notification Modal to validate + preview before send.
     """
-    if (current_user.get("role") or "").lower() != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
+    if not _can_manage_location_contacts(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Location Contacts permission required")
     devices = data.get("devices") or []
     # Build lookup map
     cmap: dict[str, list[str]] = {}

@@ -166,9 +166,8 @@ const ALL_MODULES = [
     status: "LIVE",
     icon: Building2,
     route: "/admin/location-contacts",
-    adminOnly: true,
     description:
-      "Admin-only. Manage per-location notification recipients for subscribers that send by location (e.g. Georgia Power). Import an XLSX or edit inline.",
+      "Manage per-location notification recipients for subscribers that send by location (e.g. Georgia Power). Import an XLSX or edit inline.",
     badgeCount: null,
   },
   {
