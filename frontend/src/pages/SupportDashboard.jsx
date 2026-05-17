@@ -1332,8 +1332,63 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
   };
 
   const [subject, setSubject] = useState("AED Report and Action Items");
+  const [subjectTemplate, setSubjectTemplate] = useState("AED Report — {{location}}");
+  const [notifyMode, setNotifyMode] = useState("subscriber"); // 'subscriber' | 'location'
+  const [locationLookup, setLocationLookup] = useState(null); // {groups, orphan_devices, orphan_count}
+  const [locLoading, setLocLoading] = useState(false);
 
-  const buildEmailHtml = () => {
+  // Fetch subscriber notify_mode once
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const r = await fetch(`${API}/admin/subscriber-settings/${encodeURIComponent(subscriber)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (r.ok) {
+          const d = await r.json();
+          setNotifyMode((d.notify_mode || "subscriber").toLowerCase());
+        }
+      } catch { /* non-admin or 403 → stay in 'subscriber' mode */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subscriber]);
+
+  // When per-location mode + devices loaded, fetch the location lookup
+  useEffect(() => {
+    if (notifyMode !== "location") { setLocationLookup(null); return; }
+    if (loadingDevices) return;
+    const activeForLookup = devices.filter(d => !removedDevices.has(d.sentinel_id));
+    if (activeForLookup.length === 0) { setLocationLookup({ groups: [], orphan_devices: [], orphan_count: 0 }); return; }
+    (async () => {
+      setLocLoading(true);
+      try {
+        const token = localStorage.getItem("token");
+        const r = await fetch(`${API}/admin/location-contacts/${encodeURIComponent(subscriber)}/lookup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            devices: activeForLookup.map(d => ({
+              sentinel_id: d.sentinel_id,
+              site: d.site || "",
+              building: d.building || "",
+            })),
+          }),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          setLocationLookup(d);
+        }
+      } catch (e) {
+        // swallow
+      } finally {
+        setLocLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notifyMode, loadingDevices, devices, removedDevices, subscriber]);
+
+  const buildEmailHtml = (sentinelFilter = null) => {
     const s = `style`;
     let html = `<div ${s}="font-family:Arial,Helvetica,sans-serif;max-width:700px;margin:0 auto;color:#333;">`;
 
@@ -1346,9 +1401,13 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
     // Group sections by template category (merge EXPIRED B/P and EXPIRING into one section)
     const merged = {};
     for (const [status, devs] of Object.entries(filteredGrouped)) {
+      const filteredDevs = sentinelFilter
+        ? devs.filter(d => sentinelFilter.has(d.sentinel_id))
+        : devs;
+      if (filteredDevs.length === 0) continue;
       const sec = sectionMap[status] || { title: status, action: "Required Action", actionText: "Please inspect the AED(s) noted above." };
       if (!merged[sec.title]) merged[sec.title] = { ...sec, devices: [] };
-      merged[sec.title].devices.push(...devs);
+      merged[sec.title].devices.push(...filteredDevs);
     }
 
     for (const [title, sec] of Object.entries(merged)) {
@@ -1397,6 +1456,8 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
   };
 
   const handleSend = async () => {
+    // Per-location mode short-circuits the normal validation
+    if (notifyMode === "location") return handleSendByLocation();
     if (!toEmail) { toast.error("Customer email (TO) is required"); return; }
     setSending(true);
     try {
@@ -1446,6 +1507,61 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
     setSending(false);
   };
 
+  const handleSendByLocation = async () => {
+    if (!locationLookup) { toast.error("Location data not loaded yet"); return; }
+    if (locationLookup.orphan_count > 0) {
+      toast.error(`Cannot send: ${locationLookup.orphan_count} AED(s) at locations with no contacts. Fix in Location Contacts first.`);
+      return;
+    }
+    const groups = (locationLookup.groups || []).filter(g => (g.emails || []).length > 0);
+    if (groups.length === 0) { toast.error("No location groups to send"); return; }
+    if (!window.confirm(`Send ${groups.length} per-location email(s) for ${subscriber}?`)) return;
+
+    setSending(true);
+    let sent = 0, failed = 0;
+    const token = localStorage.getItem("token");
+    const alwaysBcc = "tprince@cardiac-solutions.net";
+    for (const grp of groups) {
+      const locLabel = [grp.site, grp.building].filter(Boolean).join(" / ");
+      const grpSubject = (subjectTemplate || "AED Report — {{location}}").replaceAll("{{location}}", locLabel);
+      const sidSet = new Set((grp.devices || []).map(d => d.sentinel_id));
+      const grpHtml = buildEmailHtml(sidSet);
+      const emailDevices = (grp.devices || []).map(d => {
+        const full = devices.find(x => x.sentinel_id === d.sentinel_id) || d;
+        return {
+          sentinel_id: full.sentinel_id,
+          detailed_status: full.detailed_status || "UNKNOWN",
+          location: [full.site, full.building, full.placement].filter(Boolean).join(" / ") || "",
+          model: full.model || "",
+        };
+      });
+      try {
+        const res = await fetch(`${API}/support/send-notification`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            subscriber,
+            to_email: (grp.emails || []).join(", "),
+            cc_email: "",
+            bcc_emails: alwaysBcc,
+            subject: grpSubject,
+            html_body: grpHtml,
+            devices: emailDevices,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.success) sent += 1; else failed += 1;
+      } catch { failed += 1; }
+    }
+    if (failed === 0) toast.success(`Sent ${sent} location email(s)`);
+    else if (sent === 0) toast.error(`All ${failed} location send(s) failed`);
+    else toast(`Sent ${sent}, ${failed} failed`);
+    setSending(false);
+    onSent?.();
+    onClose();
+  };
+
+
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
       <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[1500px] max-w-[98vw] max-h-[95vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="notification-modal">
@@ -1479,27 +1595,98 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
             <div className="flex items-center gap-2">
               <span className="font-orbitron text-[9px] text-cyan-400 w-[100px] flex-shrink-0">Customer (To):</span>
               <input value={toEmail} onChange={e => setToEmail(e.target.value)} placeholder="subscriber@email.com"
-                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs"
+                disabled={notifyMode === "location"}
+                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs disabled:opacity-40"
                 data-testid="to-email-input" />
             </div>
             <div className="flex items-center gap-2">
               <span className="font-orbitron text-[9px] text-cyan-400 w-[100px] flex-shrink-0">Sales rep (CC):</span>
               <input value={ccEmail} onChange={e => setCcEmail(e.target.value)} placeholder="salesrep@cardiac-solutions.net"
-                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs"
+                disabled={notifyMode === "location"}
+                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs disabled:opacity-40"
                 data-testid="cc-email-input" />
             </div>
             <div className="flex items-center gap-2">
               <span className="font-orbitron text-[9px] text-cyan-400 w-[100px] flex-shrink-0">BCC:</span>
               <input value={bccEmails} onChange={e => setBccEmails(e.target.value)} placeholder="internal1@email.com, internal2@email.com"
-                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs"
+                disabled={notifyMode === "location"}
+                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs disabled:opacity-40"
                 data-testid="bcc-email-input" />
             </div>
             <div className="flex items-center gap-2">
               <span className="font-orbitron text-[9px] text-cyan-400 w-[100px] flex-shrink-0">Subject:</span>
               <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Email subject line"
-                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs"
+                disabled={notifyMode === "location"}
+                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs disabled:opacity-40"
                 data-testid="subject-input" />
             </div>
+            {notifyMode === "location" && (
+              <div className="mt-2 border border-cyan-500/40 bg-cyan-500/5 rounded-sm p-3 space-y-2">
+                <div className="font-orbitron text-[10px] text-cyan-300 tracking-wider">
+                  PER-LOCATION MODE — TO/CC/BCC/SUBJECT ABOVE ARE IGNORED. EACH LOCATION GETS ITS OWN EMAIL.
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-orbitron text-[9px] text-cyan-400 w-[100px] flex-shrink-0">Subject tmpl:</span>
+                  <input
+                    value={subjectTemplate}
+                    onChange={e => setSubjectTemplate(e.target.value)}
+                    placeholder="AED Report — {{location}}"
+                    data-testid="subject-template-input"
+                    className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs font-mono"
+                  />
+                  <span className="font-orbitron text-[9px] text-slate-500 whitespace-nowrap">{`{{location}}`} = Site / Building</span>
+                </div>
+                <div className="font-orbitron text-[9px] text-slate-500">
+                  Always BCC: <span className="text-cyan-300">tprince@cardiac-solutions.net</span>
+                </div>
+                {locLoading && (
+                  <div className="font-orbitron text-[10px] text-slate-400">
+                    <Loader2 className="w-3 h-3 inline mr-1 animate-spin" />Loading location groups…
+                  </div>
+                )}
+                {locationLookup && !locLoading && (
+                  <div className="text-[10px] space-y-1.5">
+                    <div className="font-orbitron text-cyan-200 tracking-wider">
+                      WILL SEND <span className="text-emerald-300">{locationLookup.groups.filter(g => (g.emails||[]).length>0).length}</span> EMAIL(S)
+                      {" · "}
+                      <span className="text-cyan-300">{locationLookup.group_count}</span> LOCATION(S)
+                      {locationLookup.orphan_count > 0 && (
+                        <span className="text-red-400">{" · "}{locationLookup.orphan_count} ORPHAN AED(S) — SEND BLOCKED</span>
+                      )}
+                    </div>
+                    <div className="max-h-[140px] overflow-y-auto border border-slate-800 rounded-sm divide-y divide-slate-800">
+                      {locationLookup.groups.map(g => {
+                        const orphan = (g.emails||[]).length === 0;
+                        return (
+                          <div key={g.loc_key} className={`px-2 py-1 ${orphan ? "bg-red-500/5" : ""}`}>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-[10px] text-slate-300 truncate flex-1">
+                                {g.site} / {g.building}
+                              </span>
+                              <span className="font-mono text-[10px] text-cyan-300 whitespace-nowrap">
+                                {(g.devices||[]).length} AED
+                              </span>
+                              {orphan ? (
+                                <span className="font-orbitron text-[8px] tracking-widest text-red-400">NO CONTACTS</span>
+                              ) : (
+                                <span className="font-mono text-[10px] text-slate-500 truncate max-w-[280px]" title={(g.emails||[]).join(", ")}>
+                                  → {(g.emails||[]).slice(0,2).join(", ")}{(g.emails||[]).length>2 ? ` +${g.emails.length-2}` : ""}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {locationLookup.orphan_count > 0 && (
+                      <div className="text-amber-300 font-orbitron text-[9px] tracking-wider">
+                        Fix orphan locations in Hub → LOCATION CONTACTS before sending.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -1644,12 +1831,18 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
           </button>
           <button
             onClick={handleSend}
-            disabled={sending || activeDevices.length === 0}
+            disabled={
+              sending ||
+              activeDevices.length === 0 ||
+              (notifyMode === "location" && (locLoading || !locationLookup || (locationLookup.orphan_count || 0) > 0))
+            }
             className="font-orbitron text-xs px-6 py-2 border border-cyan-500/50 text-cyan-400 rounded-sm hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-2"
             data-testid="send-email-btn"
           >
             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-            SEND EMAIL
+            {notifyMode === "location" && locationLookup
+              ? `SEND ${locationLookup.groups.filter(g => (g.emails||[]).length>0).length} EMAIL(S)`
+              : "SEND EMAIL"}
           </button>
         </div>
       </div>

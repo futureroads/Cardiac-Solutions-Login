@@ -2087,6 +2087,281 @@ async def send_support_notification(data: dict, current_user: dict = Depends(get
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ---------------------------------------------------------------------------
+# Per-Location notifications: subscriber settings + location contacts
+# ---------------------------------------------------------------------------
+EMAIL_RE_LOC = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$")
+
+
+def _norm_loc_emails(emails) -> list[str]:
+    """Accept a list or comma/semicolon-separated string; return de-duped lowercase emails."""
+    if isinstance(emails, str):
+        parts = re.split(r"[,;\n]", emails)
+    elif isinstance(emails, list):
+        parts = []
+        for x in emails:
+            if isinstance(x, str):
+                parts.extend(re.split(r"[,;\n]", x))
+    else:
+        return []
+    out, seen = [], set()
+    for p in parts:
+        e = (p or "").strip()
+        if not e or not EMAIL_RE_LOC.match(e):
+            continue
+        low = e.lower()
+        if low in seen:
+            continue
+        seen.add(low)
+        out.append(low)
+    return out
+
+
+def _loc_key(site: str, building: str) -> str:
+    return f"{(site or '').strip().lower()}||{(building or '').strip().lower()}"
+
+
+@api_router.get("/admin/subscriber-settings/{subscriber}")
+async def get_subscriber_settings(subscriber: str, current_user: dict = Depends(get_current_user)):
+    if (current_user.get("role") or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    doc = await _db.subscriber_settings.find_one({"_id": subscriber}, {"_id": 0}) or {}
+    return {
+        "subscriber": subscriber,
+        "notify_mode": (doc.get("notify_mode") or "subscriber").lower(),
+        "updated_at": doc.get("updated_at"),
+        "updated_by": doc.get("updated_by"),
+    }
+
+
+@api_router.put("/admin/subscriber-settings/{subscriber}")
+async def set_subscriber_settings(
+    subscriber: str, data: dict, current_user: dict = Depends(get_current_user)
+):
+    if (current_user.get("role") or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    mode = (data.get("notify_mode") or "").strip().lower()
+    if mode not in ("subscriber", "location"):
+        raise HTTPException(status_code=400, detail="notify_mode must be 'subscriber' or 'location'")
+    await _db.subscriber_settings.update_one(
+        {"_id": subscriber},
+        {"$set": {
+            "notify_mode": mode,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": current_user.get("username", ""),
+        }},
+        upsert=True,
+    )
+    return {"ok": True, "subscriber": subscriber, "notify_mode": mode}
+
+
+@api_router.get("/admin/location-contacts/{subscriber}")
+async def list_location_contacts(subscriber: str, current_user: dict = Depends(get_current_user)):
+    if (current_user.get("role") or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    items: list[dict] = []
+    async for d in _db.location_contacts.find({"subscriber": subscriber}, {"_id": 0}).sort([("site", 1), ("building", 1)]):
+        items.append(d)
+    return {"subscriber": subscriber, "items": items, "count": len(items)}
+
+
+@api_router.post("/admin/location-contacts/{subscriber}")
+async def upsert_location_contact(
+    subscriber: str, data: dict, current_user: dict = Depends(get_current_user)
+):
+    if (current_user.get("role") or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    site = (data.get("site") or "").strip()
+    building = (data.get("building") or "").strip()
+    if not site or not building:
+        raise HTTPException(status_code=400, detail="site and building are required")
+    emails = _norm_loc_emails(data.get("emails") or [])
+    now = datetime.now(timezone.utc).isoformat()
+    key = _loc_key(site, building)
+    await _db.location_contacts.update_one(
+        {"subscriber": subscriber, "loc_key": key},
+        {"$set": {
+            "subscriber": subscriber,
+            "loc_key": key,
+            "site": site,
+            "building": building,
+            "emails": emails,
+            "updated_at": now,
+            "updated_by": current_user.get("username", ""),
+        }},
+        upsert=True,
+    )
+    return {"ok": True, "site": site, "building": building, "emails": emails}
+
+
+@api_router.delete("/admin/location-contacts/{subscriber}")
+async def delete_location_contact(
+    subscriber: str,
+    site: str = "",
+    building: str = "",
+    current_user: dict = Depends(get_current_user),
+):
+    if (current_user.get("role") or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    if not site or not building:
+        raise HTTPException(status_code=400, detail="site and building query params required")
+    res = await _db.location_contacts.delete_one({"subscriber": subscriber, "loc_key": _loc_key(site, building)})
+    return {"deleted": res.deleted_count}
+
+
+@api_router.post("/admin/location-contacts/{subscriber}/import")
+async def import_location_contacts(
+    subscriber: str, request: Request, current_user: dict = Depends(get_current_user)
+):
+    """Upload XLSX with columns: SentinelId, LocationGroup, Site, Building, PlacementLocation,
+    Email1, Email2, ... (any number of email columns after the 5 fixed cols).
+    Deduplicates by (Site, Building) — all emails for the same building are merged."""
+    if (current_user.get("role") or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    form = await request.form()
+    upload = form.get("file")
+    if not upload or not getattr(upload, "filename", None):
+        raise HTTPException(status_code=400, detail="No file uploaded")
+    raw = await upload.read()
+    fname = upload.filename.lower()
+    if not (fname.endswith(".xlsx") or fname.endswith(".xls")):
+        raise HTTPException(status_code=400, detail="Only .xlsx files supported")
+
+    from openpyxl import load_workbook
+    import io as _io
+    try:
+        wb = load_workbook(_io.BytesIO(raw), data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse XLSX: {e}")
+
+    ws = wb.active
+    headers_row = [str(c.value).strip() if c.value else "" for c in ws[1]]
+    # Find Site + Building column indices (case-insensitive)
+    def _find(h, *names):
+        for i, x in enumerate(h):
+            xl = (x or "").lower()
+            if xl in [n.lower() for n in names]:
+                return i
+        return -1
+
+    i_sentinel = _find(headers_row, "SentinelId", "Sentinel Id", "Sentinel ID")
+    i_site = _find(headers_row, "Site")
+    i_building = _find(headers_row, "Building")
+    if i_site < 0 or i_building < 0:
+        raise HTTPException(status_code=400, detail="XLSX must include 'Site' and 'Building' columns")
+
+    # All columns after PlacementLocation are emails
+    i_placement = _find(headers_row, "PlacementLocation", "Placement Location")
+    email_start = max(i_placement + 1 if i_placement >= 0 else 5, max(i_site, i_building) + 1)
+
+    bucket: dict[str, dict] = {}
+    aeds_seen: dict[str, int] = {}
+    rows_processed = 0
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not row or all(c in (None, "") for c in row):
+            continue
+        rows_processed += 1
+        site = (row[i_site] or "").strip() if i_site < len(row) and row[i_site] else ""
+        building = (row[i_building] or "").strip() if i_building < len(row) and row[i_building] else ""
+        if not site or not building:
+            continue
+        key = _loc_key(site, building)
+        if key not in bucket:
+            bucket[key] = {"site": site, "building": building, "emails": []}
+        # Pull email cells
+        for cell in row[email_start:]:
+            if cell and isinstance(cell, str):
+                for piece in re.split(r"[,;\n]", cell):
+                    e = piece.strip()
+                    if e and EMAIL_RE_LOC.match(e):
+                        bucket[key]["emails"].append(e.lower())
+        if i_sentinel >= 0 and i_sentinel < len(row) and row[i_sentinel]:
+            aeds_seen[key] = aeds_seen.get(key, 0) + 1
+
+    # Dedup emails per bucket
+    now = datetime.now(timezone.utc).isoformat()
+    upserts = 0
+    orphans: list[dict] = []
+    for key, b in bucket.items():
+        emails = []
+        seen = set()
+        for e in b["emails"]:
+            if e in seen:
+                continue
+            seen.add(e)
+            emails.append(e)
+        await _db.location_contacts.update_one(
+            {"subscriber": subscriber, "loc_key": key},
+            {"$set": {
+                "subscriber": subscriber,
+                "loc_key": key,
+                "site": b["site"],
+                "building": b["building"],
+                "emails": emails,
+                "aed_count": aeds_seen.get(key, 0),
+                "updated_at": now,
+                "updated_by": current_user.get("username", ""),
+            }},
+            upsert=True,
+        )
+        upserts += 1
+        if not emails:
+            orphans.append({"site": b["site"], "building": b["building"], "aed_count": aeds_seen.get(key, 0)})
+
+    return {
+        "ok": True,
+        "subscriber": subscriber,
+        "rows_processed": rows_processed,
+        "locations_upserted": upserts,
+        "orphan_locations": orphans,
+        "orphan_count": len(orphans),
+    }
+
+
+@api_router.post("/admin/location-contacts/{subscriber}/lookup")
+async def lookup_location_contacts(
+    subscriber: str, data: dict, current_user: dict = Depends(get_current_user)
+):
+    """Given a list of devices [{sentinel_id, site, building}, ...] return
+    grouping by (site, building) with resolved emails and orphan list.
+
+    Used by the Notification Modal to validate + preview before send.
+    """
+    if (current_user.get("role") or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    devices = data.get("devices") or []
+    # Build lookup map
+    cmap: dict[str, list[str]] = {}
+    async for d in _db.location_contacts.find({"subscriber": subscriber}, {"_id": 0}):
+        cmap[d.get("loc_key", "")] = d.get("emails") or []
+
+    groups: dict[str, dict] = {}
+    orphans: list[dict] = []
+    for dev in devices:
+        site = (dev.get("site") or "").strip()
+        building = (dev.get("building") or "").strip()
+        key = _loc_key(site, building)
+        emails = cmap.get(key, [])
+        if key not in groups:
+            groups[key] = {
+                "site": site, "building": building, "loc_key": key,
+                "emails": emails, "devices": [],
+            }
+        groups[key]["devices"].append(dev)
+        if not emails:
+            orphans.append({"sentinel_id": dev.get("sentinel_id"), "site": site, "building": building})
+
+    return {
+        "subscriber": subscriber,
+        "groups": list(groups.values()),
+        "group_count": len(groups),
+        "orphan_devices": orphans,
+        "orphan_count": len(orphans),
+    }
+
+
+
+
 @api_router.get("/admin/email-activity")
 async def admin_email_activity(
     days: int = 30,

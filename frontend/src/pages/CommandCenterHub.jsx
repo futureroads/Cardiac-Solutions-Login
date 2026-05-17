@@ -161,6 +161,17 @@ const ALL_MODULES = [
     badgeCount: null,
   },
   {
+    moduleKey: "location_contacts",
+    title: "LOCATION CONTACTS",
+    status: "LIVE",
+    icon: Building2,
+    route: "/admin/location-contacts",
+    adminOnly: true,
+    description:
+      "Admin-only. Manage per-location notification recipients for subscribers that send by location (e.g. Georgia Power). Import an XLSX or edit inline.",
+    badgeCount: null,
+  },
+  {
     moduleKey: "email_log",
     title: "EMAIL LOG",
     status: "LIVE",

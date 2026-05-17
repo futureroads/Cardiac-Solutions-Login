@@ -16,6 +16,7 @@ import MapPage from "./pages/MapPage";
 import StarkDashboard from "./pages/StarkDashboard";
 import EmailActivityAdmin from "./pages/EmailActivityAdmin";
 import Reports from "./pages/Reports";
+import LocationContacts from "./pages/LocationContacts";
 import UserActivity from "./pages/UserActivity";
 import Sales from "./pages/Sales";
 import SalesMobile from "./pages/SalesMobile";
@@ -202,6 +203,14 @@ function App() {
             element={
               isAuthenticated && user?.role === "admin" ?
                 <Reports /> :
+                <Navigate to="/hub" replace />
+            }
+          />
+          <Route
+            path="/admin/location-contacts"
+            element={
+              isAuthenticated && user?.role === "admin" ?
+                <LocationContacts /> :
                 <Navigate to="/hub" replace />
             }
           />
