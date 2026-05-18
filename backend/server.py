@@ -2130,8 +2130,10 @@ def _loc_key(site: str, building: str) -> str:
 
 @api_router.get("/admin/subscriber-settings/{subscriber}")
 async def get_subscriber_settings(subscriber: str, current_user: dict = Depends(get_current_user)):
-    if not _can_manage_location_contacts(current_user):
-        raise HTTPException(status_code=403, detail="Admin or Location Contacts permission required")
+    # Read-only: any authenticated user (so support reps can see notify_mode
+    # and the Notification Modal can render per-location UI for them)
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
     doc = await _db.subscriber_settings.find_one({"_id": subscriber}, {"_id": 0}) or {}
     return {
         "subscriber": subscriber,
@@ -2354,9 +2356,10 @@ async def lookup_location_contacts(
     grouping by (site, building) with resolved emails and orphan list.
 
     Used by the Notification Modal to validate + preview before send.
+    Read-only: any authenticated user.
     """
-    if not _can_manage_location_contacts(current_user):
-        raise HTTPException(status_code=403, detail="Admin or Location Contacts permission required")
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
     devices = data.get("devices") or []
     # Build lookup map
     cmap: dict[str, list[str]] = {}
