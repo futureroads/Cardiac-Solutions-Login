@@ -1240,6 +1240,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
   const [devices, setDevices] = useState([]);
   const [loadingDevices, setLoadingDevices] = useState(true);
   const [drawerDevice, setDrawerDevice] = useState(null);
+  const [feedbackDevice, setFeedbackDevice] = useState(null);
   const [customDetails, setCustomDetails] = useState({});
   const [imageHistoryId, setImageHistoryId] = useState(null);
 
@@ -1836,12 +1837,8 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                                   <img
                                     src={d.image_url}
                                     alt={d.sentinel_id}
-                                    title="Click to view AED details & give AI feedback"
-                                    onClick={e => { e.stopPropagation(); setDrawerDevice(d); }}
-                                    onMouseDown={e => e.stopPropagation()}
-                                    className="max-w-[100px] max-h-[60px] rounded-sm cursor-pointer hover:ring-2 hover:ring-cyan-400 transition"
+                                    className="max-w-[100px] max-h-[60px] rounded-sm"
                                     loading="lazy"
-                                    data-testid={`email-img-open-${d.sentinel_id}`}
                                   />
                                   {capturedAt && <div className="text-[9px] text-slate-400 mt-0.5">{capturedAt}</div>}
                                   <button
@@ -1853,6 +1850,17 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                                   >
                                     <History className="w-2.5 h-2.5" />
                                     <span className="text-[7px] font-bold tracking-wider">HISTORY</span>
+                                  </button>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setFeedbackDevice(d); }}
+                                    onMouseDown={e => e.stopPropagation()}
+                                    type="button"
+                                    title="Report correct AED status (AI feedback)"
+                                    className="mt-1 w-full flex items-center justify-center gap-1 px-1.5 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-sm transition-colors"
+                                    data-testid={`email-img-feedback-${d.sentinel_id}`}
+                                  >
+                                    <Edit3 className="w-2.5 h-2.5" />
+                                    <span className="text-[7px] font-bold tracking-wider">AI FEEDBACK</span>
                                   </button>
                                 </div>
                               ) : (
@@ -1915,6 +1923,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
         </div>
       </div>
       {drawerDevice && <DeviceDrawer device={drawerDevice} onClose={() => setDrawerDevice(null)} />}
+      {feedbackDevice && <StatusFeedbackModal device={feedbackDevice} subscriber={subscriber} onClose={() => setFeedbackDevice(null)} />}
       {imageHistoryId && <ImageHistoryModal sentinelId={imageHistoryId} subscriber={subscriber} onClose={() => setImageHistoryId(null)} />}
     </div>
   );
