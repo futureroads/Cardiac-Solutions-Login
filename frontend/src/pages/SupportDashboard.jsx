@@ -1833,7 +1833,16 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                             <td className="p-2 border border-slate-200" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                               {d.image_url ? (
                                 <div>
-                                  <img src={d.image_url} alt={d.sentinel_id} className="max-w-[100px] max-h-[60px] rounded-sm" loading="lazy" />
+                                  <img
+                                    src={d.image_url}
+                                    alt={d.sentinel_id}
+                                    title="Click to view AED details & give AI feedback"
+                                    onClick={e => { e.stopPropagation(); setDrawerDevice(d); }}
+                                    onMouseDown={e => e.stopPropagation()}
+                                    className="max-w-[100px] max-h-[60px] rounded-sm cursor-pointer hover:ring-2 hover:ring-cyan-400 transition"
+                                    loading="lazy"
+                                    data-testid={`email-img-open-${d.sentinel_id}`}
+                                  />
                                   {capturedAt && <div className="text-[9px] text-slate-400 mt-0.5">{capturedAt}</div>}
                                   <button
                                     onClick={e => { e.stopPropagation(); setImageHistoryId(d.sentinel_id); }}
