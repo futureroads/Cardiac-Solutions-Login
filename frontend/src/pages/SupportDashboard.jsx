@@ -1336,6 +1336,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
   const [notifyMode, setNotifyMode] = useState("subscriber"); // 'subscriber' | 'location'
   const [locationLookup, setLocationLookup] = useState(null); // {groups, orphan_devices, orphan_count}
   const [locLoading, setLocLoading] = useState(false);
+  const [selectedLocs, setSelectedLocs] = useState(new Set()); // loc_keys checked for send
 
   // Fetch subscriber notify_mode once
   useEffect(() => {
@@ -1385,6 +1386,12 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
         if (r.ok) {
           const d = await r.json();
           setLocationLookup(d);
+          // Default to all NON-ORPHAN locations selected
+          setSelectedLocs(new Set(
+            (d.groups || [])
+              .filter(g => (g.emails || []).length > 0)
+              .map(g => g.loc_key)
+          ));
         }
       } catch (e) {
         // swallow
@@ -1520,8 +1527,10 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
       toast.error(`Cannot send: ${locationLookup.orphan_count} AED(s) at locations with no contacts. Fix in Location Contacts first.`);
       return;
     }
-    const groups = (locationLookup.groups || []).filter(g => (g.emails || []).length > 0);
-    if (groups.length === 0) { toast.error("No location groups to send"); return; }
+    const groups = (locationLookup.groups || []).filter(g =>
+      (g.emails || []).length > 0 && selectedLocs.has(g.loc_key)
+    );
+    if (groups.length === 0) { toast.error("No locations selected"); return; }
     if (!window.confirm(`Send ${groups.length} per-location email(s) for ${subscriber}?`)) return;
 
     setSending(true);
@@ -1653,35 +1662,74 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                 )}
                 {locationLookup && !locLoading && (
                   <div className="text-[10px] space-y-1.5">
-                    <div className="font-orbitron text-cyan-200 tracking-wider">
-                      WILL SEND <span className="text-emerald-300">{locationLookup.groups.filter(g => (g.emails||[]).length>0).length}</span> EMAIL(S)
-                      {" · "}
-                      <span className="text-cyan-300">{locationLookup.group_count}</span> LOCATION(S)
-                      {locationLookup.orphan_count > 0 && (
-                        <span className="text-red-400">{" · "}{locationLookup.orphan_count} ORPHAN AED(S) — SEND BLOCKED</span>
-                      )}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="font-orbitron text-cyan-200 tracking-wider">
+                        SELECTED <span className="text-emerald-300">{selectedLocs.size}</span>
+                        {" / "}
+                        <span className="text-cyan-300">{locationLookup.groups.filter(g => (g.emails||[]).length>0).length}</span>{" "}
+                        ELIGIBLE LOCATION(S)
+                        {locationLookup.orphan_count > 0 && (
+                          <span className="text-red-400">{" · "}{locationLookup.orphan_count} ORPHAN AED(S) — SEND BLOCKED</span>
+                        )}
+                      </div>
+                      <div className="ml-auto flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedLocs(new Set(
+                            locationLookup.groups
+                              .filter(g => (g.emails||[]).length > 0)
+                              .map(g => g.loc_key)
+                          ))}
+                          className="font-orbitron text-[9px] tracking-widest px-2 py-1 rounded-sm border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+                        >SELECT ALL</button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedLocs(new Set())}
+                          className="font-orbitron text-[9px] tracking-widest px-2 py-1 rounded-sm border border-slate-600 text-slate-400 hover:bg-slate-800"
+                        >NONE</button>
+                      </div>
                     </div>
-                    <div className="max-h-[140px] overflow-y-auto border border-slate-800 rounded-sm divide-y divide-slate-800">
+                    <div className="max-h-[180px] overflow-y-auto border border-slate-800 rounded-sm divide-y divide-slate-800">
                       {locationLookup.groups.map(g => {
                         const orphan = (g.emails||[]).length === 0;
+                        const checked = selectedLocs.has(g.loc_key);
+                        const toggle = () => {
+                          if (orphan) return;
+                          setSelectedLocs(prev => {
+                            const next = new Set(prev);
+                            if (next.has(g.loc_key)) next.delete(g.loc_key);
+                            else next.add(g.loc_key);
+                            return next;
+                          });
+                        };
                         return (
-                          <div key={g.loc_key} className={`px-2 py-1 ${orphan ? "bg-red-500/5" : ""}`}>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-[10px] text-slate-300 truncate flex-1">
-                                {g.site} / {g.building}
+                          <label
+                            key={g.loc_key}
+                            onClick={orphan ? undefined : toggle}
+                            className={`flex items-center gap-2 px-2 py-1 ${orphan ? "bg-red-500/5 cursor-not-allowed" : "cursor-pointer hover:bg-cyan-500/5"}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked && !orphan}
+                              disabled={orphan}
+                              onChange={() => {}}
+                              className="accent-cyan-500 w-3 h-3"
+                              data-testid={`loc-check-${g.loc_key}`}
+                            />
+                            <span className="font-mono text-[10px] text-slate-300 truncate flex-1">
+                              {g.site} / {g.building}
+                            </span>
+                            <span className="font-mono text-[10px] text-cyan-300 whitespace-nowrap">
+                              {(g.devices||[]).length} AED
+                            </span>
+                            {orphan ? (
+                              <span className="font-orbitron text-[8px] tracking-widest text-red-400">NO CONTACTS</span>
+                            ) : (
+                              <span className="font-mono text-[10px] text-slate-500 truncate max-w-[280px]" title={(g.emails||[]).join(", ")}>
+                                → {(g.emails||[]).slice(0,2).join(", ")}{(g.emails||[]).length>2 ? ` +${g.emails.length-2}` : ""}
                               </span>
-                              <span className="font-mono text-[10px] text-cyan-300 whitespace-nowrap">
-                                {(g.devices||[]).length} AED
-                              </span>
-                              {orphan ? (
-                                <span className="font-orbitron text-[8px] tracking-widest text-red-400">NO CONTACTS</span>
-                              ) : (
-                                <span className="font-mono text-[10px] text-slate-500 truncate max-w-[280px]" title={(g.emails||[]).join(", ")}>
-                                  → {(g.emails||[]).slice(0,2).join(", ")}{(g.emails||[]).length>2 ? ` +${g.emails.length-2}` : ""}
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                            )}
+                          </label>
                         );
                       })}
                     </div>
@@ -1841,14 +1889,18 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
             disabled={
               sending ||
               activeDevices.length === 0 ||
-              (notifyMode === "location" && (locLoading || !locationLookup || (locationLookup.orphan_count || 0) > 0))
+              (notifyMode === "location" && (
+                locLoading || !locationLookup ||
+                (locationLookup.orphan_count || 0) > 0 ||
+                selectedLocs.size === 0
+              ))
             }
             className="font-orbitron text-xs px-6 py-2 border border-cyan-500/50 text-cyan-400 rounded-sm hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-2"
             data-testid="send-email-btn"
           >
             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
             {notifyMode === "location" && locationLookup
-              ? `SEND ${locationLookup.groups.filter(g => (g.emails||[]).length>0).length} EMAIL(S)`
+              ? `SEND ${selectedLocs.size} EMAIL(S)`
               : "SEND EMAIL"}
           </button>
         </div>
