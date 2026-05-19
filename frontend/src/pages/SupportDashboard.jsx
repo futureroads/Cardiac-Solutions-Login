@@ -1241,6 +1241,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
   const [loadingDevices, setLoadingDevices] = useState(true);
   const [drawerDevice, setDrawerDevice] = useState(null);
   const [feedbackDevice, setFeedbackDevice] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [customDetails, setCustomDetails] = useState({});
   const [imageHistoryId, setImageHistoryId] = useState(null);
 
@@ -1901,6 +1902,17 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
           <button onClick={onClose} className="font-orbitron text-xs px-6 py-2 border border-slate-600 text-slate-400 rounded-sm hover:bg-slate-800">
             CANCEL
           </button>
+          {notifyMode === "location" && (
+            <button
+              onClick={() => setPreviewOpen(true)}
+              disabled={!locationLookup || selectedLocs.size === 0}
+              data-testid="preview-email-btn"
+              className="font-orbitron text-xs px-6 py-2 border border-emerald-500/50 text-emerald-300 rounded-sm hover:bg-emerald-500/10 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Preview the email(s) that will be sent"
+            >
+              PREVIEW
+            </button>
+          )}
           <button
             onClick={handleSend}
             disabled={
@@ -1925,6 +1937,15 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
       {drawerDevice && <DeviceDrawer device={drawerDevice} onClose={() => setDrawerDevice(null)} />}
       {feedbackDevice && <StatusFeedbackModal device={feedbackDevice} subscriber={subscriber} onClose={() => setFeedbackDevice(null)} />}
       {imageHistoryId && <ImageHistoryModal sentinelId={imageHistoryId} subscriber={subscriber} onClose={() => setImageHistoryId(null)} />}
+      {previewOpen && (
+        <LocationPreviewModal
+          locationLookup={locationLookup}
+          selectedLocs={selectedLocs}
+          subjectTemplate={subjectTemplate}
+          buildEmailHtml={buildEmailHtml}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -2013,6 +2034,113 @@ function StatusFeedbackModal({ device, subscriber, onClose }) {
     </div>
   );
 }
+
+function LocationPreviewModal({ locationLookup, selectedLocs, subjectTemplate, buildEmailHtml, onClose }) {
+  const groups = ((locationLookup && locationLookup.groups) || [])
+    .filter(g => (g.emails || []).length > 0 && selectedLocs.has(g.loc_key));
+  const [idx, setIdx] = useState(0);
+  const current = groups[idx];
+
+  if (!current) {
+    return (
+      <div className="fixed inset-0 bg-black/70 z-[70] flex items-center justify-center" onClick={onClose}>
+        <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm p-6 text-slate-400 font-orbitron text-xs" onClick={e => e.stopPropagation()}>
+          No locations selected — go back and pick at least one.
+        </div>
+      </div>
+    );
+  }
+
+  const locLabel = [current.site, current.building].filter(Boolean).join(" / ");
+  const renderedSubject = (subjectTemplate || "AED Report — {{location}}").replaceAll("{{location}}", locLabel);
+  const sidSet = new Set((current.devices || []).map(d => d.sentinel_id));
+  const html = buildEmailHtml(sidSet);
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-[#0a0f1c] border border-emerald-500/30 rounded-sm w-[920px] max-w-[97vw] max-h-[92vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+        data-testid="location-preview-modal"
+      >
+        {/* Header */}
+        <div className="p-4 border-b border-emerald-500/20 flex items-center gap-3">
+          <Mail className="w-4 h-4 text-emerald-300" />
+          <div className="font-orbitron text-sm text-emerald-300 tracking-wider">EMAIL PREVIEW</div>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => setIdx(Math.max(0, idx - 1))}
+              disabled={idx === 0}
+              className="font-orbitron text-[10px] px-3 py-1 rounded-sm border border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-30"
+              data-testid="preview-prev"
+            >
+              ‹ PREV
+            </button>
+            <div className="font-orbitron text-[10px] tracking-widest text-slate-400 min-w-[80px] text-center">
+              {idx + 1} / {groups.length}
+            </div>
+            <button
+              onClick={() => setIdx(Math.min(groups.length - 1, idx + 1))}
+              disabled={idx >= groups.length - 1}
+              className="font-orbitron text-[10px] px-3 py-1 rounded-sm border border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-30"
+              data-testid="preview-next"
+            >
+              NEXT ›
+            </button>
+            <button onClick={onClose} className="ml-2 text-slate-500 hover:text-white">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Email metadata */}
+        <div className="px-5 py-3 border-b border-slate-800 bg-slate-950/40 text-xs space-y-1.5">
+          <div className="flex gap-2">
+            <span className="font-orbitron text-[9px] text-slate-500 tracking-widest w-[80px]">LOCATION:</span>
+            <span className="text-cyan-300 font-mono">{locLabel}</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="font-orbitron text-[9px] text-slate-500 tracking-widest w-[80px]">TO:</span>
+            <span className="text-slate-300 font-mono">{(current.emails || []).join(", ")}</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="font-orbitron text-[9px] text-slate-500 tracking-widest w-[80px]">BCC:</span>
+            <span className="text-slate-400 font-mono">tprince@cardiac-solutions.net</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="font-orbitron text-[9px] text-slate-500 tracking-widest w-[80px]">SUBJECT:</span>
+            <span className="text-white font-medium">{renderedSubject}</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="font-orbitron text-[9px] text-slate-500 tracking-widest w-[80px]">DEVICES:</span>
+            <span className="text-cyan-300 font-mono">{(current.devices || []).length}</span>
+          </div>
+        </div>
+
+        {/* Email body */}
+        <div className="flex-1 overflow-y-auto bg-white p-4">
+          <div dangerouslySetInnerHTML={{ __html: html }} />
+        </div>
+
+        {/* Footer */}
+        <div className="p-3 border-t border-slate-800 flex items-center gap-2">
+          <div className="text-[10px] font-orbitron tracking-wider text-slate-500">
+            This is exactly what will be sent. Close to return and click SEND.
+          </div>
+          <button
+            onClick={onClose}
+            className="ml-auto font-orbitron text-[10px] px-4 py-1.5 rounded-sm border border-slate-700 text-slate-300 hover:bg-slate-800"
+            data-testid="preview-close-btn"
+          >
+            CLOSE
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 
 function ImageHistoryModal({ sentinelId, subscriber, onClose }) {
   const [images, setImages] = useState([]);
