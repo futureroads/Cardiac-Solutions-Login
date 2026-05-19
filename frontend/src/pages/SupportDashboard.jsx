@@ -1388,12 +1388,8 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
         if (r.ok) {
           const d = await r.json();
           setLocationLookup(d);
-          // Default to all NON-ORPHAN locations selected
-          setSelectedLocs(new Set(
-            (d.groups || [])
-              .filter(g => (g.emails || []).length > 0)
-              .map(g => g.loc_key)
-          ));
+          // Default: NO locations selected — user must opt-in per location
+          setSelectedLocs(new Set());
         }
       } catch (e) {
         // swallow
