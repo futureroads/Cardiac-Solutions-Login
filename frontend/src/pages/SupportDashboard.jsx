@@ -1750,6 +1750,16 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
           </div>
           {loadingDevices ? (
             <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /><span className="ml-2 text-slate-400 text-xs">Loading devices...</span></div>
+          ) : (notifyMode === "location" && selectedLocs.size === 0) ? (
+            <div className="bg-slate-900/40 border border-dashed border-slate-700 rounded-sm p-8 text-center">
+              <Mail className="w-6 h-6 text-slate-600 mx-auto mb-2" />
+              <div className="font-orbitron text-[11px] tracking-wider text-slate-400">
+                NO LOCATIONS SELECTED
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">
+                Check a location above (or click SELECT ALL) to preview & send.
+              </div>
+            </div>
           ) : (
           <div className="bg-white rounded-sm p-6 text-slate-900 text-sm">
             <p className="mb-2">Hello <strong>{contact?.contact_name || subscriber}</strong>,</p>
@@ -1757,9 +1767,21 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
             <p className="mb-4 text-[13px]">Resolving these issues is critical to effectively monitor the health of your device. This also ensures that your units are ready to be used in an emergency.</p>
 
             {(() => {
+              // In per-location mode, only show devices from selected locations
+              const selectedSidSet = (notifyMode === "location" && locationLookup)
+                ? new Set(
+                    (locationLookup.groups || [])
+                      .filter(g => selectedLocs.has(g.loc_key))
+                      .flatMap(g => (g.devices || []).map(d => d.sentinel_id))
+                  )
+                : null;
               // Merge sections same as email builder
               const merged = {};
               for (const [status, devs] of Object.entries(filteredGrouped)) {
+                const filteredDevs = selectedSidSet
+                  ? devs.filter(d => selectedSidSet.has(d.sentinel_id))
+                  : devs;
+                if (filteredDevs.length === 0) continue;
                 const sec = {
                   "EXPIRED B/P": { title: "AED Batteries and Pads Expired/Expiring", action: "Next Steps", actionText: "Please contact our team by phone or email as soon as possible to arrange for replacement options for these devices." },
                   "EXPIRING BATT/PADS": { title: "AED Batteries and Pads Expired/Expiring", action: "Next Steps", actionText: "Please contact our team by phone or email as soon as possible to arrange for replacement options for these devices." },
@@ -1769,7 +1791,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                   "UNKNOWN": { title: "AED(s) Status Unknown", action: "Required Action", actionText: "We are unable to determine the current status of these units." },
                 }[status] || { title: status, action: "Required Action", actionText: "Please inspect." };
                 if (!merged[sec.title]) merged[sec.title] = { ...sec, devices: [] };
-                merged[sec.title].devices.push(...devs);
+                merged[sec.title].devices.push(...filteredDevs);
               }
               return Object.entries(merged).map(([title, sec]) => (
                 <div key={title} className="mb-4">
