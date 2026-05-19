@@ -1404,9 +1404,13 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
     const s = `style`;
     let html = `<div ${s}="font-family:Arial,Helvetica,sans-serif;max-width:700px;margin:0 auto;color:#333;">`;
 
-    // Greeting
-    const greeting = contact?.contact_name || subscriber;
-    html += `<p ${s}="font-size:14px;">Hello ${greeting},</p>`;
+    // Greeting — in per-location mode there's no single contact, so keep it neutral
+    if (notifyMode === "location") {
+      html += `<p ${s}="font-size:14px;">Hello,</p>`;
+    } else {
+      const greeting = contact?.contact_name || subscriber;
+      html += `<p ${s}="font-size:14px;">Hello ${greeting},</p>`;
+    }
     html += `<p ${s}="font-size:14px;">During our recent review of your AED(s), we identified issues as outlined below.</p>`;
     html += `<p ${s}="font-size:14px;">Resolving these issues is critical to effectively monitor the health of your device. This also ensures that your units are ready to be used in an emergency.</p>`;
 
@@ -1764,7 +1768,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
             </div>
           ) : (
           <div className="bg-white rounded-sm p-6 text-slate-900 text-sm">
-            <p className="mb-2">Hello <strong>{contact?.contact_name || subscriber}</strong>,</p>
+            <p className="mb-2">Hello{notifyMode === "location" ? "" : <> <strong>{contact?.contact_name || subscriber}</strong></>},</p>
             <p className="mb-2 text-[13px]">During our recent review of your AED(s), we identified issues as outlined below.</p>
             <p className="mb-4 text-[13px]">Resolving these issues is critical to effectively monitor the health of your device. This also ensures that your units are ready to be used in an emergency.</p>
 
