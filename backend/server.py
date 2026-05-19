@@ -4,6 +4,7 @@ import re
 import logging
 import asyncio
 import hashlib
+import hmac
 import secrets
 import traceback
 import aiohttp
@@ -3009,6 +3010,199 @@ def _verify_sns_signature(sns_msg: dict) -> bool:
     except Exception as e:
         logger.warning(f"[sns-webhook] signature verify failed: {e}")
         return False
+
+
+
+# ---------- Mailgun webhook ----------
+_MAILGUN_EVENT_MAP = {
+    "accepted": "processed",
+    "delivered": "delivered",
+    "failed": "bounce",
+    "rejected": "bounce",
+    "opened": "open",
+    "clicked": "click",
+    "unsubscribed": "unsubscribe",
+    "complained": "spamreport",
+    "stored": "processed",
+}
+
+
+def _verify_mailgun_signature(signing_key: str, timestamp: str, token: str, signature: str) -> bool:
+    """Mailgun signature = HMAC-SHA256(timestamp + token, signing_key) hex digest."""
+    if not signing_key or not timestamp or not token or not signature:
+        return False
+    try:
+        # Reject events older than 15 minutes to prevent replay
+        try:
+            ts = int(timestamp)
+            now_ts = int(datetime.now(timezone.utc).timestamp())
+            if abs(now_ts - ts) > 900:
+                logger.warning(f"[mailgun-webhook] stale timestamp diff={now_ts - ts}")
+                return False
+        except (ValueError, TypeError):
+            return False
+        mac = hmac.new(signing_key.encode("utf-8"), f"{timestamp}{token}".encode("utf-8"), hashlib.sha256)
+        return hmac.compare_digest(mac.hexdigest(), signature)
+    except Exception as e:
+        logger.warning(f"[mailgun-webhook] sig verify error: {e}")
+        return False
+
+
+@api_router.post("/webhooks/mailgun")
+async def mailgun_event_webhook(request: Request):
+    """Receive Mailgun webhook events.
+
+    Verifies HMAC-SHA256 signature, maps the event to the same `notification_history`
+    fields used by SendGrid/Resend/SES so the UI works identically across all providers.
+    """
+    raw_body = await request.body()
+    try:
+        import json as _json
+        envelope = _json.loads(raw_body.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    sig = envelope.get("signature") or {}
+    timestamp = str(sig.get("timestamp") or "")
+    token = str(sig.get("token") or "")
+    signature = str(sig.get("signature") or "")
+
+    signing_key = os.environ.get("MAILGUN_WEBHOOK_SIGNING_KEY", "").strip()
+    skip_verify = os.environ.get("MAILGUN_WEBHOOK_SKIP_VERIFY", "").strip().lower() == "true"
+    if signing_key and not skip_verify:
+        if not _verify_mailgun_signature(signing_key, timestamp, token, signature):
+            raise HTTPException(status_code=401, detail="Invalid Mailgun webhook signature")
+
+    event_data = envelope.get("event-data") or {}
+    event_raw = (event_data.get("event") or "").lower()
+    event_type = _MAILGUN_EVENT_MAP.get(event_raw, event_raw)
+
+    message = event_data.get("message") or {}
+    headers = message.get("headers") or {}
+    mailgun_msg_id = headers.get("message-id") or ""
+    candidates: list[str] = []
+    if mailgun_msg_id:
+        stripped = mailgun_msg_id.strip("<>")
+        candidates = [mailgun_msg_id, f"<{mailgun_msg_id}>", stripped, f"<{stripped}>"]
+
+    recipient = event_data.get("recipient") or ""
+    ts_unix = event_data.get("timestamp") or 0
+    try:
+        iso_ts = datetime.fromtimestamp(float(ts_unix), tz=timezone.utc).isoformat()
+    except Exception:
+        iso_ts = datetime.now(timezone.utc).isoformat()
+
+    click_url = None
+    bounce_reason = None
+    user_agent = None
+    ip_addr = None
+    if event_raw == "clicked":
+        click_url = event_data.get("url")
+        ip_addr = event_data.get("ip")
+        client_info = event_data.get("client-info") or {}
+        user_agent = client_info.get("user-agent")
+    elif event_raw == "opened":
+        ip_addr = event_data.get("ip")
+        client_info = event_data.get("client-info") or {}
+        user_agent = client_info.get("user-agent")
+    elif event_raw in ("failed", "rejected"):
+        delivery = event_data.get("delivery-status") or {}
+        bounce_reason = delivery.get("message") or delivery.get("description") or event_data.get("reason") or ""
+
+    log_record = {
+        "received_at": datetime.now(timezone.utc).isoformat(),
+        "provider": "mailgun",
+        "event": event_type,
+        "raw_event": event_raw,
+        "email": recipient,
+        "sg_message_id": mailgun_msg_id,
+        "url": click_url,
+        "reason": bounce_reason,
+        "timestamp": iso_ts,
+        "matched_history": False,
+    }
+
+    matched = 0
+    bounce_record_event = None
+    if candidates:
+        event_record = {
+            "event": event_type,
+            "email": recipient,
+            "timestamp": iso_ts,
+            "provider": "mailgun",
+            "url": click_url,
+            "reason": bounce_reason,
+            "useragent": user_agent,
+            "ip": ip_addr,
+        }
+        event_record = {k: v for k, v in event_record.items() if v is not None}
+        update = {"$push": {"events": event_record}}
+        if event_type == "delivered":
+            update.setdefault("$set", {})["delivered_at"] = iso_ts
+        elif event_type == "open":
+            update["$inc"] = {"open_count": 1}
+            update.setdefault("$set", {})["last_opened_at"] = iso_ts
+            update["$min"] = {"first_opened_at": iso_ts}
+        elif event_type == "click":
+            update["$inc"] = {"click_count": 1}
+            update.setdefault("$set", {})["last_clicked_at"] = iso_ts
+        elif event_type in ("bounce", "blocked", "dropped"):
+            update.setdefault("$set", {})["bounced"] = True
+            update["$set"]["bounce_reason"] = bounce_reason or ""
+        elif event_type == "spamreport":
+            update.setdefault("$set", {})["spam_reported"] = True
+
+        res = await _db.notification_history.update_one(
+            {"sg_message_id": {"$in": candidates}}, update
+        )
+        if res.matched_count:
+            matched = 1
+            log_record["matched_history"] = True
+            rec_doc = await _db.notification_history.find_one(
+                {"sg_message_id": {"$in": candidates}},
+                {"_id": 0, "subscriber": 1, "linked_sentinel_ids": 1, "to_email": 1, "sg_message_id": 1},
+            )
+            if event_type == "open" and rec_doc and rec_doc.get("linked_sentinel_ids"):
+                to_email_norm = (rec_doc.get("to_email") or "").strip().lower()
+                ev_email_norm = (recipient or "").strip().lower()
+                if to_email_norm and ev_email_norm and to_email_norm == ev_email_norm:
+                    sub = rec_doc.get("subscriber")
+                    for sid in rec_doc["linked_sentinel_ids"]:
+                        try:
+                            await _db.notified_aeds.update_one(
+                                {"sentinel_id": sid, "subscriber": sub, "email_opened": {"$ne": True}},
+                                {"$set": {"email_opened": True, "email_opened_at": iso_ts}},
+                            )
+                        except Exception:
+                            pass
+            if event_type in ("bounce", "blocked", "dropped") and rec_doc:
+                bounce_record_event = (rec_doc, {
+                    "event": event_type,
+                    "reason": bounce_reason or "",
+                    "timestamp": iso_ts,
+                })
+
+    try:
+        await _db.sendgrid_event_log.insert_one(log_record)
+        cnt = await _db.sendgrid_event_log.count_documents({})
+        if cnt > 500:
+            excess = cnt - 500
+            old_ids = [
+                d["_id"] async for d in _db.sendgrid_event_log.find({}, {"_id": 1}).sort("received_at", 1).limit(excess)
+            ]
+            if old_ids:
+                await _db.sendgrid_event_log.delete_many({"_id": {"$in": old_ids}})
+    except Exception as e:
+        logger.warning(f"[mailgun-webhook] failed to log event: {e}")
+
+    logger.info(f"[mailgun-webhook] event={event_raw} msg_id={mailgun_msg_id} matched={matched}")
+
+    if bounce_record_event:
+        rec_doc, ev = bounce_record_event
+        asyncio.create_task(_send_bounce_alert_email(rec_doc, ev))
+
+    return {"received": 1, "processed": 1, "matched": matched}
+
 
 
 @api_router.post("/webhooks/ses")
