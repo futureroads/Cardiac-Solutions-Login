@@ -1607,7 +1607,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
         </div>
 
         {/* Addresses */}
-        <div className="px-5 py-3 border-b border-cyan-500/15 flex-shrink-0">
+        <div className="px-5 py-3 border-b border-cyan-500/15 overflow-y-auto" style={{ maxHeight: "45vh" }}>
           <div className="font-orbitron text-[8px] tracking-wider text-slate-500 mb-2">ADDRESSES - CONFIRM BEFORE SENDING</div>
           <div className="space-y-2">
             <div className="flex items-center gap-2">
