@@ -96,6 +96,19 @@ export default function StarkDashboard({ user, onLogout }) {
   const [notifToday, setNotifToday] = useState(0);
   const [notif7d, setNotif7d] = useState(0);
   const [notif30d, setNotif30d] = useState(0);
+  const [lostModalOpen, setLostModalOpen] = useState(false);
+  const [lostData, setLostData] = useState(null);
+  const [lostLoading, setLostLoading] = useState(false);
+
+  const openLostContactModal = async () => {
+    setLostModalOpen(true);
+    if (lostData) return;
+    setLostLoading(true);
+    try {
+      const r = await fetch(`${API}/dashboard/lost-contact-devices`, { headers: { Authorization: `Bearer ${token}` } });
+      if (r.ok) setLostData(await r.json());
+    } catch {} finally { setLostLoading(false); }
+  };
   const [diEvents, setDiEvents] = useState([]);
 
   useEffect(() => {
@@ -987,14 +1000,7 @@ ${briefingText}`,
   // Ticket status rows
   const tc = ticketCounts || {};
   const ticketRows = [
-    { label: "Needs Attention", count: tc.needs_attention ?? stats.alerts, color: "text-red-400", bg: "bg-red-500/10 border-red-500/20" },
-    { label: "Open", count: tc.open ?? 0, color: "text-green-400", bg: "bg-slate-800/50 border-slate-700/30" },
-    { label: "Dispatched", count: tc.dispatched ?? 0, color: "text-green-400", bg: "bg-slate-800/50 border-slate-700/30" },
-    { label: "Dispatch Acknowledged", count: tc.dispatch_acknowledged ?? 0, color: "text-green-400", bg: "bg-green-500/10 border-green-500/20" },
-    { label: "En Route", count: tc.en_route ?? 0, color: "text-yellow-400", bg: "bg-yellow-500/10 border-yellow-500/20" },
-    { label: "On Site", count: tc.on_site ?? 0, color: "text-orange-400", bg: "bg-orange-500/10 border-orange-500/20" },
-    { label: "Completed", count: tc.completed ?? 0, color: "text-cyan-400", bg: "bg-slate-800/50 border-slate-700/30" },
-    { label: "Confirmed", count: tc.confirmed ?? 0, color: "text-cyan-400", bg: "bg-slate-800/50 border-slate-700/30" },
+    { label: "Lost Contact", count: (totals.detailed_status_counts || {}).lost_contact ?? 0, color: "text-rose-400", bg: "bg-rose-500/10 border-rose-500/20" },
   ];
 
   return (
@@ -1370,7 +1376,14 @@ ${briefingText}`,
             <div className="plabel">Service Tickets <span className="ml-2 text-[7px] px-[5px] py-[1px] bg-yellow-500/20 text-yellow-400 rounded-sm font-bold tracking-wider">IN DEV</span></div>
             <div className="flex flex-col gap-[4px] mt-2">
               {ticketRows.map((row, i) => (
-                <div key={i} className={`flex items-center justify-between px-[10px] py-[8px] border rounded-sm ${row.bg}`}>
+                <div
+                  key={i}
+                  onClick={(e) => {
+                    if (row.label === "Lost Contact") { e.stopPropagation(); openLostContactModal(); }
+                  }}
+                  data-testid={row.label === "Lost Contact" ? "stark-lost-contact-row" : undefined}
+                  className={`flex items-center justify-between px-[10px] py-[8px] border rounded-sm ${row.bg} ${row.label === "Lost Contact" ? "cursor-pointer hover:brightness-125" : ""}`}
+                >
                   <span className="text-[11px] text-slate-200/90">{row.label}</span>
                   <span className={`font-orbitron text-[14px] font-black ${row.color}`}>{row.count}</span>
                 </div>
@@ -1629,6 +1642,74 @@ function ReadinessTrendModal({ token, onClose }) {
           )}
         </div>
       </div>
+
+      {lostModalOpen && (
+        <div className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-4" onClick={() => setLostModalOpen(false)}>
+          <div
+            className="bg-[#06121f] border border-rose-500/40 rounded-sm w-[960px] max-w-[97vw] max-h-[88vh] flex flex-col shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+            data-testid="lost-contact-modal"
+          >
+            <div className="p-4 border-b border-rose-500/20 flex items-center gap-3">
+              <div className="font-orbitron text-sm text-rose-300 tracking-[0.2em]">LOST CONTACT — AED DETAILS</div>
+              {lostData && (
+                <div className="font-orbitron text-[10px] text-slate-400 tracking-wider">
+                  <span className="text-rose-300">{lostData.count}</span> DEVICE(S) ·{" "}
+                  <span className="text-rose-300">{lostData.subscriber_count}</span> SUBSCRIBER(S)
+                </div>
+              )}
+              <button onClick={() => setLostModalOpen(false)} className="ml-auto text-slate-400 hover:text-white font-mono">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {lostLoading && <div className="text-center py-12 text-slate-500 font-orbitron text-[11px] tracking-wider">LOADING…</div>}
+              {!lostLoading && lostData && lostData.count === 0 && (
+                <div className="text-center py-12 text-emerald-400 font-orbitron text-[11px] tracking-wider">NO AEDS IN LOST CONTACT 🎉</div>
+              )}
+              {!lostLoading && lostData && (lostData.groups || []).map((g) => (
+                <div key={g.subscriber} className="border border-slate-800 rounded-sm">
+                  <div className="px-3 py-2 bg-slate-900/60 border-b border-slate-800 flex items-center gap-2">
+                    <span className="font-orbitron text-[11px] text-cyan-300 tracking-wider">{g.subscriber}</span>
+                    <span className="font-orbitron text-[9px] text-rose-300 bg-rose-500/10 border border-rose-500/30 px-2 py-0.5 rounded-sm">{g.count} LOST</span>
+                  </div>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="font-orbitron text-[9px] tracking-widest text-slate-500 bg-slate-950/40">
+                        <th className="text-left px-3 py-1.5">SENTINEL ID</th>
+                        <th className="text-left px-3 py-1.5">SITE / BUILDING / PLACEMENT</th>
+                        <th className="text-left px-3 py-1.5">MODEL</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {g.devices.map((d) => (
+                        <tr key={d.sentinel_id} className="border-t border-slate-800/60 hover:bg-rose-500/5">
+                          <td className="px-3 py-1.5 text-cyan-300 font-mono text-[11px]">{d.sentinel_id}</td>
+                          <td className="px-3 py-1.5 text-slate-300 max-w-[420px]">
+                            {[d.site, d.building, d.placement].filter(Boolean).join(" / ") || "—"}
+                          </td>
+                          <td className="px-3 py-1.5 text-slate-400">{d.model || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+            <div className="p-3 border-t border-slate-800 flex items-center justify-between">
+              {lostData?.generated_at && (
+                <div className="font-orbitron text-[9px] text-slate-600 tracking-wider">
+                  AS OF {new Date(lostData.generated_at).toLocaleString()}
+                </div>
+              )}
+              <button
+                onClick={() => setLostModalOpen(false)}
+                className="ml-auto font-orbitron text-[10px] tracking-widest px-4 py-1.5 rounded-sm border border-slate-700 text-slate-300 hover:bg-slate-800"
+              >
+                CLOSE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

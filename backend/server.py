@@ -6616,6 +6616,31 @@ async def expiring_expired_bp():
         return {"totals": {"expired_bp": 0, "expiring_batt_pads": 0}, "devices": [], "by_subscriber": [], "_error": "Readisys API unavailable"}
 
 
+@api_router.get("/dashboard/lost-contact-devices")
+async def dashboard_lost_contact_devices(current_user: dict = Depends(get_current_user)):
+    """Every AED currently in LOST CONTACT status, grouped by subscriber.
+    Uses the same 5-min cached fleet scan as By-Model reports."""
+    devs = await _fetch_all_devices_flat()
+    lost = [
+        d for d in devs
+        if (d.get("detailed_status") or "").strip().upper() == "LOST CONTACT"
+    ]
+    by_sub: dict[str, list] = {}
+    for d in lost:
+        sub = d.get("subscriber") or "—"
+        by_sub.setdefault(sub, []).append(d)
+    groups = [
+        {"subscriber": s, "count": len(v), "devices": sorted(v, key=lambda x: (x.get("site") or "", x.get("sentinel_id") or ""))}
+        for s, v in sorted(by_sub.items(), key=lambda kv: -len(kv[1]))
+    ]
+    return {
+        "count": len(lost),
+        "subscriber_count": len(groups),
+        "groups": groups,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @api_router.get("/dashboard/top-cards")
 async def dashboard_top_cards(current_user: dict = Depends(get_current_user)):
     """Proxy to Readisys dashboard/top-cards for Readiness System real-time data."""
