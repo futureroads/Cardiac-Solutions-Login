@@ -1671,7 +1671,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                         SELECTED <span className="text-emerald-300">{selectedLocs.size}</span>
                         {" / "}
                         <span className="text-cyan-300">{locationLookup.groups.filter(g => (g.emails||[]).length>0).length}</span>{" "}
-                        ELIGIBLE LOCATION(S)
+                        ELIGIBLE LOCATION(S) — PICK ONE
                         {locationLookup.orphan_count > 0 && (
                           <span className="text-red-400">{" · "}{locationLookup.orphan_count} ORPHAN AED(S) — SEND BLOCKED</span>
                         )}
@@ -1679,18 +1679,9 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                       <div className="ml-auto flex gap-2">
                         <button
                           type="button"
-                          onClick={() => setSelectedLocs(new Set(
-                            locationLookup.groups
-                              .filter(g => (g.emails||[]).length > 0)
-                              .map(g => g.loc_key)
-                          ))}
-                          className="font-orbitron text-[9px] tracking-widest px-2 py-1 rounded-sm border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
-                        >SELECT ALL</button>
-                        <button
-                          type="button"
                           onClick={() => setSelectedLocs(new Set())}
                           className="font-orbitron text-[9px] tracking-widest px-2 py-1 rounded-sm border border-slate-600 text-slate-400 hover:bg-slate-800"
-                        >NONE</button>
+                        >CLEAR</button>
                       </div>
                     </div>
                     <div className="max-h-[400px] overflow-y-auto border border-slate-800 rounded-sm divide-y divide-slate-800">
@@ -1699,11 +1690,11 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                         const checked = selectedLocs.has(g.loc_key);
                         const toggle = () => {
                           if (orphan) return;
+                          // Single-select behaviour: clicking always sets THIS location as the only selection.
+                          // Click the same one again to deselect.
                           setSelectedLocs(prev => {
-                            const next = new Set(prev);
-                            if (next.has(g.loc_key)) next.delete(g.loc_key);
-                            else next.add(g.loc_key);
-                            return next;
+                            if (prev.has(g.loc_key) && prev.size === 1) return new Set();
+                            return new Set([g.loc_key]);
                           });
                         };
                         return (
@@ -1713,7 +1704,8 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                             className={`flex items-center gap-2 px-2 py-1 ${orphan ? "bg-red-500/5 cursor-not-allowed" : "cursor-pointer hover:bg-cyan-500/5"}`}
                           >
                             <input
-                              type="checkbox"
+                              type="radio"
+                              name="loc-radio"
                               checked={checked && !orphan}
                               disabled={orphan}
                               onChange={() => {}}
