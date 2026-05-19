@@ -1693,7 +1693,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                         >NONE</button>
                       </div>
                     </div>
-                    <div className="max-h-[180px] overflow-y-auto border border-slate-800 rounded-sm divide-y divide-slate-800">
+                    <div className="max-h-[400px] overflow-y-auto border border-slate-800 rounded-sm divide-y divide-slate-800">
                       {locationLookup.groups.map(g => {
                         const orphan = (g.emails||[]).length === 0;
                         const checked = selectedLocs.has(g.loc_key);
