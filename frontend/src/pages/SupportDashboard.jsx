@@ -1604,40 +1604,42 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
 
         {/* Addresses */}
         <div className="px-5 py-3 border-b border-cyan-500/15 overflow-y-auto" style={{ maxHeight: "45vh" }}>
-          <div className="font-orbitron text-[8px] tracking-wider text-slate-500 mb-2">ADDRESSES - CONFIRM BEFORE SENDING</div>
+          <div className="font-orbitron text-[8px] tracking-wider text-slate-500 mb-2">
+            {notifyMode === "location" ? "PER-LOCATION RECIPIENTS" : "ADDRESSES - CONFIRM BEFORE SENDING"}
+          </div>
           <div className="space-y-2">
+            {notifyMode !== "location" && (
+            <>
             <div className="flex items-center gap-2">
               <span className="font-orbitron text-[9px] text-cyan-400 w-[100px] flex-shrink-0">Customer (To):</span>
               <input value={toEmail} onChange={e => setToEmail(e.target.value)} placeholder="subscriber@email.com"
-                disabled={notifyMode === "location"}
-                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs disabled:opacity-40"
+                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs"
                 data-testid="to-email-input" />
             </div>
             <div className="flex items-center gap-2">
               <span className="font-orbitron text-[9px] text-cyan-400 w-[100px] flex-shrink-0">Sales rep (CC):</span>
               <input value={ccEmail} onChange={e => setCcEmail(e.target.value)} placeholder="salesrep@cardiac-solutions.net"
-                disabled={notifyMode === "location"}
-                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs disabled:opacity-40"
+                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs"
                 data-testid="cc-email-input" />
             </div>
             <div className="flex items-center gap-2">
               <span className="font-orbitron text-[9px] text-cyan-400 w-[100px] flex-shrink-0">BCC:</span>
               <input value={bccEmails} onChange={e => setBccEmails(e.target.value)} placeholder="internal1@email.com, internal2@email.com"
-                disabled={notifyMode === "location"}
-                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs disabled:opacity-40"
+                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs"
                 data-testid="bcc-email-input" />
             </div>
             <div className="flex items-center gap-2">
               <span className="font-orbitron text-[9px] text-cyan-400 w-[100px] flex-shrink-0">Subject:</span>
               <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Email subject line"
-                disabled={notifyMode === "location"}
-                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs disabled:opacity-40"
+                className="flex-1 px-2 py-1 rounded-sm bg-slate-900 border border-slate-700 text-white text-xs"
                 data-testid="subject-input" />
             </div>
+            </>
+            )}
             {notifyMode === "location" && (
-              <div className="mt-2 border border-cyan-500/40 bg-cyan-500/5 rounded-sm p-3 space-y-2">
+              <div className="border border-cyan-500/40 bg-cyan-500/5 rounded-sm p-3 space-y-2">
                 <div className="font-orbitron text-[10px] text-cyan-300 tracking-wider">
-                  PER-LOCATION MODE — TO/CC/BCC/SUBJECT ABOVE ARE IGNORED. EACH LOCATION GETS ITS OWN EMAIL.
+                  PER-LOCATION MODE — EACH SELECTED LOCATION GETS ITS OWN EMAIL.
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-orbitron text-[9px] text-cyan-400 w-[100px] flex-shrink-0">Subject tmpl:</span>
