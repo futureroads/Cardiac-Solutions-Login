@@ -1575,8 +1575,9 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
     else if (sent === 0) toast.error(`All ${failed} location send(s) failed`);
     else toast(`Sent ${sent}, ${failed} failed`);
     setSending(false);
+    // Clear selection so user can pick the next location, but stay in the modal
+    setSelectedLocs(new Set());
     onSent?.();
-    onClose();
   };
 
 
