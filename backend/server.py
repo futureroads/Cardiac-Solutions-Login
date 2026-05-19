@@ -2477,6 +2477,17 @@ async def notifications_today_count(current_user: dict = Depends(get_current_use
     return {"count": count, "date": today_start[:10]}
 
 
+@api_router.get("/support/notifications-window-counts")
+async def notifications_window_counts(current_user: dict = Depends(get_current_user)):
+    """Count notification emails sent in the last 7 and 30 days (rolling)."""
+    now = datetime.now(timezone.utc)
+    d7 = (now - timedelta(days=7)).isoformat()
+    d30 = (now - timedelta(days=30)).isoformat()
+    c7 = await _db.notification_history.count_documents({"sent_at": {"$gte": d7}})
+    c30 = await _db.notification_history.count_documents({"sent_at": {"$gte": d30}})
+    return {"last_7_days": c7, "last_30_days": c30}
+
+
 # ---------------------------------------------------------------------------
 # SendGrid Event Webhook — open/click/delivery tracking
 # ---------------------------------------------------------------------------

@@ -94,6 +94,8 @@ export default function StarkDashboard({ user, onLogout }) {
   const [supportData, setSupportData] = useState(null);
   // Notifications sent today
   const [notifToday, setNotifToday] = useState(0);
+  const [notif7d, setNotif7d] = useState(0);
+  const [notif30d, setNotif30d] = useState(0);
   const [diEvents, setDiEvents] = useState([]);
 
   useEffect(() => {
@@ -735,6 +737,14 @@ ${briefingText}`,
         const res = await fetch(`${API}/support/notifications-today-count`, { headers: { Authorization: `Bearer ${token}` } });
         if (res.ok) { const d = await res.json(); setNotifToday(d.count || 0); }
       } catch {}
+      try {
+        const res2 = await fetch(`${API}/support/notifications-window-counts`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res2.ok) {
+          const d2 = await res2.json();
+          setNotif7d(d2.last_7_days || 0);
+          setNotif30d(d2.last_30_days || 0);
+        }
+      } catch {}
     };
     fetchNotifCount();
     const i = setInterval(fetchNotifCount, 60000);
@@ -913,6 +923,8 @@ ${briefingText}`,
       else items.push({ type: "INFO", msg: `Adjusted percent ready is stable at ${Number(adjToday).toFixed(1)}% (same as yesterday).` });
     }
     items.push({ type: "SYS", msg: `SUBSCRIBER NOTIFICATIONS: ${notifToday} email${notifToday !== 1 ? "s" : ""} sent today.` });
+    items.push({ type: "SYS", msg: `SUBSCRIBER NOTIFICATIONS: ${notif7d} email${notif7d !== 1 ? "s" : ""} sent in the past 7 days.` });
+    items.push({ type: "SYS", msg: `SUBSCRIBER NOTIFICATIONS: ${notif30d} email${notif30d !== 1 ? "s" : ""} sent in the past 30 days.` });
     if (diEvents && diEvents.length > 0) {
       diEvents.forEach((ev) => items.push({ type: ev.type || "INFO", msg: ev.msg }));
     }
