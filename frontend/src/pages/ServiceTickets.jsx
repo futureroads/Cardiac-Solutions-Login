@@ -937,12 +937,9 @@ export default function ServiceTickets({ user, onLogout }) {
               <StatCard value={stats.dispatched || 0} label="DISPATCHED" sublabel="Click to view" color="#a78bfa" icon={Send} onClick={() => setAllTicketsFilter("DISPATCHED")} />
             </div>
 
-            {/* Stats Row 2 */}
+            {/* Stats Row 2 — Lost Contact only */}
             <div className="flex gap-3 flex-wrap mb-8">
               <StatCard value={stats.lost_contact || 0} label="LOST CONTACT" color="#f59e0b" icon={AlertTriangle} />
-              <StatCard value={stats.not_ready || 0} label="NOT READY" color="#eab308" icon={AlertTriangle} />
-              <StatCard value={stats.expired_bp || 0} label="EXPIRED B/P" color="#ec4899" icon={Clock} />
-              <StatCard value={stats.expiring_bp || 0} label="EXPIRING B/P" color="#06b6d4" icon={Clock} />
             </div>
 
             {/* Service Overview Table */}
@@ -950,7 +947,7 @@ export default function ServiceTickets({ user, onLogout }) {
               <Zap className="w-4 h-4 text-cyan-400" />
               <h2 className="font-orbitron text-sm font-bold text-cyan-400 tracking-wider">SERVICE OVERVIEW</h2>
             </div>
-            <div className="text-[10px] text-slate-500 mb-4">{subscribers.length} SUBSCRIBERS MONITORED</div>
+            <div className="text-[10px] text-slate-500 mb-4">{subscribers.filter(s => (s.lost_contact || 0) > 0).length} SUBSCRIBERS WITH LOST CONTACT AEDs</div>
 
             <div className="border border-slate-700/50 rounded-sm overflow-hidden">
               {/* Table header */}
@@ -962,26 +959,27 @@ export default function ServiceTickets({ user, onLogout }) {
                 <div className="font-orbitron text-[8px] text-slate-400 tracking-wider">STATUS</div>
               </div>
 
-              {/* Table rows */}
-              {subscribers.length === 0 ? (
-                <div className="text-center py-8 text-slate-500 font-orbitron text-[10px]">NO SUBSCRIBERS WITH ACTIVE ISSUES</div>
-              ) : (
-                subscribers.map((sub, i) => (
+              {/* Table rows — Lost Contact only */}
+              {(() => {
+                const lcSubs = subscribers.filter((s) => (s.lost_contact || 0) > 0);
+                if (lcSubs.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-emerald-400 font-orbitron text-[10px]">NO SUBSCRIBERS IN LOST CONTACT</div>
+                  );
+                }
+                return lcSubs.map((sub, i) => (
                   <div key={sub.subscriber} className={`grid grid-cols-[1fr_90px_70px_1fr_1fr] gap-2 px-4 py-3 items-center ${i % 2 === 0 ? 'bg-transparent' : 'bg-slate-800/10'} border-b border-slate-700/20 hover:bg-slate-800/30 transition-colors`} data-testid={`subscriber-row-${i}`}>
                     <div className="text-sm text-white">{sub.subscriber}</div>
                     <div className="text-sm text-white">{sub.total_aeds}</div>
-                    <div className="text-sm font-bold" style={{ color: sub.issues > 10 ? '#f472b6' : sub.issues > 5 ? '#fbbf24' : '#06b6d4' }}>
-                      {sub.issues}
+                    <div className="text-sm font-bold" style={{ color: sub.lost_contact > 10 ? '#f472b6' : sub.lost_contact > 5 ? '#fbbf24' : '#06b6d4' }}>
+                      {sub.lost_contact}
                     </div>
                     <div className="flex gap-1 flex-wrap">
-                      <IssueBadge type="NOT READY" count={sub.not_ready} />
                       <IssueBadge type="LOST CONTACT" count={sub.lost_contact} />
-                      <IssueBadge type="EXPIRED B/P" count={sub.expired_bp} />
-                      <IssueBadge type="EXPIRING B/P" count={sub.expiring_bp} />
                     </div>
                     <div className="flex gap-1.5 flex-wrap">
                       <button onClick={() => setDeviceModal(sub.subscriber)} className="font-orbitron text-[7px] px-2 py-1 border border-red-500/30 text-red-400 rounded-sm hover:bg-red-500/10 transition-all flex items-center gap-1" data-testid={`need-attention-${i}`}>
-                        <AlertTriangle className="w-2.5 h-2.5" /> NEED ATTENTION {sub.issues}
+                        <AlertTriangle className="w-2.5 h-2.5" /> NEED ATTENTION {sub.lost_contact}
                       </button>
                       <button onClick={() => setCreateModal(sub.subscriber)} className="font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 transition-all flex items-center gap-1" data-testid={`create-ticket-${i}`}>
                         <Plus className="w-2.5 h-2.5" /> NEW TICKET
@@ -991,8 +989,8 @@ export default function ServiceTickets({ user, onLogout }) {
                       </button>
                     </div>
                   </div>
-                ))
-              )}
+                ));
+              })()}
             </div>
           </>
         )}
