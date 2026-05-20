@@ -42,7 +42,7 @@ function IssueBadge({ type, count }) {
 }
 
 // Device detail modal (Need Attention drill-down)
-function DeviceDetailModal({ subscriber, onClose, onCreateTicket }) {
+function DeviceDetailModal({ subscriber, onClose, onCreateTicket, statusFilter = null }) {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -55,13 +55,18 @@ function DeviceDetailModal({ subscriber, onClose, onCreateTicket }) {
         });
         if (res.ok) {
           const data = await res.json();
-          setDevices(data.devices || []);
+          let devs = data.devices || [];
+          if (statusFilter) {
+            const want = statusFilter.toUpperCase();
+            devs = devs.filter(d => (d.detailed_status || "").toUpperCase() === want);
+          }
+          setDevices(devs);
         }
       } catch {}
       setLoading(false);
     };
     fetchDevices();
-  }, [subscriber]);
+  }, [subscriber, statusFilter]);
 
   const statusColors = {
     "EXPIRED B/P": "bg-pink-500/20 text-pink-400 border-pink-500/30",
@@ -76,7 +81,9 @@ function DeviceDetailModal({ subscriber, onClose, onCreateTicket }) {
         {/* Header */}
         <div className="flex justify-between items-center px-6 py-4 border-b border-slate-700/50">
           <div>
-            <h2 className="text-xl font-bold text-white">{subscriber} — Need Attention</h2>
+            <h2 className="text-xl font-bold text-white">
+              {subscriber} — {statusFilter ? statusFilter : "Need Attention"}
+            </h2>
             <p className="text-sm text-slate-400 mt-1">Showing {devices.length} of {devices.length} devices</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
@@ -975,10 +982,17 @@ export default function ServiceTickets({ user, onLogout }) {
                       {sub.lost_contact}
                     </div>
                     <div className="flex gap-1 flex-wrap">
-                      <IssueBadge type="LOST CONTACT" count={sub.lost_contact} />
+                      <button
+                        onClick={() => setDeviceModal({ subscriber: sub.subscriber, statusFilter: "LOST CONTACT" })}
+                        className="font-orbitron text-[8px] tracking-wider px-2 py-0.5 border border-red-500/40 text-red-300 bg-red-500/10 rounded-sm hover:bg-red-500/20 cursor-pointer transition"
+                        data-testid={`lost-contact-badge-${i}`}
+                        title="View details for these AEDs"
+                      >
+                        LOST CONTACT {sub.lost_contact}
+                      </button>
                     </div>
                     <div className="flex gap-1.5 flex-wrap">
-                      <button onClick={() => setDeviceModal(sub.subscriber)} className="font-orbitron text-[7px] px-2 py-1 border border-red-500/30 text-red-400 rounded-sm hover:bg-red-500/10 transition-all flex items-center gap-1" data-testid={`need-attention-${i}`}>
+                      <button onClick={() => setDeviceModal({ subscriber: sub.subscriber, statusFilter: "LOST CONTACT" })} className="font-orbitron text-[7px] px-2 py-1 border border-red-500/30 text-red-400 rounded-sm hover:bg-red-500/10 transition-all flex items-center gap-1" data-testid={`need-attention-${i}`}>
                         <AlertTriangle className="w-2.5 h-2.5" /> NEED ATTENTION {sub.lost_contact}
                       </button>
                       <button onClick={() => setCreateModal(sub.subscriber)} className="font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10 transition-all flex items-center gap-1" data-testid={`create-ticket-${i}`}>
@@ -1014,7 +1028,8 @@ export default function ServiceTickets({ user, onLogout }) {
       )}
       {deviceModal && (
         <DeviceDetailModal
-          subscriber={deviceModal}
+          subscriber={deviceModal.subscriber || deviceModal}
+          statusFilter={deviceModal.statusFilter}
           onClose={() => setDeviceModal(null)}
           onCreateTicket={(sub, dev) => {
             setDeviceModal(null);
