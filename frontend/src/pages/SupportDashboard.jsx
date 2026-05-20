@@ -2264,13 +2264,14 @@ function DeviceListModal({ subscriber, issueType, onClose }) {
   const [deviceNotifHistory, setDeviceNotifHistory] = useState({});
   const [savingNote, setSavingNote] = useState(null);
 
-  const issueLabels = { expired_bp: "EXPIRED B/P", expiring_bp: "EXPIRING BATT/PADS", not_ready: "NOT READY", reposition: "REPOSITION", not_present: "NOT PRESENT", unknown: "UNKNOWN" };
+  const issueLabels = { expired_bp: "EXPIRED B/P", expiring_bp: "EXPIRING BATT/PADS", not_ready: "NOT READY", reposition: "REPOSITION", not_present: "NOT PRESENT", lost_contact: "LOST CONTACT", unknown: "UNKNOWN" };
   const issueStatuses = {
     expired_bp: ["EXPIRED B/P"],
     expiring_bp: ["EXPIRING BATT/PADS"],
     not_ready: ["NOT READY"],
     reposition: ["REPOSITION"],
     not_present: ["NOT PRESENT"],
+    lost_contact: ["LOST CONTACT"],
     unknown: ["UNKNOWN"],
   };
 
@@ -3246,6 +3247,7 @@ export default function SupportDashboard({ user, onLogout }) {
       if (activeFilter === "expired_bp") return (s.expired_bp || 0) > 0;
       if (activeFilter === "expiring_bp") return (s.expiring_bp || 0) > 0;
       if (activeFilter === "not_ready") return (s.not_ready || 0) > 0;
+      if (activeFilter === "lost_contact") return (s.lost_contact || 0) > 0;
       if (activeFilter === "reposition") return (s.reposition || 0) > 0;
       if (activeFilter === "not_present") return (s.not_present || 0) > 0;
       if (activeFilter === "unknown") return (s.unknown || 0) > 0;
@@ -3641,6 +3643,7 @@ export default function SupportDashboard({ user, onLogout }) {
                   <option value="expired_bp:desc" style={{ background: "#0f172a" }}>EXPIRED B/P</option>
                   <option value="expiring_bp:desc" style={{ background: "#0f172a" }}>EXPIRING B/P</option>
                   <option value="not_ready:desc" style={{ background: "#0f172a" }}>NOT READY</option>
+                  <option value="lost_contact:desc" style={{ background: "#0f172a" }}>LOST CONTACT</option>
                   <option value="reposition:desc" style={{ background: "#0f172a" }}>REPOSITION</option>
                   <option value="not_present:desc" style={{ background: "#0f172a" }}>NOT PRESENT</option>
                 </select>
@@ -3670,6 +3673,9 @@ export default function SupportDashboard({ user, onLogout }) {
                     </th>
                     <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-sky-400/70 cursor-pointer w-20" onClick={() => toggleSort("not_present")}>
                       NOT PRES <SortIcon field="not_present" />
+                    </th>
+                    <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-rose-400/70 cursor-pointer w-24" onClick={() => toggleSort("lost_contact")}>
+                      LOST CONTACT <SortIcon field="lost_contact" />
                     </th>
                     <th className="text-center p-3 font-orbitron text-[8px] tracking-wider text-pink-400/70 cursor-pointer w-20" onClick={() => toggleSort("total_issues")}>
                       TOTAL <SortIcon field="total_issues" />
@@ -3716,6 +3722,9 @@ export default function SupportDashboard({ user, onLogout }) {
                       </td>
                       <td className="p-3 text-center">
                         {(() => { const v = s.not_present || 0; const n = s.notified_devices?.not_present || 0; if (v === 0) return <span className="text-slate-600">0</span>; return (<span className="font-orbitron text-sm cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "not_present" })}>{n > 0 ? <><span className="text-green-400">{n}&#10003;</span><span className="text-slate-500 text-[9px]">/{v}</span></> : <span className="font-bold text-sky-400">{v}</span>}</span>); })()}
+                      </td>
+                      <td className="p-3 text-center">
+                        {(() => { const v = s.lost_contact || 0; const n = s.notified_devices?.lost_contact || 0; if (v === 0) return <span className="text-slate-600">0</span>; return (<span className="font-orbitron text-sm cursor-pointer hover:underline" onClick={() => setDeviceList({ subscriber: s.subscriber, issueType: "lost_contact" })}>{n > 0 ? <><span className="text-green-400">{n}&#10003;</span><span className="text-slate-500 text-[9px]">/{v}</span></> : <span className="font-bold text-rose-400">{v}</span>}</span>); })()}
                       </td>
                       <td className="p-3 text-center">
                         {(() => { const v = s.total_issues; const n = s.notified_devices?.total || 0; return n > 0 ? <span className="font-orbitron text-sm"><span className="text-green-400 font-bold">{n}&#10003;</span><span className="text-slate-500 text-[9px]">/{v}</span></span> : <span className="font-orbitron text-sm font-bold text-pink-400">{v}</span>; })()}
