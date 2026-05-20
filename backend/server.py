@@ -6842,7 +6842,10 @@ async def service_diagnostics():
 
 @api_router.get("/service/devices/{subscriber}")
 async def devices_by_subscriber(subscriber: str, current_user: dict = Depends(get_current_user)):
-    """Get device-level details for a specific subscriber from cached Readisys data."""
+    """Get device-level details for a specific subscriber. Includes:
+    - Devices from the cached B/P overview (rich battery/pad fields, expired/expiring/not-ready).
+    - Lost-Contact devices from the fleet scan (so the modal works on /service-tickets).
+    """
     import httpx, time
     now = time.time()
     bp_data = _bp_cache["data"] if (_bp_cache["data"] and (now - _bp_cache["ts"]) < 300) else None
@@ -6857,9 +6860,42 @@ async def devices_by_subscriber(subscriber: str, current_user: dict = Depends(ge
                     _bp_cache["ts"] = now
         except Exception as e:
             return {"devices": [], "_error": str(e)}
-    if not bp_data:
-        return {"devices": []}
-    devices = [d for d in bp_data.get("devices", []) if d.get("subscriber") == subscriber]
+
+    rich_devs = [d for d in (bp_data or {}).get("devices", []) if d.get("subscriber") == subscriber]
+    rich_sids = {d.get("sentinel_id") for d in rich_devs}
+
+    # Merge in LOST CONTACT devices (and any other statuses) from the full fleet scan
+    extra = []
+    try:
+        all_devs = await _fetch_all_devices_flat()
+        for d in all_devs:
+            if d.get("subscriber") != subscriber:
+                continue
+            if (d.get("detailed_status") or "").strip().upper() != "LOST CONTACT":
+                continue
+            sid = d.get("sentinel_id")
+            if not sid or sid in rich_sids:
+                continue
+            loc = " / ".join(p for p in [d.get("site"), d.get("building"), d.get("placement")] if p)
+            extra.append({
+                "sentinel_id": sid,
+                "subscriber": subscriber,
+                "detailed_status": d.get("detailed_status") or "",
+                "location": loc,
+                "site": d.get("site") or "",
+                "building": d.get("building") or "",
+                "placement": d.get("placement") or "",
+                "model": d.get("model") or "",
+                "battery_expiration": d.get("battery_expiration") or "",
+                "pad_expiration": d.get("pad_expiration") or "",
+                "battery_days": None,
+                "pad_days": None,
+                "days_summary": "",
+            })
+    except Exception as e:
+        logger.warning(f"[service/devices] fleet merge failed: {e}")
+
+    devices = rich_devs + extra
     return {"subscriber": subscriber, "devices": devices, "total": len(devices)}
 
 
