@@ -6748,9 +6748,43 @@ async def service_console_data(current_user: dict = Depends(get_current_user)):
                     "issues": expired + expiring,
                     "expired_bp": expired,
                     "expiring_bp": expiring,
-                    "lost_contact": cc.get("BAD", 0),
+                    "lost_contact": 0,  # will be backfilled from fleet scan below
                     "not_ready": cc.get("LOW", 0),
                 })
+
+        # Backfill the REAL lost_contact count per subscriber from the fleet scan
+        # so the row count matches what the modal actually shows.
+        try:
+            all_devs = await _fetch_all_devices_flat()
+            lc_by_sub: dict[str, int] = {}
+            lc_subs: set[str] = set()
+            for dev in all_devs:
+                if (dev.get("detailed_status") or "").strip().upper() != "LOST CONTACT":
+                    continue
+                s = dev.get("subscriber") or "Unknown"
+                lc_by_sub[s] = lc_by_sub.get(s, 0) + 1
+                lc_subs.add(s)
+            existing_subs = {s["subscriber"] for s in subs}
+            # Update lost_contact + issues for subs we already have
+            for s in subs:
+                lc = lc_by_sub.get(s["subscriber"], 0)
+                s["lost_contact"] = lc
+                s["issues"] = s["expired_bp"] + s["expiring_bp"] + lc
+            # Add subs that have LOST CONTACT but weren't in the BP list
+            for name in lc_subs:
+                if name in existing_subs:
+                    continue
+                subs.append({
+                    "subscriber": name,
+                    "total_aeds": 0,
+                    "issues": lc_by_sub[name],
+                    "expired_bp": 0,
+                    "expiring_bp": 0,
+                    "lost_contact": lc_by_sub[name],
+                    "not_ready": 0,
+                })
+        except Exception as e:
+            logger.warning(f"[console-data] fleet LC backfill failed: {e}")
 
         # Get ticket counts per subscriber from DB
         if _db is not None:
