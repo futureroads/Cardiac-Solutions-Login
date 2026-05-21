@@ -6643,6 +6643,68 @@ async def dashboard_lost_contact_devices(current_user: dict = Depends(get_curren
     }
 
 
+@api_router.get("/dashboard/aed-status-trend")
+async def dashboard_aed_status_trend(current_user: dict = Depends(get_current_user)):
+    """Return current counts of every distinct `detailed_status` from the live fleet,
+    plus the previous-day snapshot diff, so the UI can render trend arrows.
+
+    Persists today's snapshot in `aed_status_snapshots` (one doc per day, keyed by
+    UTC date) so successive same-day calls don't overwrite history.
+    """
+    devs = await _fetch_all_devices_flat()
+    from collections import Counter
+    counts: dict[str, int] = dict(Counter(
+        (d.get("detailed_status") or "UNKNOWN").strip().upper() for d in devs
+    ))
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # Upsert today's snapshot (only if not already saved or counts changed)
+    try:
+        await _db.aed_status_snapshots.update_one(
+            {"_id": today},
+            {"$set": {"date": today, "counts": counts, "saved_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+    except Exception as e:
+        logger.warning(f"[aed-status-trend] snapshot save failed: {e}")
+
+    # Fetch yesterday's snapshot
+    prev_counts: dict[str, int] = {}
+    try:
+        prev_doc = await _db.aed_status_snapshots.find_one({"_id": yesterday}, {"_id": 0})
+        if prev_doc:
+            prev_counts = prev_doc.get("counts") or {}
+    except Exception:
+        pass
+
+    # Build merged status list (current + any historic-only statuses)
+    all_keys = set(counts.keys()) | set(prev_counts.keys())
+    out = []
+    for k in all_keys:
+        cur = int(counts.get(k, 0))
+        prev = int(prev_counts.get(k, 0))
+        out.append({
+            "status": k,
+            "current": cur,
+            "previous": prev,
+            "diff": cur - prev,
+        })
+    out.sort(key=lambda x: (-x["current"], x["status"]))
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "today": today,
+        "yesterday": yesterday,
+        "has_yesterday_snapshot": bool(prev_counts),
+        "statuses": out,
+        "total_devices": sum(counts.values()),
+    }
+
+
+
+
 @api_router.get("/dashboard/top-cards")
 async def dashboard_top_cards(current_user: dict = Depends(get_current_user)):
     """Proxy to Readisys dashboard/top-cards for Readiness System real-time data."""

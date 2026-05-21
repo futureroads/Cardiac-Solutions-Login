@@ -97,9 +97,23 @@ export default function StarkDashboard({ user, onLogout }) {
   const [notif7d, setNotif7d] = useState(0);
   const [notif30d, setNotif30d] = useState(0);
   const [notif90d, setNotif90d] = useState(0);
+  const [statusTrend, setStatusTrend] = useState(null);
   const [lostModalOpen, setLostModalOpen] = useState(false);
   const [lostData, setLostData] = useState(null);
   const [lostLoading, setLostLoading] = useState(false);
+
+  // Fetch AED status trend (current vs yesterday) — refresh every 5 min
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const r = await fetch(`${API}/dashboard/aed-status-trend`, { headers: { Authorization: `Bearer ${token}` } });
+        if (r.ok) setStatusTrend(await r.json());
+      } catch {}
+    };
+    load();
+    const i = setInterval(load, 300000);
+    return () => clearInterval(i);
+  }, [token]);
 
   const openLostContactModal = async () => {
     setLostModalOpen(true);
@@ -1371,25 +1385,74 @@ ${briefingText}`,
 
         {/* RIGHT COLUMN */}
         <div className="flex flex-col gap-[7px]">
-          {/* Service Tickets */}
-          <div onClick={() => navigate("/service-tickets")} className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden cursor-pointer hover:border-cyan-400/60 transition-colors" data-testid="stark-service-tickets">
+          {/* AED Issue Status */}
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-cyan-500/30 overflow-hidden" data-testid="stark-aed-issue-status">
             <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
             <div className="panel-glow" />
-            <div className="plabel">Service Tickets <span className="ml-2 text-[7px] px-[5px] py-[1px] bg-yellow-500/20 text-yellow-400 rounded-sm font-bold tracking-wider">IN DEV</span></div>
+            <div className="plabel flex items-center justify-between">
+              <span>AED Issue Status</span>
+              {statusTrend && !statusTrend.has_yesterday_snapshot && (
+                <span className="text-[6px] tracking-wider text-amber-400/70 normal-case font-normal" title="Trend arrows appear once a yesterday snapshot exists">
+                  no trend data yet
+                </span>
+              )}
+            </div>
             <div className="flex flex-col gap-[4px] mt-2">
-              {ticketRows.map((row, i) => (
-                <div
-                  key={i}
-                  onClick={(e) => {
-                    if (row.label === "Lost Contact") { e.stopPropagation(); openLostContactModal(); }
-                  }}
-                  data-testid={row.label === "Lost Contact" ? "stark-lost-contact-row" : undefined}
-                  className={`flex items-center justify-between px-[10px] py-[8px] border rounded-sm ${row.bg} ${row.label === "Lost Contact" ? "cursor-pointer hover:brightness-125" : ""}`}
-                >
-                  <span className="text-[11px] text-slate-200/90">{row.label}</span>
-                  <span className={`font-orbitron text-[14px] font-black ${row.color}`}>{row.count}</span>
-                </div>
-              ))}
+              {!statusTrend && (
+                <div className="text-[9px] text-slate-500 px-[10px] py-[8px] font-orbitron tracking-wider">LOADING…</div>
+              )}
+              {statusTrend && statusTrend.statuses.map((row) => {
+                const label = row.status;
+                const cur = row.current;
+                const diff = row.diff;
+                const isReady = label === "READY";
+                // Arrow colours: red for "got worse", green for "got better"
+                // For READY, "more" is better, so flip the meanings.
+                let arrow = null, color = "text-slate-500";
+                if (diff > 0) {
+                  arrow = "▲";
+                  color = isReady ? "text-emerald-400" : "text-rose-400";
+                } else if (diff < 0) {
+                  arrow = "▼";
+                  color = isReady ? "text-rose-400" : "text-emerald-400";
+                } else if (statusTrend.has_yesterday_snapshot) {
+                  arrow = "■";
+                  color = "text-slate-400";
+                }
+                const tone = isReady ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-200/90"
+                  : label === "LOST CONTACT" ? "bg-rose-500/10 border-rose-500/30 text-rose-200/90 cursor-pointer hover:brightness-125"
+                  : label.includes("EXPIRED") ? "bg-pink-500/10 border-pink-500/20 text-pink-200/90"
+                  : label.includes("EXPIRING") ? "bg-amber-500/10 border-amber-500/20 text-amber-200/90"
+                  : label === "NOT READY" ? "bg-yellow-500/10 border-yellow-500/20 text-yellow-200/90"
+                  : label === "REPOSITION" ? "bg-purple-500/10 border-purple-500/20 text-purple-200/90"
+                  : "bg-slate-800/40 border-slate-700/30 text-slate-300";
+                return (
+                  <div
+                    key={label}
+                    onClick={label === "LOST CONTACT" ? openLostContactModal : undefined}
+                    data-testid={`stark-status-${label.replace(/\s+/g,'-').toLowerCase()}`}
+                    className={`flex items-center justify-between gap-2 px-[10px] py-[6px] border rounded-sm ${tone}`}
+                  >
+                    <span className="text-[11px] truncate">{label}</span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {arrow && (
+                        <span
+                          className={`font-mono text-[10px] ${color}`}
+                          title={`${diff > 0 ? "+" : ""}${diff} vs yesterday`}
+                        >
+                          {arrow}
+                          {diff !== 0 && (
+                            <span className="ml-0.5 font-orbitron text-[8px] tracking-wider">
+                              {diff > 0 ? "+" : ""}{diff}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                      <span className="font-orbitron text-[14px] font-black tabular-nums">{cur}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
