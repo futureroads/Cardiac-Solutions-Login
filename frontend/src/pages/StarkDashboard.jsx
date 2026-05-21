@@ -1435,17 +1435,15 @@ ${briefingText}`,
                   >
                     <span className="text-[11px] truncate">{label}</span>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {arrow && (
+                      {statusTrend.has_yesterday_snapshot && (
                         <span
                           className={`font-mono text-[10px] ${color}`}
-                          title={`${diff > 0 ? "+" : ""}${diff} vs yesterday`}
+                          title={`Yesterday: ${row.previous}  ·  Today: ${cur}  ·  ${diff > 0 ? "+" : ""}${diff}`}
                         >
                           {arrow}
-                          {diff !== 0 && (
-                            <span className="ml-0.5 font-orbitron text-[8px] tracking-wider">
-                              {diff > 0 ? "+" : ""}{diff}
-                            </span>
-                          )}
+                          <span className="ml-1 font-orbitron text-[9px] tracking-wider text-slate-500">
+                            (yest {row.previous})
+                          </span>
                         </span>
                       )}
                       <span className="font-orbitron text-[14px] font-black tabular-nums">{cur}</span>
