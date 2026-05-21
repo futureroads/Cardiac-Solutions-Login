@@ -1515,6 +1515,11 @@ ${briefingText}`,
         @keyframes led-flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         .animate-led-flash { animation: led-flash 1.4s ease-in-out infinite; }
         .animate-led-flash-alt { animation: led-flash 1.4s ease-in-out infinite 0.7s; }
+        /* Center panel titles on Stark Dashboard (only when no per-instance override) */
+        .panel .plabel { text-align: center; justify-content: center; }
+        .panel .plabel.justify-between { justify-content: space-between; }
+        .panel .plabel::before,
+        .panel .plabel::after { display: none !important; }
       `}</style>
 
       {showReadinessBreakdown && <ReadinessBreakdownModal onClose={() => setShowReadinessBreakdown(false)} onDataLoaded={(r) => setReadiness(r)} />}
