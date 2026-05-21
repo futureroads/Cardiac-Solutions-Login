@@ -2480,13 +2480,15 @@ async def notifications_today_count(current_user: dict = Depends(get_current_use
 
 @api_router.get("/support/notifications-window-counts")
 async def notifications_window_counts(current_user: dict = Depends(get_current_user)):
-    """Count notification emails sent in the last 7 and 30 days (rolling)."""
+    """Count notification emails sent in rolling 7 / 30 / 90 day windows."""
     now = datetime.now(timezone.utc)
     d7 = (now - timedelta(days=7)).isoformat()
     d30 = (now - timedelta(days=30)).isoformat()
+    d90 = (now - timedelta(days=90)).isoformat()
     c7 = await _db.notification_history.count_documents({"sent_at": {"$gte": d7}})
     c30 = await _db.notification_history.count_documents({"sent_at": {"$gte": d30}})
-    return {"last_7_days": c7, "last_30_days": c30}
+    c90 = await _db.notification_history.count_documents({"sent_at": {"$gte": d90}})
+    return {"last_7_days": c7, "last_30_days": c30, "last_90_days": c90}
 
 
 # ---------------------------------------------------------------------------

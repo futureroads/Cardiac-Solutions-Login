@@ -96,6 +96,7 @@ export default function StarkDashboard({ user, onLogout }) {
   const [notifToday, setNotifToday] = useState(0);
   const [notif7d, setNotif7d] = useState(0);
   const [notif30d, setNotif30d] = useState(0);
+  const [notif90d, setNotif90d] = useState(0);
   const [lostModalOpen, setLostModalOpen] = useState(false);
   const [lostData, setLostData] = useState(null);
   const [lostLoading, setLostLoading] = useState(false);
@@ -756,6 +757,7 @@ ${briefingText}`,
           const d2 = await res2.json();
           setNotif7d(d2.last_7_days || 0);
           setNotif30d(d2.last_30_days || 0);
+          setNotif90d(d2.last_90_days || 0);
         }
       } catch {}
     };
@@ -1167,21 +1169,21 @@ ${briefingText}`,
             <div className="panel-glow" />
             <div className="plabel">Subscriber Notifications</div>
             <div className="grid grid-cols-2 gap-[6px] mt-2">
-              <div className="border border-cyan-500/20 bg-cyan-500/5 rounded-sm p-2 text-center">
-                <div className="font-orbitron text-[18px] font-black text-white">{supportData?.total_subscribers || 0}</div>
-                <div className="text-[7px] text-cyan-500/50 tracking-wider uppercase">Subscribers w/ Issues</div>
-              </div>
-              <div className="border border-cyan-500/20 bg-cyan-500/5 rounded-sm p-2 text-center">
-                <div className="font-orbitron text-[18px] font-black text-white">{readiness?.total_issues || 0}</div>
-                <div className="text-[7px] text-cyan-500/50 tracking-wider uppercase">Total Issues</div>
-              </div>
-              <div className="border border-green-500/20 bg-green-500/5 rounded-sm p-2 text-center">
-                <div className="font-orbitron text-[18px] font-black text-green-400">{readiness?.notified_aed_unresolved || 0}</div>
-                <div className="text-[7px] text-green-500/50 tracking-wider uppercase">Notified Pending</div>
-              </div>
               <div className="border border-amber-500/20 bg-amber-500/5 rounded-sm p-2 text-center">
                 <div className="font-orbitron text-[18px] font-black text-amber-400">{notifToday}</div>
-                <div className="text-[7px] text-amber-500/50 tracking-wider uppercase">Emails Sent Today</div>
+                <div className="text-[7px] text-amber-500/50 tracking-wider uppercase">Today</div>
+              </div>
+              <div className="border border-cyan-500/20 bg-cyan-500/5 rounded-sm p-2 text-center">
+                <div className="font-orbitron text-[18px] font-black text-cyan-300">{notif7d}</div>
+                <div className="text-[7px] text-cyan-500/50 tracking-wider uppercase">Last 7 Days</div>
+              </div>
+              <div className="border border-blue-500/20 bg-blue-500/5 rounded-sm p-2 text-center">
+                <div className="font-orbitron text-[18px] font-black text-blue-300">{notif30d}</div>
+                <div className="text-[7px] text-blue-500/50 tracking-wider uppercase">Last 30 Days</div>
+              </div>
+              <div className="border border-emerald-500/20 bg-emerald-500/5 rounded-sm p-2 text-center">
+                <div className="font-orbitron text-[18px] font-black text-emerald-300">{notif90d}</div>
+                <div className="text-[7px] text-emerald-500/50 tracking-wider uppercase">Last 90 Days</div>
               </div>
             </div>
           </div>
