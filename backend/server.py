@@ -6670,14 +6670,30 @@ async def dashboard_aed_status_trend(current_user: dict = Depends(get_current_us
     except Exception as e:
         logger.warning(f"[aed-status-trend] snapshot save failed: {e}")
 
-    # Fetch yesterday's snapshot
+    # Fetch yesterday's snapshot — auto-seed it with today's counts on first run
+    # so arrows have a baseline immediately (instead of waiting 24h).
     prev_counts: dict[str, int] = {}
+    auto_seeded = False
     try:
         prev_doc = await _db.aed_status_snapshots.find_one({"_id": yesterday}, {"_id": 0})
         if prev_doc:
             prev_counts = prev_doc.get("counts") or {}
-    except Exception:
-        pass
+        else:
+            # No yesterday snapshot — seed it with today's counts (one-time)
+            await _db.aed_status_snapshots.update_one(
+                {"_id": yesterday},
+                {"$set": {
+                    "date": yesterday,
+                    "counts": counts,
+                    "saved_at": datetime.now(timezone.utc).isoformat(),
+                    "auto_seeded": True,
+                }},
+                upsert=True,
+            )
+            prev_counts = dict(counts)
+            auto_seeded = True
+    except Exception as e:
+        logger.warning(f"[aed-status-trend] yesterday snapshot fetch/seed failed: {e}")
 
     # Build merged status list (current + any historic-only statuses)
     all_keys = set(counts.keys()) | set(prev_counts.keys())
@@ -6698,6 +6714,7 @@ async def dashboard_aed_status_trend(current_user: dict = Depends(get_current_us
         "today": today,
         "yesterday": yesterday,
         "has_yesterday_snapshot": bool(prev_counts),
+        "yesterday_auto_seeded": auto_seeded,
         "statuses": out,
         "total_devices": sum(counts.values()),
     }
