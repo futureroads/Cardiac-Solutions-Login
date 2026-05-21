@@ -1408,16 +1408,13 @@ ${briefingText}`,
                 const isReady = label === "READY";
                 // Arrow colours: red for "got worse", green for "got better"
                 // For READY, "more" is better, so flip the meanings.
-                let arrow = null, color = "text-slate-500";
+                let arrow = "■", color = "text-slate-400";
                 if (diff > 0) {
                   arrow = "▲";
                   color = isReady ? "text-emerald-400" : "text-rose-400";
                 } else if (diff < 0) {
                   arrow = "▼";
                   color = isReady ? "text-rose-400" : "text-emerald-400";
-                } else if (statusTrend.has_yesterday_snapshot) {
-                  arrow = "■";
-                  color = "text-slate-400";
                 }
                 const tone = isReady ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-200/90"
                   : label === "LOST CONTACT" ? "bg-rose-500/10 border-rose-500/30 text-rose-200/90 cursor-pointer hover:brightness-125"
@@ -1435,17 +1432,15 @@ ${briefingText}`,
                   >
                     <span className="text-[11px] truncate">{label}</span>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {statusTrend.has_yesterday_snapshot && (
-                        <span
-                          className={`font-mono text-[10px] ${color}`}
-                          title={`Yesterday: ${row.previous}  ·  Today: ${cur}  ·  ${diff > 0 ? "+" : ""}${diff}`}
-                        >
-                          {arrow}
-                          <span className="ml-1 font-orbitron text-[9px] tracking-wider text-slate-500">
-                            (yest {row.previous})
-                          </span>
+                      <span
+                        className={`font-mono text-[10px] ${color}`}
+                        title={`Yesterday: ${row.previous}  ·  Today: ${cur}  ·  ${diff > 0 ? "+" : ""}${diff}`}
+                      >
+                        {arrow}
+                        <span className="ml-1 font-orbitron text-[9px] tracking-wider text-slate-500">
+                          {row.previous}
                         </span>
-                      )}
+                      </span>
                       <span className="font-orbitron text-[14px] font-black tabular-nums">{cur}</span>
                     </div>
                   </div>
