@@ -1525,14 +1525,10 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
 
   const handleSendByLocation = async () => {
     if (!locationLookup) { toast.error("Location data not loaded yet"); return; }
-    if (locationLookup.orphan_count > 0) {
-      toast.error(`Cannot send: ${locationLookup.orphan_count} AED(s) at locations with no contacts. Fix in Location Contacts first.`);
-      return;
-    }
     const groups = (locationLookup.groups || []).filter(g =>
       (g.emails || []).length > 0 && selectedLocs.has(g.loc_key)
     );
-    if (groups.length === 0) { toast.error("No locations selected"); return; }
+    if (groups.length === 0) { toast.error("No locations selected (or selected location has no contacts)"); return; }
     if (!window.confirm(`Send ${groups.length} per-location email(s) for ${subscriber}?`)) return;
 
     setSending(true);
@@ -1674,7 +1670,7 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                         <span className="text-cyan-300">{locationLookup.groups.filter(g => (g.emails||[]).length>0).length}</span>{" "}
                         ELIGIBLE LOCATION(S) — PICK ONE
                         {locationLookup.orphan_count > 0 && (
-                          <span className="text-red-400">{" · "}{locationLookup.orphan_count} ORPHAN AED(S) — SEND BLOCKED</span>
+                          <span className="text-amber-400">{" · "}{locationLookup.orphan_count} ORPHAN AED(S) (will be skipped)</span>
                         )}
                       </div>
                       <div className="ml-auto flex gap-2">
