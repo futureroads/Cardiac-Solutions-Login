@@ -1926,6 +1926,15 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
               PREVIEW
             </button>
           )}
+          {(() => {
+            // Block send only when one of the *selected* locations is an orphan
+            // (no email contacts), not when any filtered location is an orphan.
+            const selectedHasOrphan = notifyMode === "location" && locationLookup
+              ? (locationLookup.groups || []).some(
+                  g => selectedLocs.has(g.loc_key) && (g.emails || []).length === 0
+                )
+              : false;
+            return (
           <button
             onClick={handleSend}
             disabled={
@@ -1933,8 +1942,8 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
               activeDevices.length === 0 ||
               (notifyMode === "location" && (
                 locLoading || !locationLookup ||
-                (locationLookup.orphan_count || 0) > 0 ||
-                selectedLocs.size === 0
+                selectedLocs.size === 0 ||
+                selectedHasOrphan
               ))
             }
             className="font-orbitron text-xs px-6 py-2 border border-cyan-500/50 text-cyan-400 rounded-sm hover:bg-cyan-500/10 disabled:opacity-50 flex items-center gap-2"
@@ -1945,6 +1954,8 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
               ? `SEND ${selectedLocs.size} EMAIL(S)`
               : "SEND EMAIL"}
           </button>
+            );
+          })()}
         </div>
       </div>
       {drawerDevice && <DeviceDrawer device={drawerDevice} onClose={() => setDrawerDevice(null)} />}
