@@ -1818,8 +1818,8 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                                 onClick={e => e.stopPropagation()}
                                 onMouseDown={e => e.stopPropagation()}
                                 onFocus={e => e.stopPropagation()}
-                                className="w-full min-w-[120px] px-1.5 py-1 rounded border border-blue-300 bg-blue-50 text-slate-800 text-[11px] resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
-                                rows={2}
+                                className="w-full min-w-[120px] px-1.5 py-1 rounded border border-blue-300 bg-blue-50 text-slate-800 text-[11px] resize-y focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                rows={5}
                                 data-testid={`edit-details-${d.sentinel_id}`}
                               />
                               {idx === 0 && sec.devices.length > 1 && (
