@@ -134,8 +134,6 @@ frontend/node_modules/.cache/default-development/10.pack
 frontend/node_modules/.cache/default-development/9.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -149,8 +147,6 @@ frontend/node_modules/.cache/default-development/22.pack
 frontend/node_modules/.cache/default-development/24.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -158,8 +154,6 @@ credentials.json
 .credentials
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -168,8 +162,6 @@ credentials.json
 frontend/node_modules/.cache/default-development/19.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -182,8 +174,6 @@ frontend/node_modules/.cache/default-development/29.pack
 frontend/node_modules/.cache/default-development/30.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -193,8 +183,6 @@ frontend/node_modules/.cache/default-development/34.pack
 frontend/node_modules/.cache/default-development/34.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -207,8 +195,6 @@ frontend/node_modules/.cache/default-development/42.pack
 frontend/node_modules/.cache/default-development/40.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -228,8 +214,6 @@ frontend/node_modules/.cache/default-development/53.pack
 frontend/node_modules/.cache/default-development/54.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -240,8 +224,6 @@ frontend/node_modules/.cache/default-development/59.pack
 frontend/node_modules/.cache/default-development/60.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -250,8 +232,6 @@ credentials.json
 frontend/node_modules/.cache/default-development/61.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -262,8 +242,6 @@ frontend/node_modules/.cache/default-development/62.pack
 frontend/node_modules/.cache/default-development/66.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -277,8 +255,6 @@ frontend/node_modules/.cache/default-development/26.pack
 frontend/node_modules/.cache/default-development/76.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -292,8 +268,6 @@ frontend/node_modules/.cache/default-development/91.pack
 frontend/node_modules/.cache/default-development/89.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -301,8 +275,6 @@ credentials.json
 .credentials
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -330,8 +302,6 @@ frontend/node_modules/.cache/default-development/130.pack
 frontend/node_modules/.cache/default-development/133.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -339,8 +309,6 @@ credentials.json
 .credentials
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -364,8 +332,6 @@ frontend/node_modules/.cache/default-development/153.pack
 frontend/node_modules/.cache/default-development/153.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -385,8 +351,6 @@ frontend/node_modules/.cache/default-development/173.pack
 frontend/node_modules/.cache/default-development/170.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -398,8 +362,6 @@ frontend/node_modules/.cache/default-development/176.pack
 frontend/node_modules/.cache/default-development/179.pack
 -e 
 # Environment and credential files
-.env
-.env.*
 *.env
 credentials.json
 *.pem
@@ -433,3 +395,8 @@ frontend/node_modules/.cache/default-development/212.pack
 frontend/node_modules/.cache/default-development/214.pack
 frontend/node_modules/.cache/default-development/213.pack
 frontend/node_modules/.cache/default-development/215.pack
+frontend/node_modules/.cache/default-development/216.pack
+config.bat
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
