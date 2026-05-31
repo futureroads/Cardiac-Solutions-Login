@@ -1244,6 +1244,44 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
   const [previewOpen, setPreviewOpen] = useState(false);
   const [customDetails, setCustomDetails] = useState({});
   const [imageHistoryId, setImageHistoryId] = useState(null);
+  // AI outreach detail per sentinel: { ai_status, ai_text }
+  const [aiOutreach, setAiOutreach] = useState({});
+  // Currently selected status per sentinel (defaults to AI suggestion)
+  const [userStatus, setUserStatus] = useState({});
+  // Detail message templates (kept around so we can re-fill on status change)
+  const [detailTemplates, setDetailTemplates] = useState([]);
+  // Save & Train state per sentinel: "idle" | "saving" | "saved" | "error"
+  const [trainState, setTrainState] = useState({});
+
+  // Available statuses the user can correct to (matches Readisys taxonomy)
+  const STATUS_OPTIONS = [
+    "READY",
+    "NOT READY",
+    "REPOSITION",
+    "EXPIRED B/P",
+    "EXPIRING BATT/PADS",
+    "NOT PRESENT",
+    "LOST CONTACT",
+    "UNKNOWN",
+  ];
+
+  // Lookup the best-match template for (subscriber, model, status)
+  const pickTemplate = (templates, sub, mod, status) => {
+    const matches = templates.filter(t =>
+      t.status === status &&
+      (t.subscriber === sub || t.subscriber === "ALL") &&
+      (t.model === mod || t.model === "ALL")
+    );
+    if (!matches.length) return null;
+    const score = (t) => {
+      let s = 0;
+      if (t.subscriber === sub && sub !== "ALL") s += 4;
+      if (t.model === mod && mod !== "ALL") s += 2;
+      return s;
+    };
+    matches.sort((a, b) => score(b) - score(a));
+    return matches[0].message;
+  };
 
   // Fetch subscriber devices with full detail
   useEffect(() => {
@@ -1273,29 +1311,45 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
             if (tres.ok) {
               const tdata = await tres.json();
               const templates = tdata.items || [];
-              const score = (t, sub, mod) => {
-                let s = 0;
-                if (t.subscriber === sub && sub !== "ALL") s += 4;
-                if (t.model === mod && mod !== "ALL") s += 2;
-                return s;
-              };
+              setDetailTemplates(templates);
               const prefill = {};
               for (const d of issueDevices) {
                 const status = (d.detailed_status || "").toUpperCase();
                 const mod = d.model || "";
-                const matches = templates.filter(t =>
-                  t.status === status &&
-                  (t.subscriber === subscriber || t.subscriber === "ALL") &&
-                  (t.model === mod || t.model === "ALL")
-                );
-                if (matches.length) {
-                  matches.sort((a, b) => score(b, subscriber, mod) - score(a, subscriber, mod));
-                  prefill[d.sentinel_id] = matches[0].message;
-                }
+                const msg = pickTemplate(templates, subscriber, mod, status);
+                if (msg) prefill[d.sentinel_id] = msg;
               }
               if (Object.keys(prefill).length) {
                 setCustomDetails(prev => ({ ...prefill, ...prev }));
               }
+            }
+          } catch {}
+
+          // Fetch AI-suggested status + outreach text per AED, in parallel.
+          // Pre-fill customDetails + initial selected status from AI suggestion.
+          try {
+            const results = await Promise.all(issueDevices.map(d =>
+              fetch(`${API}/notifications/subscriber-outreach-detail?sentinel_id=${encodeURIComponent(d.sentinel_id)}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              }).then(r => r.ok ? r.json() : null).catch(() => null)
+            ));
+            const aiMap = {};
+            const statusMap = {};
+            const textOverride = {};
+            results.forEach((det, i) => {
+              if (!det) return;
+              const sid = issueDevices[i].sentinel_id;
+              const aiStatus = (det.detailed_status || "").toUpperCase();
+              const aiText = det.subscriber_outreach_detail || "";
+              aiMap[sid] = { ai_status: aiStatus, ai_text: aiText };
+              if (aiStatus) statusMap[sid] = aiStatus;
+              if (aiText) textOverride[sid] = aiText;
+            });
+            if (Object.keys(aiMap).length) setAiOutreach(aiMap);
+            if (Object.keys(statusMap).length) setUserStatus(prev => ({ ...statusMap, ...prev }));
+            // AI text wins over the template prefill (AI is image-aware)
+            if (Object.keys(textOverride).length) {
+              setCustomDetails(prev => ({ ...prev, ...textOverride }));
             }
           } catch {}
         }
@@ -1807,11 +1861,54 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                         const loc = [d.site, d.building, d.placement].filter(Boolean).join(" / ") || d.location || "—";
                         const capturedAt = d.captured_at ? new Date(d.captured_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
                         const currentVal = customDetails[d.sentinel_id] !== undefined ? customDetails[d.sentinel_id] : (d.days_summary || d.detailed_status || "—");
+                        const ai = aiOutreach[d.sentinel_id] || {};
+                        const selectedStatus = userStatus[d.sentinel_id] || (d.detailed_status || "").toUpperCase();
+                        const statusChanged = ai.ai_status && selectedStatus && selectedStatus !== ai.ai_status;
+                        const textChanged = ai.ai_text && currentVal !== ai.ai_text;
+                        const canTrain = !!(ai.ai_status || ai.ai_text) && (statusChanged || textChanged);
+                        const trainSt = trainState[d.sentinel_id] || "idle";
                         return (
                           <tr key={d.sentinel_id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setDrawerDevice(d)}>
                             <td className="p-2 border border-slate-200 font-bold text-blue-700 hover:underline">{d.sentinel_id}</td>
                             <td className="p-2 border border-slate-200 text-[11px]">{loc}</td>
                             <td className="p-2 border border-slate-200 text-[11px]" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                              {/* AI status pills — click to override AI's call */}
+                              {(ai.ai_status || true) && (
+                                <div className="mb-1.5 flex flex-wrap gap-1" onMouseDown={e => e.stopPropagation()}>
+                                  {STATUS_OPTIONS.map(s => {
+                                    const isAi = s === ai.ai_status;
+                                    const isSel = s === selectedStatus;
+                                    return (
+                                      <button
+                                        key={s}
+                                        type="button"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          e.preventDefault();
+                                          setUserStatus(prev => ({ ...prev, [d.sentinel_id]: s }));
+                                          // If user picks the AI's own status, restore the AI text;
+                                          // otherwise drop in the best-match template for that status.
+                                          if (s === ai.ai_status && ai.ai_text) {
+                                            setCustomDetails(prev => ({ ...prev, [d.sentinel_id]: ai.ai_text }));
+                                          } else {
+                                            const tpl = pickTemplate(detailTemplates, subscriber, d.model || "", s);
+                                            if (tpl) setCustomDetails(prev => ({ ...prev, [d.sentinel_id]: tpl }));
+                                          }
+                                        }}
+                                        className={`text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded border transition ${
+                                          isSel
+                                            ? "bg-blue-600 border-blue-600 text-white"
+                                            : "bg-white border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-600"
+                                        }`}
+                                        title={isAi ? "AI suggested this status" : `Change status to ${s}`}
+                                        data-testid={`status-pill-${d.sentinel_id}-${s.replace(/[^a-z0-9]/gi, "_")}`}
+                                      >
+                                        {isAi ? "★ " : ""}{s}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
                               <textarea
                                 value={currentVal}
                                 onChange={e => { e.stopPropagation(); setCustomDetails(prev => ({ ...prev, [d.sentinel_id]: e.target.value })); }}
@@ -1822,24 +1919,77 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                                 rows={5}
                                 data-testid={`edit-details-${d.sentinel_id}`}
                               />
-                              {idx === 0 && sec.devices.length > 1 && (
-                                <button
-                                  onClick={e => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
-                                    const val = customDetails[d.sentinel_id] !== undefined ? customDetails[d.sentinel_id] : (d.days_summary || d.detailed_status || "—");
-                                    const updates = {};
-                                    sec.devices.forEach(dev => { updates[dev.sentinel_id] = val; });
-                                    setCustomDetails(prev => ({ ...prev, ...updates }));
-                                  }}
-                                  onMouseDown={e => e.stopPropagation()}
-                                  type="button"
-                                  className="mt-1 text-[9px] px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold"
-                                  data-testid="apply-to-all-btn"
-                                >
-                                  Apply to All ({sec.devices.length})
-                                </button>
-                              )}
+                              <div className="mt-1 flex items-center gap-2 flex-wrap">
+                                {idx === 0 && sec.devices.length > 1 && (
+                                  <button
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      const val = customDetails[d.sentinel_id] !== undefined ? customDetails[d.sentinel_id] : (d.days_summary || d.detailed_status || "—");
+                                      const updates = {};
+                                      sec.devices.forEach(dev => { updates[dev.sentinel_id] = val; });
+                                      setCustomDetails(prev => ({ ...prev, ...updates }));
+                                    }}
+                                    onMouseDown={e => e.stopPropagation()}
+                                    type="button"
+                                    className="text-[9px] px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold"
+                                    data-testid="apply-to-all-btn"
+                                  >
+                                    Apply to All ({sec.devices.length})
+                                  </button>
+                                )}
+                                {(ai.ai_status || ai.ai_text) && (
+                                  <button
+                                    onClick={async e => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      if (!canTrain || trainSt === "saving") return;
+                                      setTrainState(prev => ({ ...prev, [d.sentinel_id]: "saving" }));
+                                      try {
+                                        const token = localStorage.getItem("token");
+                                        const body = {
+                                          subscriber,
+                                          sentinel_id: d.sentinel_id,
+                                          ai_detailed_status: ai.ai_status || "",
+                                          ai_subscriber_outreach_detail: ai.ai_text || "",
+                                        };
+                                        if (statusChanged) body.corrected_detailed_status = selectedStatus;
+                                        if (textChanged) body.corrected_subscriber_outreach_detail = currentVal;
+                                        const r = await fetch(`${API}/notifications/subscriber-outreach-detail-feedback`, {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                          body: JSON.stringify(body),
+                                        });
+                                        if (!r.ok) throw new Error(await r.text());
+                                        setTrainState(prev => ({ ...prev, [d.sentinel_id]: "saved" }));
+                                        // Reset to idle after a moment so user can re-train if needed
+                                        setTimeout(() => {
+                                          setTrainState(prev => ({ ...prev, [d.sentinel_id]: "idle" }));
+                                        }, 2500);
+                                      } catch (err) {
+                                        console.error("Train AI failed:", err);
+                                        setTrainState(prev => ({ ...prev, [d.sentinel_id]: "error" }));
+                                      }
+                                    }}
+                                    onMouseDown={e => e.stopPropagation()}
+                                    type="button"
+                                    disabled={!canTrain || trainSt === "saving"}
+                                    className={`text-[9px] px-2 py-0.5 rounded font-bold transition ${
+                                      trainSt === "saved"
+                                        ? "bg-emerald-600 text-white"
+                                        : trainSt === "error"
+                                        ? "bg-red-600 text-white"
+                                        : canTrain
+                                        ? "bg-purple-600 hover:bg-purple-500 text-white"
+                                        : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                                    }`}
+                                    title={canTrain ? "Send correction to train AI" : "Change status or text to enable"}
+                                    data-testid={`train-ai-btn-${d.sentinel_id}`}
+                                  >
+                                    {trainSt === "saving" ? "Saving…" : trainSt === "saved" ? "Saved ✓" : trainSt === "error" ? "Retry" : "Save & Train"}
+                                  </button>
+                                )}
+                              </div>
                             </td>
                             <td className="p-2 border border-slate-200 text-[10px] text-center">
                               <div>Batt: {d.battery_expiration || "—"}</div>

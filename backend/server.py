@@ -2492,6 +2492,82 @@ async def notifications_window_counts(current_user: dict = Depends(get_current_u
 
 
 # ---------------------------------------------------------------------------
+# Readisys AI Outreach Detail proxies
+# These endpoints proxy the upstream Readisys notifications API so the
+# frontend can fetch AI-suggested status/text per AED and submit user
+# corrections back to train the model.
+# ---------------------------------------------------------------------------
+@api_router.get("/notifications/subscriber-outreach-detail")
+async def proxy_subscriber_outreach_detail(sentinel_id: str, current_user: dict = Depends(get_current_user)):
+    """Proxy: fetch AI-determined detailed status + recommended outreach text for one AED."""
+    import httpx
+    headers = _readisys_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://readisys.survivalpath.ai/api/notifications/subscriber-outreach-detail",
+                params={"sentinel_id": sentinel_id},
+                headers=headers,
+            )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"subscriber-outreach-detail proxy error: {e}")
+        raise HTTPException(status_code=502, detail=f"Upstream error: {e}")
+
+
+@api_router.post("/notifications/subscriber-outreach-detail-feedback")
+async def proxy_subscriber_outreach_detail_feedback(payload: dict, current_user: dict = Depends(get_current_user)):
+    """Proxy: submit user correction (status / text / comment) back to Readisys to train the AI."""
+    import httpx
+    headers = _readisys_auth_headers()
+    headers["Content-Type"] = "application/json"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://readisys.survivalpath.ai/api/notifications/subscriber-outreach-detail-feedback",
+                json=payload,
+                headers=headers,
+            )
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        try:
+            return resp.json()
+        except Exception:
+            return {"ok": True, "status_code": resp.status_code, "body": resp.text}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"subscriber-outreach-detail-feedback proxy error: {e}")
+        raise HTTPException(status_code=502, detail=f"Upstream error: {e}")
+
+
+@api_router.get("/notifications/subscriber-outreach-detail-feedback")
+async def proxy_subscriber_outreach_detail_feedback_list(subscriber: str, current_user: dict = Depends(get_current_user)):
+    """Proxy: list previously submitted AI corrections for a subscriber."""
+    import httpx
+    headers = _readisys_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://readisys.survivalpath.ai/api/notifications/subscriber-outreach-detail-feedback",
+                params={"subscriber": subscriber},
+                headers=headers,
+            )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"subscriber-outreach-detail-feedback list proxy error: {e}")
+        raise HTTPException(status_code=502, detail=f"Upstream error: {e}")
+
+
+# ---------------------------------------------------------------------------
 # SendGrid Event Webhook — open/click/delivery tracking
 # ---------------------------------------------------------------------------
 async def _send_bounce_alert_email(record: dict, event: dict) -> None:
