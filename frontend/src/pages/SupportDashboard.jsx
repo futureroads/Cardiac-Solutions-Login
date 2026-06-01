@@ -1283,6 +1283,27 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
     return matches[0].message;
   };
 
+  // Quick-pick canned text snippets for REPOSITION scenarios.
+  // Click one to replace the textarea content for that AED.
+  const REPOSITION_SNIPPETS = [
+    {
+      label: "180° rotated",
+      text: "The AED or the Camera have been rotated 180 degrees so the camera no longer takes pictures of the AED Status Indicator. Return the equipment to its original position.",
+    },
+    {
+      label: "Backwards / PadPack",
+      text: "The AED is in the case backwards. We are viewing the PadPack. The camera may also be rotated 180 degrees. Return the equipment to its original position.",
+    },
+    {
+      label: "Black Image",
+      text: "The camera had most likely been removed and reinstalled backwards or something has been placed between the camera and the AED. Return the equipment to its original position.",
+    },
+    {
+      label: "Unknown image",
+      text: "Unknown image. The camera is no longer seeing the AED's status indicator. Either the camera or AED have been moved. Return the equipment to its original position.",
+    },
+  ];
+
   // Fetch subscriber devices with full detail
   useEffect(() => {
     (async () => {
@@ -1904,6 +1925,36 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                                         data-testid={`status-pill-${d.sentinel_id}-${s.replace(/[^a-z0-9]/gi, "_")}`}
                                       >
                                         {isAi ? "★ " : ""}{s}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              {/* Quick-pick canned text snippets — only for REPOSITION */}
+                              {selectedStatus === "REPOSITION" && (
+                                <div className="mb-1.5 flex flex-wrap items-center gap-1" onMouseDown={e => e.stopPropagation()}>
+                                  <span className="text-[9px] font-bold tracking-wide text-slate-500 mr-0.5">QUICK TEXT:</span>
+                                  {REPOSITION_SNIPPETS.map(snip => {
+                                    const active = currentVal === snip.text;
+                                    return (
+                                      <button
+                                        key={snip.label}
+                                        type="button"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          e.preventDefault();
+                                          setCustomDetails(prev => ({ ...prev, [d.sentinel_id]: snip.text }));
+                                        }}
+                                        onMouseDown={e => e.stopPropagation()}
+                                        title={snip.text}
+                                        className={`text-[9px] font-semibold tracking-wide px-1.5 py-0.5 rounded border transition ${
+                                          active
+                                            ? "bg-emerald-600 border-emerald-600 text-white"
+                                            : "bg-white border-emerald-400 text-emerald-700 hover:bg-emerald-50"
+                                        }`}
+                                        data-testid={`snippet-${d.sentinel_id}-${snip.label.replace(/[^a-z0-9]/gi, "_")}`}
+                                      >
+                                        {snip.label}
                                       </button>
                                     );
                                   })}
