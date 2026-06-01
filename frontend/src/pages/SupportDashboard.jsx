@@ -1930,11 +1930,10 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                                   })}
                                 </div>
                               )}
-                              {/* Quick-pick canned text snippets — only for REPOSITION */}
-                              {selectedStatus === "REPOSITION" && (
-                                <div className="mb-1.5 flex flex-wrap items-center gap-1" onMouseDown={e => e.stopPropagation()}>
-                                  <span className="text-[9px] font-bold tracking-wide text-slate-500 mr-0.5">QUICK TEXT:</span>
-                                  {REPOSITION_SNIPPETS.map(snip => {
+                              {/* Quick-pick canned text snippets — available for every status */}
+                              <div className="mb-1.5 flex flex-wrap items-center gap-1" onMouseDown={e => e.stopPropagation()}>
+                                <span className="text-[9px] font-bold tracking-wide text-slate-500 mr-0.5">QUICK TEXT:</span>
+                                {REPOSITION_SNIPPETS.map(snip => {
                                     const active = currentVal === snip.text;
                                     return (
                                       <button
@@ -1959,7 +1958,6 @@ function NotificationModal({ subscriber, contact, onClose, onSent, targetSentine
                                     );
                                   })}
                                 </div>
-                              )}
                               <textarea
                                 value={currentVal}
                                 onChange={e => { e.stopPropagation(); setCustomDetails(prev => ({ ...prev, [d.sentinel_id]: e.target.value })); }}
