@@ -1185,7 +1185,7 @@ ${briefingText}`,
             <div className="grid grid-cols-2 gap-[6px] mt-2">
               <div className="border border-amber-500/20 bg-amber-500/5 rounded-sm p-2 text-center">
                 <div className="font-orbitron text-[18px] font-black text-amber-400">{notifToday}</div>
-                <div className="text-[7px] text-amber-500/50 tracking-wider uppercase">Today</div>
+                <div className="text-[7px] text-amber-500/50 tracking-wider uppercase">Today · {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
               </div>
               <div className="border border-cyan-500/20 bg-cyan-500/5 rounded-sm p-2 text-center">
                 <div className="font-orbitron text-[18px] font-black text-cyan-300">{notif7d}</div>
