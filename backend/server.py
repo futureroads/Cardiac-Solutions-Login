@@ -7787,70 +7787,81 @@ async def aeda_realtime_session():
         # client after the WebRTC data channel opens — keeps session
         # instructions short and authoritative).
         briefing = await _build_aeda_fleet_briefing()
+        # GA Realtime API: ephemeral keys are minted via /v1/realtime/client_secrets
+        # with the session config wrapped in a `session` object. Audio config moved
+        # under `audio.input`/`audio.output`. See OpenAI Realtime GA migration notes.
+        session_payload = {
+            "session": {
+                "type": "realtime",
+                "model": _AEDA_REALTIME_MODEL,
+                "instructions": AEDA_INSTRUCTIONS,
+                "audio": {
+                    "input": {
+                        "transcription": {"model": "whisper-1"},
+                        "turn_detection": {
+                            "type": "server_vad",
+                            "threshold": 0.75,
+                            "prefix_padding_ms": 300,
+                            "silence_duration_ms": 700,
+                            "create_response": True,
+                            "interrupt_response": False,
+                        },
+                    },
+                    "output": {"voice": _AEDA_VOICE},
+                },
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "show_aeds_on_map",
+                        "description": "Open the Stark Dashboard map in fullscreen, switch it to AED mode, and filter to a single subscriber's AED locations. Call this when the operator asks to 'show me where [subscriber]'s AEDs are', 'find [subscriber] on the map', 'pull up [subscriber]', etc. Use the subscriber name exactly as listed in KNOWN SUBSCRIBERS.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "subscriber": {
+                                    "type": "string",
+                                    "description": "Exact subscriber name to filter AEDs by. Use 'all' to show every subscriber's AEDs.",
+                                }
+                            },
+                            "required": ["subscriber"],
+                        },
+                    },
+                    {
+                        "type": "function",
+                        "name": "close_map",
+                        "description": "Close the fullscreen map and return to the normal Stark Dashboard view. Call this when the operator says 'close map', 'close the map', 'exit map', 'go back to dashboard', or similar.",
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                    {
+                        "type": "function",
+                        "name": "find_aeds_near_location",
+                        "description": "Find AEDs near a specific geographic location (city, address, ZIP code, etc.). Call this when the operator asks 'are there any AEDs near [location]?', 'show me AEDs near [location]', 'find AEDs in/around [location]', or similar. The frontend will geocode the location, zoom the map there, drop a marker, and open the closest AED's popup automatically. Use this for ANY location-based query, including small towns the system may not have heard of.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "location": {
+                                    "type": "string",
+                                    "description": "Free-text location: city, address, ZIP, or landmark (e.g. 'Waycross, GA', '30501', 'Atlanta airport').",
+                                },
+                                "radius_miles": {
+                                    "type": "number",
+                                    "description": "Search radius in miles. Default 10. Use 25 for sparser areas.",
+                                },
+                            },
+                            "required": ["location"],
+                        },
+                    },
+                ],
+                "tool_choice": "auto",
+            }
+        }
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                "https://api.openai.com/v1/realtime/sessions",
+                "https://api.openai.com/v1/realtime/client_secrets",
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "model": _AEDA_REALTIME_MODEL,
-                    "voice": _AEDA_VOICE,
-                    "instructions": AEDA_INSTRUCTIONS,
-                    "input_audio_transcription": {"model": "whisper-1"},
-                    "turn_detection": {
-                        "type": "server_vad",
-                        "threshold": 0.75,
-                        "prefix_padding_ms": 300,
-                        "silence_duration_ms": 700,
-                        "create_response": True,
-                        "interrupt_response": False,
-                    },
-                    "tools": [
-                        {
-                            "type": "function",
-                            "name": "show_aeds_on_map",
-                            "description": "Open the Stark Dashboard map in fullscreen, switch it to AED mode, and filter to a single subscriber's AED locations. Call this when the operator asks to 'show me where [subscriber]'s AEDs are', 'find [subscriber] on the map', 'pull up [subscriber]', etc. Use the subscriber name exactly as listed in KNOWN SUBSCRIBERS.",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "subscriber": {
-                                        "type": "string",
-                                        "description": "Exact subscriber name to filter AEDs by. Use 'all' to show every subscriber's AEDs.",
-                                    }
-                                },
-                                "required": ["subscriber"],
-                            },
-                        },
-                        {
-                            "type": "function",
-                            "name": "close_map",
-                            "description": "Close the fullscreen map and return to the normal Stark Dashboard view. Call this when the operator says 'close map', 'close the map', 'exit map', 'go back to dashboard', or similar.",
-                            "parameters": {"type": "object", "properties": {}},
-                        },
-                        {
-                            "type": "function",
-                            "name": "find_aeds_near_location",
-                            "description": "Find AEDs near a specific geographic location (city, address, ZIP code, etc.). Call this when the operator asks 'are there any AEDs near [location]?', 'show me AEDs near [location]', 'find AEDs in/around [location]', or similar. The frontend will geocode the location, zoom the map there, drop a marker, and open the closest AED's popup automatically. Use this for ANY location-based query, including small towns the system may not have heard of.",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "location": {
-                                        "type": "string",
-                                        "description": "Free-text location: city, address, ZIP, or landmark (e.g. 'Waycross, GA', '30501', 'Atlanta airport').",
-                                    },
-                                    "radius_miles": {
-                                        "type": "number",
-                                        "description": "Search radius in miles. Default 10. Use 25 for sparser areas.",
-                                    },
-                                },
-                                "required": ["location"],
-                            },
-                        },
-                    ],
-                    "tool_choice": "auto",
-                },
+                json=session_payload,
             ) as resp:
                 data = await resp.json()
                 if resp.status >= 400:
@@ -7877,7 +7888,7 @@ async def aeda_realtime_negotiate(request: Request):
         sdp_offer = (await request.body()).decode()
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                f"https://api.openai.com/v1/realtime?model={_AEDA_REALTIME_MODEL}",
+                f"https://api.openai.com/v1/realtime/calls?model={_AEDA_REALTIME_MODEL}",
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/sdp",
