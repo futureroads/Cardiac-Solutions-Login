@@ -7558,7 +7558,7 @@ AEDA_INSTRUCTIONS = (
     "NUMBERS: Read percentages naturally ('eighty-seven point two percent'). "
     "Read AED counts as numbers ('two hundred eighty-one AEDs')."
 )
-_AEDA_REALTIME_MODEL = "gpt-4o-realtime-preview-2024-12-17"
+_AEDA_REALTIME_MODEL = "gpt-realtime"
 _AEDA_VOICE = "ash"
 
 async def _build_aeda_fleet_briefing() -> str:
