@@ -169,7 +169,7 @@ export default function StarkDashboard({ user, onLogout }) {
       dc.send(JSON.stringify({
         type: "response.create",
         response: {
-          modalities: ["audio", "text"],
+          output_modalities: ["audio"],
           instructions: `Speak this exact sentence aloud as your reply, no preamble, no follow-up question: "${text}"`,
         },
       }));
@@ -419,16 +419,21 @@ export default function StarkDashboard({ user, onLogout }) {
           dc.send(JSON.stringify({
             type: "session.update",
             session: {
-              modalities: ["audio", "text"],
+              type: "realtime",
+              output_modalities: ["audio"],
               instructions: behaviorInstructions,
-              input_audio_transcription: { model: "whisper-1" },
-              turn_detection: {
-                type: "server_vad",
-                threshold: 0.75,
-                prefix_padding_ms: 300,
-                silence_duration_ms: 700,
-                create_response: true,
-                interrupt_response: false,
+              audio: {
+                input: {
+                  transcription: { model: "whisper-1" },
+                  turn_detection: {
+                    type: "server_vad",
+                    threshold: 0.75,
+                    prefix_padding_ms: 300,
+                    silence_duration_ms: 700,
+                    create_response: true,
+                    interrupt_response: false,
+                  },
+                },
               },
             },
           }));
@@ -492,7 +497,7 @@ ${briefingText}`,
           dc.send(JSON.stringify({
             type: "response.create",
             response: {
-              modalities: ["audio", "text"],
+              output_modalities: ["audio"],
               instructions: `Speak ONLY this exact greeting verbatim, then STOP and wait silently for the operator. DO NOT continue with system status, briefing summary, or any other content. Greeting: "${greeting}". After speaking the greeting, do not say anything else until the operator speaks first.`,
             },
           }));
@@ -522,7 +527,7 @@ ${briefingText}`,
               try {
                 if (!isSpeakingRef.current && dcRef2 && dcRef2.readyState === "open") {
                   console.log("[AEDA] no auto-response detected — forcing response.create");
-                  dcRef2.send(JSON.stringify({ type: "response.create", response: { modalities: ["audio", "text"] } }));
+                  dcRef2.send(JSON.stringify({ type: "response.create", response: { output_modalities: ["audio"] } }));
                 }
               } catch {}
             }, 800);
@@ -641,7 +646,7 @@ ${briefingText}`,
                   dc2.send(JSON.stringify({
                     type: "response.create",
                     response: {
-                      modalities: ["audio", "text"],
+                      output_modalities: ["audio"],
                       instructions: `Speak this exact sentence aloud as your reply, no preamble, no follow-up question: "${result.voice_answer}"`,
                     },
                   }));
