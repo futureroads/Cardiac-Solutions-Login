@@ -475,7 +475,7 @@ ${briefingText}`,
               item: {
                 type: "message",
                 role: "assistant",
-                content: [{ type: "text", text: "Reference data received. Standing by for the operator's first question." }],
+                content: [{ type: "output_text", text: "Reference data received. Standing by for the operator's first question." }],
               },
             }));
             console.log("[AEDA] briefing pushed into conversation context (with silent ack)");
