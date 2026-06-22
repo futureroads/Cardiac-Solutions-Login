@@ -458,10 +458,10 @@ export default function EmailActivityAdmin() {
                               {delivered && !bounceEv && (
                                 <span className="font-orbitron text-[8px] tracking-widest text-cyan-300 bg-cyan-500/10 border border-cyan-500/40 px-1.5 py-0.5 rounded-sm">DELIVERED</span>
                               )}
-                              {opens > 0 && (
+                              {opens > 0 && !bounceEv && (
                                 <span className="font-orbitron text-[8px] tracking-widest text-emerald-300 bg-emerald-500/10 border border-emerald-500/40 px-1.5 py-0.5 rounded-sm">OPENED ×{opens}</span>
                               )}
-                              {clicks > 0 && (
+                              {clicks > 0 && !bounceEv && (
                                 <span className="font-orbitron text-[8px] tracking-widest text-amber-300 bg-amber-500/10 border border-amber-500/40 px-1.5 py-0.5 rounded-sm">CLICKED ×{clicks}</span>
                               )}
                               {noEvents && (
