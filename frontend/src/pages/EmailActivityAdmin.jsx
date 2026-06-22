@@ -386,6 +386,99 @@ export default function EmailActivityAdmin() {
                 </div>
               </Section>
               {(() => {
+                // Per-recipient breakdown across all events captured by the
+                // provider webhook (Resend/SendGrid/Mailgun/SES). Tells the user
+                // exactly which TO/CC/BCC address delivered, opened, bounced, etc.
+                const splitEmails = (s) => (s || "")
+                  .split(/[,;]/)
+                  .map(x => x.trim())
+                  .filter(Boolean);
+                const norm = (s) => (s || "").trim().toLowerCase();
+
+                const recipients = [];
+                const seen = new Set();
+                const addRecipient = (email, role) => {
+                  const key = norm(email);
+                  if (!key || seen.has(key)) return;
+                  seen.add(key);
+                  recipients.push({ email, role });
+                };
+                addRecipient(detailRow.to_email, "TO");
+                splitEmails(detailRow.cc_email).forEach(e => addRecipient(e, "CC"));
+                splitEmails(detailRow.bcc_emails).forEach(e => addRecipient(e, "BCC"));
+
+                // Add any addresses that appear in events but weren't in TO/CC/BCC
+                (detailRow.events || []).forEach(ev => {
+                  if (ev.email) addRecipient(ev.email, "—");
+                });
+
+                if (recipients.length === 0) return null;
+
+                const eventsByEmail = {};
+                (detailRow.events || []).forEach(ev => {
+                  const k = norm(ev.email);
+                  if (!k) return;
+                  if (!eventsByEmail[k]) eventsByEmail[k] = [];
+                  eventsByEmail[k].push(ev);
+                });
+
+                return (
+                  <Section label="PER-RECIPIENT STATUS">
+                    <div className="space-y-1.5">
+                      {recipients.map(r => {
+                        const evs = eventsByEmail[norm(r.email)] || [];
+                        const types = new Set(evs.map(e => (e.event || "").toLowerCase()));
+                        const opens = evs.filter(e => (e.event || "").toLowerCase() === "open").length;
+                        const clicks = evs.filter(e => (e.event || "").toLowerCase() === "click").length;
+                        const bounceEv = evs.find(e =>
+                          ["bounce", "blocked", "dropped", "complaint", "complained"].includes((e.event || "").toLowerCase())
+                        );
+                        const delivered = types.has("delivered");
+                        const noEvents = evs.length === 0;
+                        return (
+                          <div
+                            key={r.email + r.role}
+                            className="border border-slate-700 bg-slate-900/40 rounded-sm p-2 flex items-center justify-between gap-3 flex-wrap"
+                            data-testid={`recipient-row-${norm(r.email)}`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <span className="font-orbitron text-[8px] tracking-widest text-slate-500 px-1.5 py-0.5 border border-slate-700 rounded-sm shrink-0">
+                                {r.role}
+                              </span>
+                              <span className="font-mono text-[11px] text-slate-200 truncate" title={r.email}>
+                                {r.email}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {bounceEv && (
+                                <span className="font-orbitron text-[8px] tracking-widest text-red-300 bg-red-500/15 border border-red-500/40 px-1.5 py-0.5 rounded-sm" title={bounceEv.reason || ""}>
+                                  {(bounceEv.event || "BOUNCE").toUpperCase()}
+                                </span>
+                              )}
+                              {delivered && !bounceEv && (
+                                <span className="font-orbitron text-[8px] tracking-widest text-cyan-300 bg-cyan-500/10 border border-cyan-500/40 px-1.5 py-0.5 rounded-sm">DELIVERED</span>
+                              )}
+                              {opens > 0 && (
+                                <span className="font-orbitron text-[8px] tracking-widest text-emerald-300 bg-emerald-500/10 border border-emerald-500/40 px-1.5 py-0.5 rounded-sm">OPENED ×{opens}</span>
+                              )}
+                              {clicks > 0 && (
+                                <span className="font-orbitron text-[8px] tracking-widest text-amber-300 bg-amber-500/10 border border-amber-500/40 px-1.5 py-0.5 rounded-sm">CLICKED ×{clicks}</span>
+                              )}
+                              {noEvents && (
+                                <span className="font-orbitron text-[8px] tracking-widest text-slate-500 border border-slate-700 px-1.5 py-0.5 rounded-sm">NO EVENTS YET</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="text-[9px] text-slate-500 mt-1.5 leading-relaxed">
+                      Note: Some providers (incl. Resend) only emit OPEN events for the TO recipient — opens by CC/BCC may not appear here.
+                    </div>
+                  </Section>
+                );
+              })()}
+              {(() => {
                 const bounceEvents = (detailRow.events || []).filter(
                   e => ["bounce", "blocked", "dropped", "complaint", "complained"].includes((e.event || "").toLowerCase())
                 );
