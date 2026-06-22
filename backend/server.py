@@ -2915,6 +2915,29 @@ async def resend_event_webhook(request: Request):
     }
     event_type = mapping.get(event_type_raw, event_type_raw.replace("email.", ""))
 
+    # Build a rich bounce reason: combine type, subType, message, and any
+    # SMTP diagnostic the provider exposes. Resend's `bounce` object on most
+    # bounces only includes type/subType/message, but some payloads also
+    # carry `smtp_response`, `diagnosticCode`, or `description`.
+    def _resend_bounce_reason(d: dict) -> str:
+        b = d.get("bounce") if isinstance(d.get("bounce"), dict) else None
+        if not b:
+            return d.get("reason") or ""
+        bits = []
+        bt = b.get("type")
+        bst = b.get("subType")
+        if bt or bst:
+            bits.append(f"[{bt or '?'} / {bst or '?'}]")
+        msg = b.get("message") or ""
+        if msg:
+            bits.append(msg)
+        # Pull any provider-specific diagnostic / SMTP response fields
+        for key in ("smtp_response", "smtpResponse", "diagnosticCode", "description", "details"):
+            v = b.get(key)
+            if v:
+                bits.append(f"{key}: {v}")
+        return " — ".join(bits).strip()
+
     log_record = {
         "received_at": datetime.now(timezone.utc).isoformat(),
         "provider": "resend",
@@ -2923,7 +2946,7 @@ async def resend_event_webhook(request: Request):
         "email": recipient,
         "sg_message_id": msg_id,
         "url": (data.get("click") or {}).get("link") if isinstance(data.get("click"), dict) else data.get("link"),
-        "reason": (data.get("bounce") or {}).get("message") if isinstance(data.get("bounce"), dict) else data.get("reason"),
+        "reason": _resend_bounce_reason(data) if event_type_raw == "email.bounced" else data.get("reason"),
         "timestamp": iso_ts,
         "matched_history": False,
     }
