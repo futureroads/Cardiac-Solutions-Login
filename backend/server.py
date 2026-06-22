@@ -2425,7 +2425,7 @@ async def admin_email_activity(
     user_counts: dict[str, dict] = {}
     async for h in _db.notification_history.find(
         query,
-        {"_id": 0, "html_body": 0, "events": 0},  # exclude heavy fields
+        {"_id": 0, "html_body": 0},  # exclude only the heavy HTML body
     ).sort("sent_at", -1).limit(500):
         sent_by = h.get("sent_by") or "(unknown)"
         ok = bool(h.get("success"))

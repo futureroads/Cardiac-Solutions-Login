@@ -385,6 +385,41 @@ export default function EmailActivityAdmin() {
                   <Pill ok={detailRow.spam_reported} label="SPAM" color="orange" />
                 </div>
               </Section>
+              {(() => {
+                const bounceEvents = (detailRow.events || []).filter(
+                  e => ["bounce", "blocked", "dropped", "complaint", "complained"].includes((e.event || "").toLowerCase())
+                );
+                if (!detailRow.bounced && bounceEvents.length === 0) return null;
+                // Fallback: if webhook didn't drop a per-recipient event but the
+                // record is flagged bounced, show the TO address with the stored reason.
+                const rows = bounceEvents.length > 0
+                  ? bounceEvents
+                  : [{ email: detailRow.to_email, reason: detailRow.bounce_reason, timestamp: detailRow.sent_at, event: "bounce" }];
+                return (
+                  <Section label="BOUNCE / FAILURE DETAIL">
+                    <div className="space-y-2">
+                      {rows.map((e, i) => (
+                        <div key={i} className="border border-red-500/30 bg-red-500/5 rounded-sm p-2.5">
+                          <div className="flex items-center justify-between gap-3 mb-1">
+                            <div className="font-mono text-[11px] text-red-200 font-bold break-all" data-testid={`bounce-recipient-${i}`}>
+                              {e.email || "(unknown recipient)"}
+                            </div>
+                            <span className="font-orbitron text-[8px] tracking-widest text-red-300/80 px-1.5 py-0.5 border border-red-500/40 rounded-sm">
+                              {(e.event || "bounce").toUpperCase()}
+                            </span>
+                          </div>
+                          {e.reason && (
+                            <div className="text-[10px] font-mono text-red-100/80 break-words">{e.reason}</div>
+                          )}
+                          {e.timestamp && (
+                            <div className="text-[9px] font-mono text-slate-500 mt-1">{fmt(e.timestamp)}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </Section>
+                );
+              })()}
             </div>
           </div>
         </div>
