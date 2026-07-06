@@ -8969,6 +8969,17 @@ async def _ebp_get_todays_expired(subscriber: str) -> list[dict]:
     return expired
 
 
+async def _ebp_load_test_mode() -> dict:
+    doc = await _db.expired_bp_test_mode.find_one({"_id": "global"}, {"_id": 0}) or {}
+    return {
+        "enabled": bool(doc.get("enabled", False)),
+        "to": doc.get("to", "") or "",
+        "cc": doc.get("cc", "") or "",
+        "updated_by": doc.get("updated_by"),
+        "updated_at": doc.get("updated_at"),
+    }
+
+
 async def _ebp_load_template() -> dict | None:
     return await _db.expired_bp_template.find_one({"_id": "global"}, {"_id": 0})
 
@@ -9101,6 +9112,12 @@ async def _ebp_send_for_subscriber(subscriber: str, *, force: bool = False, trig
 
     subject_template = tpl.get("subject") or "AED Expired Battery / Pads Notification"
 
+    # If test mode is enabled, every outbound send is redirected to the
+    # configured test TO / CC addresses instead of the subscriber's real
+    # contacts. The subject is prefixed with [TEST MODE] and the recipient
+    # override is stamped into notification_history for auditing.
+    test_mode = await _ebp_load_test_mode()
+
     sends = []
     now_iso = datetime.now(timezone.utc).isoformat()
     for g in groups:
@@ -9115,21 +9132,45 @@ async def _ebp_send_for_subscriber(subscriber: str, *, force: bool = False, trig
             # trim empty "— " artifacts when template uses {{location}}
             subj = subj.replace(" — ", "").strip()
 
+        original_to = g["to"]
+        original_cc = g.get("cc", "")
+        original_bcc = g.get("bcc", "")
+        if test_mode.get("enabled") and (test_mode.get("to") or "").strip():
+            send_to = test_mode["to"]
+            send_cc = test_mode.get("cc", "") or ""
+            send_bcc = ""
+            subj = f"[TEST MODE] {subj}"
+            # Prepend a visible banner to the top of the HTML so testers can see
+            # who the real recipient would have been in production.
+            banner = (
+                f"<div style=\"background:#fef3c7;border:1px solid #f59e0b;color:#92400e;"
+                f"padding:10px 14px;margin:0 0 16px 0;font-family:Arial,sans-serif;font-size:12px;\">"
+                f"<strong>TEST MODE</strong> — this email would normally be sent to <strong>{original_to}</strong>"
+                + (f" (cc: {original_cc})" if original_cc else "") +
+                f" for subscriber <strong>{subscriber}</strong>."
+                f"</div>"
+            )
+            html_body = banner + html_body
+        else:
+            send_to = original_to
+            send_cc = original_cc
+            send_bcc = original_bcc
+
         res = await send_email_unified(
-            to_email=g["to"],
-            cc_email=g.get("cc", ""),
-            bcc_emails=g.get("bcc", ""),
+            to_email=send_to,
+            cc_email=send_cc,
+            bcc_emails=send_bcc,
             subject=subj,
             html_body=html_body,
         )
 
         # Persist to notification_history so the record shows up in the log
         try:
-            await _db.notification_history.insert_one({
+            history_doc = {
                 "subscriber": subscriber,
-                "to_email": g["to"],
-                "cc_email": g.get("cc", ""),
-                "bcc_emails": g.get("bcc", ""),
+                "to_email": send_to,
+                "cc_email": send_cc,
+                "bcc_emails": send_bcc,
                 "subject": subj,
                 "html_body": html_body,
                 "sent_by": "system:ebp-auto",
@@ -9145,11 +9186,24 @@ async def _ebp_send_for_subscriber(subscriber: str, *, force: bool = False, trig
                 "bounced": False,
                 "spam_reported": False,
                 "trigger": f"expired_bp_automation:{trigger}",
-            })
+            }
+            if test_mode.get("enabled") and (test_mode.get("to") or "").strip():
+                history_doc["test_mode"] = True
+                history_doc["intended_to_email"] = original_to
+                history_doc["intended_cc_email"] = original_cc
+                history_doc["intended_bcc_emails"] = original_bcc
+            await _db.notification_history.insert_one(history_doc)
         except Exception as e:
             logger.warning(f"[EBP] history insert failed for {subscriber}: {e}")
 
-        sends.append({"to": g["to"], "aed_count": len(g["aeds"]), "success": bool(res.get("success")), "status": res.get("status_text", "")})
+        sends.append({
+            "to": send_to,
+            "aed_count": len(g["aeds"]),
+            "success": bool(res.get("success")),
+            "status": res.get("status_text", ""),
+            "test_mode": bool(test_mode.get("enabled") and (test_mode.get("to") or "").strip()),
+            "intended_to": original_to if test_mode.get("enabled") else None,
+        })
 
     # Update last-sent bookkeeping
     tz = ZoneInfo("America/New_York")
@@ -9264,6 +9318,34 @@ async def ebp_delete_template(current_user: dict = Depends(get_current_user)):
     _require_ebp_admin(current_user)
     await _db.expired_bp_template.delete_one({"_id": "global"})
     return {"ok": True}
+
+
+@api_router.get("/admin/expired-bp/test-mode")
+async def ebp_get_test_mode(current_user: dict = Depends(get_current_user)):
+    _require_ebp_admin(current_user)
+    return await _ebp_load_test_mode()
+
+
+@api_router.put("/admin/expired-bp/test-mode")
+async def ebp_set_test_mode(data: dict, current_user: dict = Depends(get_current_user)):
+    _require_ebp_admin(current_user)
+    enabled = bool(data.get("enabled", False))
+    to = (data.get("to") or "").strip()
+    cc = (data.get("cc") or "").strip()
+    if enabled and not to:
+        raise HTTPException(status_code=400, detail="A TO address is required to enable test mode.")
+    await _db.expired_bp_test_mode.update_one(
+        {"_id": "global"},
+        {"$set": {
+            "enabled": enabled,
+            "to": to,
+            "cc": cc,
+            "updated_by": current_user.get("username", ""),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return await _ebp_load_test_mode()
 
 
 @api_router.get("/admin/expired-bp/settings")

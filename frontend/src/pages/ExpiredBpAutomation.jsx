@@ -27,6 +27,10 @@ export default function ExpiredBpAutomation() {
   const [subject, setSubject] = useState("AED Expired Battery / Pads Notification");
   const [uploading, setUploading] = useState(false);
 
+  const [testMode, setTestMode] = useState({ enabled: false, to: "", cc: "" });
+  const [testModeSaving, setTestModeSaving] = useState(false);
+  const [testModeDirty, setTestModeDirty] = useState(false);
+
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -69,7 +73,44 @@ export default function ExpiredBpAutomation() {
     }
   };
 
-  useEffect(() => { loadTemplate(); loadSettings(); }, []);
+  useEffect(() => { loadTemplate(); loadSettings(); loadTestMode(); }, []);
+
+  const loadTestMode = async () => {
+    try {
+      const r = await fetch(`${API}/admin/expired-bp/test-mode`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (r.ok) {
+        const d = await r.json();
+        setTestMode({ enabled: !!d.enabled, to: d.to || "", cc: d.cc || "" });
+        setTestModeDirty(false);
+      }
+    } catch {} // eslint-disable-line
+  };
+
+  const saveTestMode = async () => {
+    if (testMode.enabled && !testMode.to.trim()) {
+      setErr("Enter a TO address before enabling Test Mode.");
+      return;
+    }
+    setTestModeSaving(true);
+    try {
+      const r = await fetch(`${API}/admin/expired-bp/test-mode`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(testMode),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const d = await r.json();
+      setTestMode({ enabled: !!d.enabled, to: d.to || "", cc: d.cc || "" });
+      setTestModeDirty(false);
+      showFlash(d.enabled ? "Test Mode enabled" : "Test Mode disabled");
+    } catch (e) {
+      setErr(e.message || "Save failed");
+    } finally {
+      setTestModeSaving(false);
+    }
+  };
 
   const showFlash = (msg) => {
     setFlash(msg);
@@ -235,6 +276,12 @@ export default function ExpiredBpAutomation() {
             <span className="text-slate-600">·</span>
             <span className="text-slate-500">ENABLED:</span>
             <span className="text-cyan-300">{enabledCount}/{items.length}</span>
+            {testMode.enabled && (
+              <>
+                <span className="text-slate-600">·</span>
+                <span className="text-amber-200 bg-amber-500/20 border border-amber-500/50 px-1.5 py-0.5 rounded-sm">TEST MODE ACTIVE</span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -349,6 +396,77 @@ export default function ExpiredBpAutomation() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Test Mode card */}
+        <div
+          className={`border rounded-sm p-5 ${testMode.enabled ? "border-amber-500/60 bg-amber-500/5" : "border-slate-700 bg-[#0a0f1c]"}`}
+          data-testid="test-mode-card"
+        >
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className={`w-4 h-4 ${testMode.enabled ? "text-amber-400" : "text-slate-500"}`} />
+              <div className={`font-orbitron text-xs tracking-widest ${testMode.enabled ? "text-amber-300" : "text-slate-400"}`}>
+                TEST MODE
+              </div>
+              {testMode.enabled && (
+                <span className="font-orbitron text-[9px] tracking-widest text-amber-200 bg-amber-500/20 border border-amber-500/50 px-1.5 py-0.5 rounded-sm">
+                  ACTIVE
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => {
+                setTestMode(m => ({ ...m, enabled: !m.enabled }));
+                setTestModeDirty(true);
+              }}
+              className={`relative inline-flex h-5 w-10 items-center rounded-full transition ${testMode.enabled ? "bg-amber-500" : "bg-slate-700"}`}
+              data-testid="test-mode-toggle"
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${testMode.enabled ? "translate-x-5" : "translate-x-1"}`} />
+            </button>
+          </div>
+
+          <div className="text-[11px] text-slate-400 mb-3 leading-relaxed">
+            When Test Mode is active, all scheduled and Run-Now sends for enabled subscribers are redirected to the addresses below instead of the real subscriber contacts. Subject line is prefixed with <code className="text-amber-300">[TEST MODE]</code> and a banner is added to the top of the email showing who the intended recipient would have been.
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-3">
+            <div>
+              <div className="text-[10px] font-orbitron text-slate-500 tracking-widest mb-1">TEST TO (required)</div>
+              <input
+                value={testMode.to}
+                onChange={e => { setTestMode(m => ({ ...m, to: e.target.value })); setTestModeDirty(true); }}
+                placeholder="you@example.com"
+                className="w-full bg-slate-900/40 border border-slate-700 rounded-sm px-2 py-1.5 text-[12px] font-mono text-slate-200"
+                data-testid="test-to-input"
+              />
+            </div>
+            <div>
+              <div className="text-[10px] font-orbitron text-slate-500 tracking-widest mb-1">TEST CC (optional, comma-separated)</div>
+              <input
+                value={testMode.cc}
+                onChange={e => { setTestMode(m => ({ ...m, cc: e.target.value })); setTestModeDirty(true); }}
+                placeholder="teammate@example.com, boss@example.com"
+                className="w-full bg-slate-900/40 border border-slate-700 rounded-sm px-2 py-1.5 text-[12px] font-mono text-slate-200"
+                data-testid="test-cc-input"
+              />
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              onClick={saveTestMode}
+              disabled={testModeSaving || !testModeDirty}
+              className="text-[10px] font-orbitron tracking-widest px-3 py-1.5 border border-amber-500/50 text-amber-300 hover:bg-amber-500/10 rounded-sm flex items-center gap-1 disabled:opacity-30"
+              data-testid="save-test-mode-btn"
+            >
+              {testModeSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} SAVE TEST MODE
+            </button>
+            {!testModeDirty && !testModeSaving && (
+              <span className="text-[10px] text-slate-500 font-orbitron tracking-wider">saved</span>
+            )}
+          </div>
         </div>
 
         {/* Subscribers table */}
