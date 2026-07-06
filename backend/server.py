@@ -16,13 +16,14 @@ import uuid
 print("[SERVER] Module loading started", flush=True)
 
 try:
-    from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status, BackgroundTasks, Header, Response
+    from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status, BackgroundTasks, Header, Response, UploadFile, File, Form
     from fastapi.responses import JSONResponse
     from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
     from dotenv import load_dotenv
     from starlette.middleware.cors import CORSMiddleware
     from motor.motor_asyncio import AsyncIOMotorClient
     from pydantic import BaseModel, Field
+    from zoneinfo import ZoneInfo
     import jwt
     print("[SERVER] All imports OK", flush=True)
 except Exception as e:
@@ -688,6 +689,9 @@ async def startup():
     asyncio.create_task(_aeda_sub_cache_warmer())
     # Finalize stale user-activity sessions + prune old history
     asyncio.create_task(_activity_session_finalizer_loop())
+    # Expired B/P automation — scans every minute for enabled subscribers and
+    # fires a daily email once their configured send-time-of-day passes.
+    asyncio.create_task(_expired_bp_scheduler_loop())
 
 
 async def _aeda_sub_cache_warmer():
@@ -8806,6 +8810,551 @@ async def _activity_session_finalizer_loop():
 @api_router.get("/health")
 async def health():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EXPIRED B/P AUTOMATION
+# Admin uploads a global template (.docx/.doc/.html/.txt); enables the feature
+# per-subscriber with a daily send time (default 06:00 America/New_York). Every
+# morning after Readisys refresh, the scheduler diffs today's EXPIRED B/P set
+# against yesterday's snapshot for each enabled subscriber and — if new devices
+# have crossed the threshold — sends a rendered email via the unified pipeline
+# using the same subscriber/location contact resolution as manual notifications.
+# ═══════════════════════════════════════════════════════════════════════════
+
+_EBP_PLACEHOLDERS = (
+    "subscriber_name", "contact_name", "aed_table", "aed_list",
+    "today_date", "cs_signature",
+)
+
+_EBP_SIGNATURE_HTML = (
+    "<div style=\"margin-top:24px;padding-top:12px;border-top:1px solid #ddd;"
+    "font-family:Arial,sans-serif;font-size:12px;color:#555;\">"
+    "<div><strong>Cardiac Solutions LLC</strong></div>"
+    "<div>AED Sales, Service &amp; Monitoring</div>"
+    "<div><a href=\"mailto:support@cardiac-solutions.net\">support@cardiac-solutions.net</a></div>"
+    "</div>"
+)
+
+
+def _extract_template_text(filename: str, raw_bytes: bytes) -> str:
+    """Return a text/html representation of an uploaded template.
+    Supported: .docx, .doc (best-effort), .html, .htm, .txt, .md.
+    """
+    name = (filename or "").lower()
+    if name.endswith(".docx"):
+        try:
+            import io
+            from docx import Document
+            doc = Document(io.BytesIO(raw_bytes))
+            paras = []
+            for p in doc.paragraphs:
+                if p.text is not None:
+                    paras.append(p.text)
+            return "\n".join(paras)
+        except Exception as e:
+            logger.warning(f"[EBP] .docx parse failed: {e}")
+    if name.endswith(".html") or name.endswith(".htm"):
+        try:
+            return raw_bytes.decode("utf-8", errors="replace")
+        except Exception:
+            pass
+    # .doc, .txt, .md, and everything else — decode as text (best-effort)
+    try:
+        return raw_bytes.decode("utf-8", errors="replace")
+    except Exception:
+        return raw_bytes.decode("latin-1", errors="replace")
+
+
+def _render_ebp_html(template_text: str, is_html_source: bool, ctx: dict) -> str:
+    """Render placeholder substitutions in the template.
+    If the source is plain text (from a .docx/.txt), auto-wraps in a light
+    HTML shell and converts newlines to <br/>. If source is HTML, does raw
+    string substitution and returns as-is (subject to sanitation later).
+    """
+    body = template_text or ""
+
+    # Build the aed_table (HTML) and aed_list (plain HTML list)
+    aeds = ctx.get("aeds") or []
+    if aeds:
+        rows = "".join(
+            f"<tr>"
+            f"<td style=\"padding:6px 10px;border:1px solid #cbd5e1;\">{a.get('sentinel_id', '')}</td>"
+            f"<td style=\"padding:6px 10px;border:1px solid #cbd5e1;\">{a.get('location', '')}</td>"
+            f"<td style=\"padding:6px 10px;border:1px solid #cbd5e1;\">{a.get('battery_expiration', '')}</td>"
+            f"<td style=\"padding:6px 10px;border:1px solid #cbd5e1;\">{a.get('pad_expiration', '')}</td>"
+            f"</tr>"
+            for a in aeds
+        )
+        aed_table = (
+            "<table style=\"border-collapse:collapse;width:100%;margin:12px 0;font-family:Arial,sans-serif;font-size:13px;\">"
+            "<thead><tr style=\"background:#f1f5f9;\">"
+            "<th style=\"padding:6px 10px;border:1px solid #cbd5e1;text-align:left;\">Serial</th>"
+            "<th style=\"padding:6px 10px;border:1px solid #cbd5e1;text-align:left;\">Location</th>"
+            "<th style=\"padding:6px 10px;border:1px solid #cbd5e1;text-align:left;\">Battery Exp</th>"
+            "<th style=\"padding:6px 10px;border:1px solid #cbd5e1;text-align:left;\">Pads Exp</th>"
+            "</tr></thead><tbody>"
+            + rows + "</tbody></table>"
+        )
+        list_items = "".join(
+            f"<li>{a.get('sentinel_id', '')} — {a.get('location', '')} (Batt {a.get('battery_expiration', '')} / Pads {a.get('pad_expiration', '')})</li>"
+            for a in aeds
+        )
+        aed_list = f"<ul style=\"margin:6px 0 12px 20px;\">{list_items}</ul>"
+    else:
+        aed_table = "<p><em>No AEDs to report.</em></p>"
+        aed_list = "<p><em>No AEDs to report.</em></p>"
+
+    replacements = {
+        "subscriber_name": ctx.get("subscriber_name", "") or "",
+        "contact_name": ctx.get("contact_name", "") or "",
+        "aed_table": aed_table,
+        "aed_list": aed_list,
+        "today_date": datetime.now(ZoneInfo("America/New_York")).strftime("%B %d, %Y"),
+        "cs_signature": _EBP_SIGNATURE_HTML,
+    }
+    for key, val in replacements.items():
+        body = body.replace("{{" + key + "}}", val)
+        body = body.replace("{{ " + key + " }}", val)
+
+    if not is_html_source:
+        # Escape any stray HTML then convert newlines. We don't escape after
+        # placeholder substitution because the placeholder values themselves
+        # contain intentional HTML (table, list, signature).
+        # Trade-off: user text is not HTML-escaped. Since only admins upload
+        # templates, this is acceptable.
+        body = body.replace("\n", "<br/>")
+        body = (
+            "<div style=\"font-family:Arial,sans-serif;font-size:13px;line-height:1.5;color:#111;max-width:720px;\">"
+            + body + "</div>"
+        )
+    return body
+
+
+async def _ebp_get_todays_expired(subscriber: str) -> list[dict]:
+    """Return list of AEDs currently in EXPIRED B/P for a subscriber, using the
+    same voice API that powers the manual notification modal."""
+    import httpx, urllib.parse
+    headers = _readisys_auth_headers()
+    enc = urllib.parse.quote(subscriber)
+    try:
+        async with httpx.AsyncClient(timeout=25) as client:
+            resp = await client.get(
+                f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc}/devices?limit=500",
+                headers=headers,
+            )
+        if resp.status_code != 200:
+            logger.warning(f"[EBP] devices fetch {subscriber} → {resp.status_code}")
+            return []
+        devices = (resp.json() or {}).get("devices", []) or []
+    except Exception as e:
+        logger.warning(f"[EBP] devices fetch {subscriber}: {e}")
+        return []
+    expired = []
+    for d in devices:
+        if (d.get("detailed_status") or "").upper() != "EXPIRED B/P":
+            continue
+        expired.append({
+            "sentinel_id": d.get("sentinel_id", ""),
+            "site": d.get("site", ""),
+            "building": d.get("building", ""),
+            "placement": d.get("placement", ""),
+            "location": (
+                " / ".join(x for x in [d.get("site"), d.get("building"), d.get("placement")] if x)
+                or d.get("location", "")
+            ),
+            "battery_expiration": d.get("battery_expiration", ""),
+            "pad_expiration": d.get("pad_expiration", ""),
+            "model": d.get("model", ""),
+        })
+    return expired
+
+
+async def _ebp_load_template() -> dict | None:
+    return await _db.expired_bp_template.find_one({"_id": "global"}, {"_id": 0})
+
+
+async def _ebp_load_settings(subscriber: str) -> dict:
+    doc = await _db.expired_bp_settings.find_one({"_id": subscriber}, {"_id": 0}) or {}
+    return {
+        "subscriber": subscriber,
+        "enabled": bool(doc.get("enabled", False)),
+        "send_time_et": doc.get("send_time_et") or "06:00",
+        "updated_at": doc.get("updated_at"),
+        "updated_by": doc.get("updated_by"),
+        "last_sent_at": doc.get("last_sent_at"),
+        "last_sent_date_et": doc.get("last_sent_date_et"),
+        "last_result": doc.get("last_result"),
+    }
+
+
+async def _ebp_todays_new_expired(subscriber: str, today_expired: list[dict]) -> list[dict]:
+    """Diff today's EXPIRED B/P set against yesterday's snapshot for this
+    subscriber. Returns only devices that were NOT expired yesterday.
+    First-run behavior (no snapshot yet): returns [] to avoid sending a huge
+    catch-up email on Day 1 — seeds a baseline instead.
+    """
+    tz = ZoneInfo("America/New_York")
+    today_et = datetime.now(tz).date()
+    yday_et = (today_et - timedelta(days=1)).isoformat()
+
+    yday_doc = await _db.expired_bp_daily_snapshot.find_one(
+        {"subscriber": subscriber, "date_et": yday_et},
+        {"_id": 0, "sentinel_ids": 1},
+    )
+    if not yday_doc:
+        return []
+    yday_set = set(yday_doc.get("sentinel_ids") or [])
+    return [d for d in today_expired if d.get("sentinel_id") and d["sentinel_id"] not in yday_set]
+
+
+async def _ebp_save_snapshot(subscriber: str, sids: list[str]) -> None:
+    tz = ZoneInfo("America/New_York")
+    today_et = datetime.now(tz).date().isoformat()
+    await _db.expired_bp_daily_snapshot.update_one(
+        {"subscriber": subscriber, "date_et": today_et},
+        {"$set": {
+            "subscriber": subscriber,
+            "date_et": today_et,
+            "sentinel_ids": sids,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+
+
+async def _ebp_resolve_recipients(subscriber: str, aeds: list[dict]) -> list[dict]:
+    """Return a list of {to, cc, bcc, aeds, contact_name} groups.
+    Respects the subscriber's notify_mode (subscriber vs. location).
+    - subscriber: one group with all AEDs → primary contact
+    - location: one group per (site, building) with matching contacts;
+      locations with no contacts are dropped and logged as orphans.
+    """
+    sub_settings = await _db.subscriber_settings.find_one({"_id": subscriber}, {"_id": 0}) or {}
+    notify_mode = (sub_settings.get("notify_mode") or "subscriber").lower()
+
+    if notify_mode == "location":
+        # Build per-loc contact map
+        cmap: dict[str, list[str]] = {}
+        async for d in _db.location_contacts.find({"subscriber": subscriber}, {"_id": 0}):
+            cmap[d.get("loc_key", "")] = d.get("emails") or []
+        groups: dict[str, dict] = {}
+        for a in aeds:
+            key = _loc_key(a.get("site", ""), a.get("building", ""))
+            emails = cmap.get(key, [])
+            if not emails:
+                continue  # orphan — skip
+            if key not in groups:
+                groups[key] = {
+                    "to": emails[0],
+                    "cc": ", ".join(emails[1:]) if len(emails) > 1 else "",
+                    "bcc": "",
+                    "aeds": [],
+                    "contact_name": "",
+                    "loc_label": " / ".join(x for x in [a.get("site"), a.get("building")] if x),
+                }
+            groups[key]["aeds"].append(a)
+        return list(groups.values())
+
+    # Subscriber-level primary contact
+    contact = await _db.subscriber_contacts.find_one({"subscriber": subscriber}, {"_id": 0}) or {}
+    to_email = contact.get("to_email", "")
+    if not to_email:
+        return []
+    return [{
+        "to": to_email,
+        "cc": contact.get("cc_email", "") or "",
+        "bcc": contact.get("bcc_emails", "") or "",
+        "aeds": aeds,
+        "contact_name": (contact.get("contact_name") or "").split()[0] if contact.get("contact_name") else "",
+        "loc_label": "",
+    }]
+
+
+async def _ebp_send_for_subscriber(subscriber: str, *, force: bool = False, trigger: str = "scheduler") -> dict:
+    """Compose and send the daily Expired B/P email for one subscriber.
+    Returns a summary dict.
+    """
+    tpl = await _ebp_load_template()
+    if not tpl:
+        return {"skipped": True, "reason": "no_template"}
+
+    todays_expired = await _ebp_get_todays_expired(subscriber)
+    todays_sids = [d["sentinel_id"] for d in todays_expired if d.get("sentinel_id")]
+
+    if force:
+        new_expired = todays_expired
+    else:
+        new_expired = await _ebp_todays_new_expired(subscriber, todays_expired)
+
+    # Save today's snapshot regardless (so tomorrow's diff works even on first run)
+    await _ebp_save_snapshot(subscriber, todays_sids)
+
+    if not new_expired:
+        return {"skipped": True, "reason": "no_new_expired", "todays_expired_count": len(todays_expired)}
+
+    groups = await _ebp_resolve_recipients(subscriber, new_expired)
+    if not groups:
+        return {"skipped": True, "reason": "no_recipients", "aed_count": len(new_expired)}
+
+    template_text = tpl.get("text_content") or ""
+    is_html = (tpl.get("filename") or "").lower().endswith((".html", ".htm"))
+
+    subject_template = tpl.get("subject") or "AED Expired Battery / Pads Notification"
+
+    sends = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for g in groups:
+        html_body = _render_ebp_html(template_text, is_html, {
+            "subscriber_name": subscriber,
+            "contact_name": g.get("contact_name", ""),
+            "aeds": g["aeds"],
+        })
+        loc = g.get("loc_label")
+        subj = subject_template.replace("{{location}}", loc or "").replace("{{subscriber}}", subscriber)
+        if not loc:
+            # trim empty "— " artifacts when template uses {{location}}
+            subj = subj.replace(" — ", "").strip()
+
+        res = await send_email_unified(
+            to_email=g["to"],
+            cc_email=g.get("cc", ""),
+            bcc_emails=g.get("bcc", ""),
+            subject=subj,
+            html_body=html_body,
+        )
+
+        # Persist to notification_history so the record shows up in the log
+        try:
+            await _db.notification_history.insert_one({
+                "subscriber": subscriber,
+                "to_email": g["to"],
+                "cc_email": g.get("cc", ""),
+                "bcc_emails": g.get("bcc", ""),
+                "subject": subj,
+                "html_body": html_body,
+                "sent_by": "system:ebp-auto",
+                "sent_at": now_iso,
+                "success": bool(res.get("success")),
+                "email_response": f"{res.get('provider', '?')} {res.get('status_text', '')}".strip(),
+                "sg_message_id": res.get("message_id", ""),
+                "linked_sentinel_ids": [a["sentinel_id"] for a in g["aeds"]],
+                "provider": res.get("provider", ""),
+                "delivered_at": None,
+                "open_count": 0,
+                "click_count": 0,
+                "bounced": False,
+                "spam_reported": False,
+                "trigger": f"expired_bp_automation:{trigger}",
+            })
+        except Exception as e:
+            logger.warning(f"[EBP] history insert failed for {subscriber}: {e}")
+
+        sends.append({"to": g["to"], "aed_count": len(g["aeds"]), "success": bool(res.get("success")), "status": res.get("status_text", "")})
+
+    # Update last-sent bookkeeping
+    tz = ZoneInfo("America/New_York")
+    today_et = datetime.now(tz).date().isoformat()
+    await _db.expired_bp_settings.update_one(
+        {"_id": subscriber},
+        {"$set": {
+            "last_sent_at": now_iso,
+            "last_sent_date_et": today_et,
+            "last_result": {"groups": len(sends), "aeds": len(new_expired), "trigger": trigger},
+        }},
+        upsert=True,
+    )
+
+    return {
+        "sent": True,
+        "groups": sends,
+        "aed_count": len(new_expired),
+        "todays_expired_count": len(todays_expired),
+    }
+
+
+async def _expired_bp_scheduler_loop():
+    """Every minute, wake up and check each enabled subscriber. If the current
+    ET wall clock has crossed their configured send time and they have not
+    already been sent today, fire off a send.
+    """
+    await asyncio.sleep(60)  # short warmup
+    tz = ZoneInfo("America/New_York")
+    while True:
+        try:
+            now_et = datetime.now(tz)
+            today_et = now_et.date().isoformat()
+            now_hhmm = now_et.strftime("%H:%M")
+            async for doc in _db.expired_bp_settings.find({"enabled": True}):
+                sub = doc.get("_id")
+                if not sub:
+                    continue
+                if doc.get("last_sent_date_et") == today_et:
+                    continue  # already fired today
+                send_time = (doc.get("send_time_et") or "06:00")[:5]
+                if now_hhmm < send_time:
+                    continue  # not yet
+                try:
+                    logger.info(f"[EBP] firing send for {sub} (time={send_time} ET)")
+                    result = await _ebp_send_for_subscriber(sub, trigger="scheduler")
+                    logger.info(f"[EBP] {sub} result: {result}")
+                except Exception as e:
+                    logger.error(f"[EBP] send error for {sub}: {e}", exc_info=True)
+        except Exception as loop_err:
+            logger.error(f"[EBP] scheduler loop error: {loop_err}", exc_info=True)
+        await asyncio.sleep(60)
+
+
+# ─── Admin API endpoints ───────────────────────────────────────────────────
+
+def _require_ebp_admin(user: dict) -> None:
+    role = (user.get("role") or "").lower()
+    modules = user.get("allowed_modules") or []
+    if role == "admin" or "expired_bp_automation" in modules:
+        return
+    raise HTTPException(status_code=403, detail="Not authorized for Expired B/P Automation")
+
+
+@api_router.get("/admin/expired-bp/template")
+async def ebp_get_template(current_user: dict = Depends(get_current_user)):
+    _require_ebp_admin(current_user)
+    tpl = await _ebp_load_template()
+    if not tpl:
+        return {"exists": False}
+    return {
+        "exists": True,
+        "filename": tpl.get("filename"),
+        "content_type": tpl.get("content_type"),
+        "uploaded_by": tpl.get("uploaded_by"),
+        "uploaded_at": tpl.get("uploaded_at"),
+        "text_content": tpl.get("text_content", ""),
+        "subject": tpl.get("subject") or "AED Expired Battery / Pads Notification",
+        "size_bytes": tpl.get("size_bytes", 0),
+    }
+
+
+@api_router.post("/admin/expired-bp/template")
+async def ebp_upload_template(
+    file: UploadFile = File(...),
+    subject: str = Form(""),
+    current_user: dict = Depends(get_current_user),
+):
+    _require_ebp_admin(current_user)
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+    text = _extract_template_text(file.filename or "", raw)
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Could not extract text from file")
+    doc = {
+        "_id": "global",
+        "filename": file.filename or "template",
+        "content_type": file.content_type or "application/octet-stream",
+        "text_content": text,
+        "subject": (subject or "").strip() or "AED Expired Battery / Pads Notification",
+        "uploaded_by": current_user.get("username", ""),
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "size_bytes": len(raw),
+    }
+    await _db.expired_bp_template.update_one({"_id": "global"}, {"$set": doc}, upsert=True)
+    return {"ok": True, "filename": doc["filename"], "size_bytes": doc["size_bytes"]}
+
+
+@api_router.delete("/admin/expired-bp/template")
+async def ebp_delete_template(current_user: dict = Depends(get_current_user)):
+    _require_ebp_admin(current_user)
+    await _db.expired_bp_template.delete_one({"_id": "global"})
+    return {"ok": True}
+
+
+@api_router.get("/admin/expired-bp/settings")
+async def ebp_list_settings(current_user: dict = Depends(get_current_user)):
+    _require_ebp_admin(current_user)
+    # Pull all known subscribers from the subscriber_contacts collection so
+    # the UI can render a full list even for subscribers who haven't been
+    # configured yet.
+    subs: dict[str, dict] = {}
+    async for c in _db.subscriber_contacts.find({}, {"_id": 0, "subscriber": 1}):
+        name = c.get("subscriber")
+        if name:
+            subs[name] = await _ebp_load_settings(name)
+    async for d in _db.expired_bp_settings.find({}, {"_id": 1}):
+        name = d.get("_id")
+        if name and name not in subs:
+            subs[name] = await _ebp_load_settings(name)
+    items = sorted(subs.values(), key=lambda x: x["subscriber"].lower())
+    return {"items": items, "total": len(items)}
+
+
+@api_router.put("/admin/expired-bp/settings/{subscriber}")
+async def ebp_upsert_settings(
+    subscriber: str,
+    data: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_ebp_admin(current_user)
+    enabled = bool(data.get("enabled", False))
+    send_time = (data.get("send_time_et") or "06:00").strip()
+    # Validate HH:MM
+    try:
+        hh, mm = send_time.split(":")
+        if not (0 <= int(hh) <= 23 and 0 <= int(mm) <= 59):
+            raise ValueError()
+        send_time = f"{int(hh):02d}:{int(mm):02d}"
+    except Exception:
+        raise HTTPException(status_code=400, detail="send_time_et must be HH:MM (24-hour)")
+    await _db.expired_bp_settings.update_one(
+        {"_id": subscriber},
+        {"$set": {
+            "enabled": enabled,
+            "send_time_et": send_time,
+            "updated_by": current_user.get("username", ""),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"ok": True, "settings": await _ebp_load_settings(subscriber)}
+
+
+@api_router.post("/admin/expired-bp/preview/{subscriber}")
+async def ebp_preview(subscriber: str, current_user: dict = Depends(get_current_user)):
+    """Dry-run: show what the email would look like if it were sent right now,
+    using today's EXPIRED B/P devices (all of them, ignoring the yesterday-diff)."""
+    _require_ebp_admin(current_user)
+    tpl = await _ebp_load_template()
+    if not tpl:
+        raise HTTPException(status_code=400, detail="No template uploaded yet")
+    expired = await _ebp_get_todays_expired(subscriber)
+    groups = await _ebp_resolve_recipients(subscriber, expired) if expired else []
+    is_html = (tpl.get("filename") or "").lower().endswith((".html", ".htm"))
+    previews = []
+    for g in groups:
+        html = _render_ebp_html(tpl.get("text_content") or "", is_html, {
+            "subscriber_name": subscriber,
+            "contact_name": g.get("contact_name", ""),
+            "aeds": g["aeds"],
+        })
+        previews.append({
+            "to": g["to"], "cc": g.get("cc", ""), "bcc": g.get("bcc", ""),
+            "aed_count": len(g["aeds"]),
+            "loc_label": g.get("loc_label", ""),
+            "html": html,
+        })
+    return {
+        "subscriber": subscriber,
+        "todays_expired_count": len(expired),
+        "recipient_groups": previews,
+        "subject_template": tpl.get("subject") or "AED Expired Battery / Pads Notification",
+    }
+
+
+@api_router.post("/admin/expired-bp/run-now/{subscriber}")
+async def ebp_run_now(subscriber: str, current_user: dict = Depends(get_current_user)):
+    """Force a send right now, ignoring the yesterday diff (send for ALL of
+    today's EXPIRED B/P). Useful for testing the pipeline end-to-end."""
+    _require_ebp_admin(current_user)
+    result = await _ebp_send_for_subscriber(subscriber, force=True, trigger=f"manual:{current_user.get('username', '')}")
+    return {"ok": True, "result": result}
+
 
 # Include the router in the main app
 app.include_router(api_router)

@@ -171,6 +171,16 @@ const ALL_MODULES = [
     badgeCount: null,
   },
   {
+    moduleKey: "expired_bp_automation",
+    title: "EXPIRED B/P NOTIFICATIONS",
+    status: "LIVE",
+    icon: AlertTriangle,
+    route: "/admin/expired-bp-automation",
+    description:
+      "Automated daily emails to subscribers when AEDs cross into expired-battery/pads. Upload a template, toggle per subscriber, and set a send time.",
+    badgeCount: null,
+  },
+  {
     moduleKey: "email_log",
     title: "EMAIL LOG",
     status: "LIVE",

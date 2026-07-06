@@ -17,6 +17,7 @@ import StarkDashboard from "./pages/StarkDashboard";
 import EmailActivityAdmin from "./pages/EmailActivityAdmin";
 import Reports from "./pages/Reports";
 import LocationContacts from "./pages/LocationContacts";
+import ExpiredBpAutomation from "./pages/ExpiredBpAutomation";
 import UserActivity from "./pages/UserActivity";
 import Sales from "./pages/Sales";
 import SalesMobile from "./pages/SalesMobile";
@@ -214,6 +215,17 @@ function App() {
                 (user?.allowed_modules || []).includes("location_contacts")
               ) ?
                 <LocationContacts /> :
+                <Navigate to="/hub" replace />
+            }
+          />
+          <Route
+            path="/admin/expired-bp-automation"
+            element={
+              isAuthenticated && (
+                user?.role === "admin" ||
+                (user?.allowed_modules || []).includes("expired_bp_automation")
+              ) ?
+                <ExpiredBpAutomation /> :
                 <Navigate to="/hub" replace />
             }
           />
