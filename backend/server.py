@@ -5019,26 +5019,67 @@ async def save_device_notes(sentinel_id: str, data: dict, current_user: dict = D
 
 @api_router.get("/support/subscriber/{subscriber}/devices")
 async def support_subscriber_devices(subscriber: str, current_user: dict = Depends(get_current_user)):
-    """Get all devices for a subscriber using the voice API with full status detail."""
-    import httpx, urllib.parse
+    """Get all issue devices for a subscriber via the Readisys voice API.
+
+    NOTE: The upstream `/voice/subscriber/{sub}/devices` endpoint is hard-capped
+    at ~500 rows regardless of the `limit` parameter, which silently truncates
+    the notification modal for subscribers with large fleets (e.g. Motion
+    Industries — 4,999 devices). It DOES honor `status_filter`, so we fetch
+    each issue-status bucket in parallel and merge the results. READY devices
+    are omitted (the modal only shows issue devices anyway).
+    """
+    import httpx, urllib.parse, asyncio
     headers = _readisys_auth_headers()
     enc_sub = urllib.parse.quote(subscriber)
-    try:
-        async with httpx.AsyncClient(timeout=20) as client:
+    issue_statuses = [
+        "EXPIRED B/P",
+        "EXPIRING BATT/PADS",
+        "NOT READY",
+        "REPOSITION",
+        "NOT PRESENT",
+        "UNKNOWN",
+        "LOST CONTACT",
+    ]
+
+    async def _fetch_bucket(client: httpx.AsyncClient, status: str) -> list:
+        try:
             resp = await client.get(
-                f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc_sub}/devices?limit=500",
-                headers=headers
+                f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc_sub}/devices",
+                params={"status_filter": status, "limit": 2000},
+                headers=headers,
             )
             if resp.status_code == 200:
-                data = resp.json()
-                devices = data.get("devices", [])
-                # Add download_url for each device with s3_url
-                for d in devices:
-                    s3 = d.get("s3_url", "")
-                    if s3:
-                        d["image_url"] = f"https://readisys.survivalpath.ai/api/aed-images/download?url={urllib.parse.quote(s3)}"
-                return data
-            return {"devices": [], "device_count": 0, "_error": f"API returned {resp.status_code}"}
+                return resp.json().get("devices", []) or []
+            logger.warning(f"[devices] {subscriber}/{status} → {resp.status_code}")
+            return []
+        except Exception as e:
+            logger.warning(f"[devices] {subscriber}/{status} error: {e}")
+            return []
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            buckets = await asyncio.gather(*[_fetch_bucket(client, s) for s in issue_statuses])
+        devices: list = []
+        seen: set[str] = set()
+        for b in buckets:
+            for d in b:
+                sid = d.get("sentinel_id")
+                if sid and sid in seen:
+                    continue
+                if sid:
+                    seen.add(sid)
+                s3 = d.get("s3_url", "")
+                if s3:
+                    d["image_url"] = (
+                        "https://readisys.survivalpath.ai/api/aed-images/download?url="
+                        + urllib.parse.quote(s3)
+                    )
+                devices.append(d)
+        return {
+            "subscriber": subscriber,
+            "device_count": len(devices),
+            "devices": devices,
+        }
     except Exception as e:
         logger.warning(f"subscriber devices fetch error: {e}")
         return {"devices": [], "device_count": 0, "_error": str(e)}
