@@ -1207,86 +1207,80 @@ function NotificationHistoryModal({ onClose }) {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={async (e) => {
-                      const btn = e.currentTarget;
-                      const originalText = btn.innerHTML;
-                      btn.disabled = true;
-                      btn.innerHTML = "Generating…";
-                      try {
-                        const html2pdf = (await import("html2pdf.js")).default;
-                        const escape = (s) => (s || "").toString().replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-                        const sentTs = viewEmail.sent_at
-                          ? new Date(viewEmail.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
-                          : "—";
-                        const header = `
-                          <div style="border-bottom:2px solid #0891b2;padding-bottom:12px;margin-bottom:16px;">
-                            <div style="font-size:11px;letter-spacing:2px;color:#0891b2;font-weight:700;text-transform:uppercase;">Cardiac Solutions — Email Archive</div>
-                            <div style="font-size:18px;font-weight:700;color:#0f172a;margin-top:4px;">${escape(viewEmail.subject || "Email")}</div>
-                            <div style="font-size:11px;color:#475569;margin-top:8px;line-height:1.6;">
-                              <div><strong>To:</strong> ${escape(viewEmail.to_email || "")}</div>
-                              ${viewEmail.cc_email ? `<div><strong>CC:</strong> ${escape(viewEmail.cc_email)}</div>` : ""}
-                              ${viewEmail.bcc_emails ? `<div><strong>BCC:</strong> ${escape(viewEmail.bcc_emails)}</div>` : ""}
-                              <div><strong>Sent:</strong> ${escape(sentTs)} by ${escape(viewEmail.sent_by || "—")}</div>
-                              ${viewEmail.subscriber ? `<div><strong>Subscriber:</strong> ${escape(viewEmail.subscriber)}</div>` : ""}
-                            </div>
-                          </div>`;
-                        // Wrapper MUST be in-flow and visible for html2canvas to capture it.
-                        // We position it off-screen so the user doesn't see the render.
-                        const wrapper = document.createElement("div");
-                        wrapper.style.cssText = [
-                          "position:fixed",
-                          "left:-10000px",
-                          "top:0",
-                          "width:760px",
-                          "padding:24px",
-                          "font-family:Arial,sans-serif",
-                          "color:#111",
-                          "background:#ffffff",
-                          "z-index:-1",
-                        ].join(";");
-                        wrapper.innerHTML = header + (viewEmail.html_body || "<em>Email body not available.</em>");
-                        document.body.appendChild(wrapper);
-                        // Force images to load through CORS or fall back gracefully:
-                        // set crossorigin=anonymous where possible and wait for load/error.
-                        const imgs = Array.from(wrapper.querySelectorAll("img"));
-                        imgs.forEach(img => {
-                          if (!img.getAttribute("crossorigin")) img.setAttribute("crossorigin", "anonymous");
-                        });
-                        await Promise.all(imgs.map(img => {
-                          if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-                          return new Promise(res => {
-                            img.onload = () => res();
-                            img.onerror = () => { img.style.display = "none"; res(); };
-                            // Safety timeout — never wait more than 4s per image
-                            setTimeout(() => res(), 4000);
-                          });
-                        }));
-                        const safeSubject = (viewEmail.subject || "email").replace(/[^a-z0-9\-_ ]/gi, "").slice(0, 60).trim() || "email";
-                        const datePart = viewEmail.sent_at ? new Date(viewEmail.sent_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
-                        const filename = `${datePart} - ${safeSubject}.pdf`;
-                        try {
-                          await html2pdf().set({
-                            margin: [10, 10, 10, 10],
-                            filename,
-                            image: { type: "jpeg", quality: 0.92 },
-                            html2canvas: { scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: "#ffffff" },
-                            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-                            pagebreak: { mode: ["css", "legacy"] },
-                          }).from(wrapper).save();
-                        } finally {
-                          wrapper.remove();
-                        }
-                      } catch (err) {
-                        console.error("PDF export failed:", err);
-                        alert("PDF export failed: " + (err?.message || err));
-                      } finally {
-                        btn.disabled = false;
-                        btn.innerHTML = originalText;
+                    onClick={() => {
+                      const escape = (s) => (s || "").toString().replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+                      const sentTs = viewEmail.sent_at
+                        ? new Date(viewEmail.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
+                        : "—";
+                      const safeSubject = (viewEmail.subject || "email").replace(/[^a-z0-9\-_ ]/gi, "").slice(0, 60).trim() || "email";
+                      const datePart = viewEmail.sent_at ? new Date(viewEmail.sent_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+                      const filename = `${datePart} - ${safeSubject}`;
+                      const bodyHtml = viewEmail.html_body || "<em>Email body not available.</em>";
+                      const docHtml = `<!doctype html><html><head><meta charset="utf-8">
+<title>${escape(filename)}</title>
+<style>
+  @page { size: A4; margin: 12mm; }
+  body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 16px; background: #fff; }
+  .cs-header { border-bottom: 2px solid #0891b2; padding-bottom: 12px; margin-bottom: 16px; }
+  .cs-kicker { font-size: 11px; letter-spacing: 2px; color: #0891b2; font-weight: 700; text-transform: uppercase; }
+  .cs-subj { font-size: 18px; font-weight: 700; color: #0f172a; margin-top: 4px; }
+  .cs-meta { font-size: 11px; color: #475569; margin-top: 8px; line-height: 1.6; }
+  .cs-body img { max-width: 100%; height: auto; }
+  @media print {
+    body { padding: 0; }
+    .cs-noprint { display: none !important; }
+  }
+  .cs-noprint {
+    position: fixed; top: 12px; right: 12px; z-index: 9999;
+    background: #0891b2; color: #fff; padding: 8px 16px; border: none;
+    font-family: Arial, sans-serif; font-size: 12px; font-weight: 700;
+    letter-spacing: 1px; cursor: pointer; border-radius: 4px;
+  }
+</style></head><body>
+<button class="cs-noprint" onclick="window.print()">PRINT / SAVE AS PDF</button>
+<div class="cs-header">
+  <div class="cs-kicker">Cardiac Solutions — Email Archive</div>
+  <div class="cs-subj">${escape(viewEmail.subject || "Email")}</div>
+  <div class="cs-meta">
+    <div><strong>To:</strong> ${escape(viewEmail.to_email || "")}</div>
+    ${viewEmail.cc_email ? `<div><strong>CC:</strong> ${escape(viewEmail.cc_email)}</div>` : ""}
+    ${viewEmail.bcc_emails ? `<div><strong>BCC:</strong> ${escape(viewEmail.bcc_emails)}</div>` : ""}
+    <div><strong>Sent:</strong> ${escape(sentTs)} by ${escape(viewEmail.sent_by || "—")}</div>
+    ${viewEmail.subscriber ? `<div><strong>Subscriber:</strong> ${escape(viewEmail.subscriber)}</div>` : ""}
+  </div>
+</div>
+<div class="cs-body">${bodyHtml}</div>
+<script>
+  // Wait for all images to load, then auto-open the print dialog.
+  window.addEventListener('load', function() {
+    var imgs = document.images;
+    var pending = imgs.length;
+    if (pending === 0) return setTimeout(function(){ window.print(); }, 200);
+    var done = function() { pending--; if (pending <= 0) setTimeout(function(){ window.print(); }, 300); };
+    for (var i = 0; i < imgs.length; i++) {
+      if (imgs[i].complete) { done(); }
+      else { imgs[i].onload = done; imgs[i].onerror = done; }
+    }
+    // Safety timeout — always try to print within 6 seconds
+    setTimeout(function(){ try { window.print(); } catch(e){} }, 6000);
+  });
+</script>
+</body></html>`;
+                      const win = window.open("", "_blank", "width=900,height=1100");
+                      if (!win) {
+                        alert("Popup blocked. Please allow popups for this site to download PDFs.");
+                        return;
                       }
+                      win.document.open();
+                      win.document.write(docHtml);
+                      win.document.close();
+                      // Set a suggested filename via the tab title — Chrome uses this
+                      // as the default filename when the user picks "Save as PDF".
+                      try { win.document.title = filename; } catch (e) { /* no-op */ }
                     }}
                     className="text-[10px] font-orbitron tracking-widest px-2.5 py-1.5 border border-cyan-600/60 text-cyan-700 hover:bg-cyan-50 rounded-sm flex items-center gap-1"
                     data-testid="download-email-pdf-btn"
-                    title="Download this email as a PDF"
+                    title="Open this email in a printable window — use your browser's Save as PDF"
                   >
                     <Download className="w-3.5 h-3.5" /> PDF
                   </button>
