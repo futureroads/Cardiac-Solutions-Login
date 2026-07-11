@@ -5,7 +5,7 @@ import {
   AlertTriangle, Clock, ChevronDown, ChevronUp, Mail,
   Users, Activity, Shield, History, Battery, Wifi,
   StickyNote, ZoomIn, ChevronLeft, Edit3, RefreshCw,
-  CheckCircle2, AlertCircle, BarChart3, Pencil, Save, Plus,
+  CheckCircle2, AlertCircle, BarChart3, Pencil, Save, Plus, Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import API_BASE from "@/apiBase";
@@ -1205,7 +1205,60 @@ function NotificationHistoryModal({ onClose }) {
                     Sent {viewEmail.sent_at ? new Date(viewEmail.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—"} by {viewEmail.sent_by || "—"}
                   </div>
                 </div>
-                <button onClick={() => setViewEmail(null)} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      // Build a printable HTML page: header block + email body.
+                      // Rendered off-screen so html2pdf.js can rasterize it cleanly.
+                      const html2pdf = (await import("html2pdf.js")).default;
+                      const wrapper = document.createElement("div");
+                      wrapper.style.padding = "24px";
+                      wrapper.style.fontFamily = "Arial, sans-serif";
+                      wrapper.style.color = "#111";
+                      wrapper.style.background = "#fff";
+                      wrapper.style.width = "760px";
+                      const escape = (s) => (s || "").toString().replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+                      const sentTs = viewEmail.sent_at
+                        ? new Date(viewEmail.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
+                        : "—";
+                      const header = `
+                        <div style="border-bottom:2px solid #0891b2;padding-bottom:12px;margin-bottom:16px;">
+                          <div style="font-size:11px;letter-spacing:2px;color:#0891b2;font-weight:700;text-transform:uppercase;">Cardiac Solutions — Email Archive</div>
+                          <div style="font-size:18px;font-weight:700;color:#0f172a;margin-top:4px;">${escape(viewEmail.subject || "Email")}</div>
+                          <div style="font-size:11px;color:#475569;margin-top:8px;line-height:1.6;">
+                            <div><strong>To:</strong> ${escape(viewEmail.to_email || "")}</div>
+                            ${viewEmail.cc_email ? `<div><strong>CC:</strong> ${escape(viewEmail.cc_email)}</div>` : ""}
+                            ${viewEmail.bcc_emails ? `<div><strong>BCC:</strong> ${escape(viewEmail.bcc_emails)}</div>` : ""}
+                            <div><strong>Sent:</strong> ${escape(sentTs)} by ${escape(viewEmail.sent_by || "—")}</div>
+                            ${viewEmail.subscriber ? `<div><strong>Subscriber:</strong> ${escape(viewEmail.subscriber)}</div>` : ""}
+                          </div>
+                        </div>`;
+                      wrapper.innerHTML = header + (viewEmail.html_body || "<em>Email body not available.</em>");
+                      document.body.appendChild(wrapper);
+                      const safeSubject = (viewEmail.subject || "email").replace(/[^a-z0-9\-_ ]/gi, "").slice(0, 60).trim() || "email";
+                      const datePart = viewEmail.sent_at ? new Date(viewEmail.sent_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+                      const filename = `${datePart} - ${safeSubject}.pdf`;
+                      try {
+                        await html2pdf().set({
+                          margin: [10, 10, 10, 10],
+                          filename,
+                          image: { type: "jpeg", quality: 0.92 },
+                          html2canvas: { scale: 2, useCORS: true, logging: false },
+                          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+                          pagebreak: { mode: ["css", "legacy"] },
+                        }).from(wrapper).save();
+                      } finally {
+                        wrapper.remove();
+                      }
+                    }}
+                    className="text-[10px] font-orbitron tracking-widest px-2.5 py-1.5 border border-cyan-600/60 text-cyan-700 hover:bg-cyan-50 rounded-sm flex items-center gap-1"
+                    data-testid="download-email-pdf-btn"
+                    title="Download this email as a PDF"
+                  >
+                    <Download className="w-3.5 h-3.5" /> PDF
+                  </button>
+                  <button onClick={() => setViewEmail(null)} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto">
                 {viewEmail.html_body ? (
