@@ -1207,48 +1207,81 @@ function NotificationHistoryModal({ onClose }) {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={async () => {
-                      // Build a printable HTML page: header block + email body.
-                      // Rendered off-screen so html2pdf.js can rasterize it cleanly.
-                      const html2pdf = (await import("html2pdf.js")).default;
-                      const wrapper = document.createElement("div");
-                      wrapper.style.padding = "24px";
-                      wrapper.style.fontFamily = "Arial, sans-serif";
-                      wrapper.style.color = "#111";
-                      wrapper.style.background = "#fff";
-                      wrapper.style.width = "760px";
-                      const escape = (s) => (s || "").toString().replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-                      const sentTs = viewEmail.sent_at
-                        ? new Date(viewEmail.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
-                        : "—";
-                      const header = `
-                        <div style="border-bottom:2px solid #0891b2;padding-bottom:12px;margin-bottom:16px;">
-                          <div style="font-size:11px;letter-spacing:2px;color:#0891b2;font-weight:700;text-transform:uppercase;">Cardiac Solutions — Email Archive</div>
-                          <div style="font-size:18px;font-weight:700;color:#0f172a;margin-top:4px;">${escape(viewEmail.subject || "Email")}</div>
-                          <div style="font-size:11px;color:#475569;margin-top:8px;line-height:1.6;">
-                            <div><strong>To:</strong> ${escape(viewEmail.to_email || "")}</div>
-                            ${viewEmail.cc_email ? `<div><strong>CC:</strong> ${escape(viewEmail.cc_email)}</div>` : ""}
-                            ${viewEmail.bcc_emails ? `<div><strong>BCC:</strong> ${escape(viewEmail.bcc_emails)}</div>` : ""}
-                            <div><strong>Sent:</strong> ${escape(sentTs)} by ${escape(viewEmail.sent_by || "—")}</div>
-                            ${viewEmail.subscriber ? `<div><strong>Subscriber:</strong> ${escape(viewEmail.subscriber)}</div>` : ""}
-                          </div>
-                        </div>`;
-                      wrapper.innerHTML = header + (viewEmail.html_body || "<em>Email body not available.</em>");
-                      document.body.appendChild(wrapper);
-                      const safeSubject = (viewEmail.subject || "email").replace(/[^a-z0-9\-_ ]/gi, "").slice(0, 60).trim() || "email";
-                      const datePart = viewEmail.sent_at ? new Date(viewEmail.sent_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
-                      const filename = `${datePart} - ${safeSubject}.pdf`;
+                    onClick={async (e) => {
+                      const btn = e.currentTarget;
+                      const originalText = btn.innerHTML;
+                      btn.disabled = true;
+                      btn.innerHTML = "Generating…";
                       try {
-                        await html2pdf().set({
-                          margin: [10, 10, 10, 10],
-                          filename,
-                          image: { type: "jpeg", quality: 0.92 },
-                          html2canvas: { scale: 2, useCORS: true, logging: false },
-                          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-                          pagebreak: { mode: ["css", "legacy"] },
-                        }).from(wrapper).save();
+                        const html2pdf = (await import("html2pdf.js")).default;
+                        const escape = (s) => (s || "").toString().replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+                        const sentTs = viewEmail.sent_at
+                          ? new Date(viewEmail.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
+                          : "—";
+                        const header = `
+                          <div style="border-bottom:2px solid #0891b2;padding-bottom:12px;margin-bottom:16px;">
+                            <div style="font-size:11px;letter-spacing:2px;color:#0891b2;font-weight:700;text-transform:uppercase;">Cardiac Solutions — Email Archive</div>
+                            <div style="font-size:18px;font-weight:700;color:#0f172a;margin-top:4px;">${escape(viewEmail.subject || "Email")}</div>
+                            <div style="font-size:11px;color:#475569;margin-top:8px;line-height:1.6;">
+                              <div><strong>To:</strong> ${escape(viewEmail.to_email || "")}</div>
+                              ${viewEmail.cc_email ? `<div><strong>CC:</strong> ${escape(viewEmail.cc_email)}</div>` : ""}
+                              ${viewEmail.bcc_emails ? `<div><strong>BCC:</strong> ${escape(viewEmail.bcc_emails)}</div>` : ""}
+                              <div><strong>Sent:</strong> ${escape(sentTs)} by ${escape(viewEmail.sent_by || "—")}</div>
+                              ${viewEmail.subscriber ? `<div><strong>Subscriber:</strong> ${escape(viewEmail.subscriber)}</div>` : ""}
+                            </div>
+                          </div>`;
+                        // Wrapper MUST be in-flow and visible for html2canvas to capture it.
+                        // We position it off-screen so the user doesn't see the render.
+                        const wrapper = document.createElement("div");
+                        wrapper.style.cssText = [
+                          "position:fixed",
+                          "left:-10000px",
+                          "top:0",
+                          "width:760px",
+                          "padding:24px",
+                          "font-family:Arial,sans-serif",
+                          "color:#111",
+                          "background:#ffffff",
+                          "z-index:-1",
+                        ].join(";");
+                        wrapper.innerHTML = header + (viewEmail.html_body || "<em>Email body not available.</em>");
+                        document.body.appendChild(wrapper);
+                        // Force images to load through CORS or fall back gracefully:
+                        // set crossorigin=anonymous where possible and wait for load/error.
+                        const imgs = Array.from(wrapper.querySelectorAll("img"));
+                        imgs.forEach(img => {
+                          if (!img.getAttribute("crossorigin")) img.setAttribute("crossorigin", "anonymous");
+                        });
+                        await Promise.all(imgs.map(img => {
+                          if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+                          return new Promise(res => {
+                            img.onload = () => res();
+                            img.onerror = () => { img.style.display = "none"; res(); };
+                            // Safety timeout — never wait more than 4s per image
+                            setTimeout(() => res(), 4000);
+                          });
+                        }));
+                        const safeSubject = (viewEmail.subject || "email").replace(/[^a-z0-9\-_ ]/gi, "").slice(0, 60).trim() || "email";
+                        const datePart = viewEmail.sent_at ? new Date(viewEmail.sent_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+                        const filename = `${datePart} - ${safeSubject}.pdf`;
+                        try {
+                          await html2pdf().set({
+                            margin: [10, 10, 10, 10],
+                            filename,
+                            image: { type: "jpeg", quality: 0.92 },
+                            html2canvas: { scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: "#ffffff" },
+                            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+                            pagebreak: { mode: ["css", "legacy"] },
+                          }).from(wrapper).save();
+                        } finally {
+                          wrapper.remove();
+                        }
+                      } catch (err) {
+                        console.error("PDF export failed:", err);
+                        alert("PDF export failed: " + (err?.message || err));
                       } finally {
-                        wrapper.remove();
+                        btn.disabled = false;
+                        btn.innerHTML = originalText;
                       }
                     }}
                     className="text-[10px] font-orbitron tracking-widest px-2.5 py-1.5 border border-cyan-600/60 text-cyan-700 hover:bg-cyan-50 rounded-sm flex items-center gap-1"
