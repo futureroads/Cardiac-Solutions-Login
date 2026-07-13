@@ -97,6 +97,10 @@ export default function StarkDashboard({ user, onLogout }) {
   const [notif7d, setNotif7d] = useState(0);
   const [notif30d, setNotif30d] = useState(0);
   const [notif90d, setNotif90d] = useState(0);
+  const [ebpToday, setEbpToday] = useState(0);
+  const [ebp7d, setEbp7d] = useState(0);
+  const [ebp30d, setEbp30d] = useState(0);
+  const [ebp90d, setEbp90d] = useState(0);
   const [statusTrend, setStatusTrend] = useState(null);
   const [lostModalOpen, setLostModalOpen] = useState(false);
   const [lostData, setLostData] = useState(null);
@@ -779,6 +783,16 @@ ${briefingText}`,
           setNotif90d(d2.last_90_days || 0);
         }
       } catch {}
+      try {
+        const res3 = await fetch(`${API}/support/ebp-notifications-counts`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res3.ok) {
+          const d3 = await res3.json();
+          setEbpToday(d3.today || 0);
+          setEbp7d(d3.last_7_days || 0);
+          setEbp30d(d3.last_30_days || 0);
+          setEbp90d(d3.last_90_days || 0);
+        }
+      } catch {}
     };
     fetchNotifCount();
     const i = setInterval(fetchNotifCount, 60000);
@@ -1202,6 +1216,31 @@ ${briefingText}`,
               </div>
               <div className="border border-emerald-500/20 bg-emerald-500/5 rounded-sm p-2 text-center">
                 <div className="font-orbitron text-[18px] font-black text-emerald-300">{notif90d}</div>
+                <div className="text-[7px] text-emerald-500/50 tracking-wider uppercase">Last 90 Days</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Expired B/P Notifications */}
+          <div className="panel relative p-[10px] bg-[rgba(0,18,32,0.93)] border border-red-500/30 overflow-hidden" data-testid="stark-ebp-notifications">
+            <div className="corner tl" /><div className="corner tr" /><div className="corner bl" /><div className="corner br" />
+            <div className="panel-glow" />
+            <div className="plabel">Expired B/P Notifications</div>
+            <div className="grid grid-cols-2 gap-[6px] mt-2">
+              <div className="border border-amber-500/20 bg-amber-500/5 rounded-sm p-2 text-center">
+                <div className="font-orbitron text-[18px] font-black text-amber-400">{ebpToday}</div>
+                <div className="text-[7px] text-amber-500/50 tracking-wider uppercase">Today · {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+              </div>
+              <div className="border border-cyan-500/20 bg-cyan-500/5 rounded-sm p-2 text-center">
+                <div className="font-orbitron text-[18px] font-black text-cyan-300">{ebp7d}</div>
+                <div className="text-[7px] text-cyan-500/50 tracking-wider uppercase">Last 7 Days</div>
+              </div>
+              <div className="border border-blue-500/20 bg-blue-500/5 rounded-sm p-2 text-center">
+                <div className="font-orbitron text-[18px] font-black text-blue-300">{ebp30d}</div>
+                <div className="text-[7px] text-blue-500/50 tracking-wider uppercase">Last 30 Days</div>
+              </div>
+              <div className="border border-emerald-500/20 bg-emerald-500/5 rounded-sm p-2 text-center">
+                <div className="font-orbitron text-[18px] font-black text-emerald-300">{ebp90d}</div>
                 <div className="text-[7px] text-emerald-500/50 tracking-wider uppercase">Last 90 Days</div>
               </div>
             </div>

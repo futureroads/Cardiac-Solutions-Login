@@ -2476,23 +2476,45 @@ async def get_notification_history(subscriber: str = None, current_user: dict = 
 
 @api_router.get("/support/notifications-today-count")
 async def notifications_today_count(current_user: dict = Depends(get_current_user)):
-    """Count notification emails sent today."""
+    """Count notification emails sent today, excluding EBP automation sends."""
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    count = await _db.notification_history.count_documents({"sent_at": {"$gte": today_start}})
+    ebp_filter = {"$not": {"$regex": "^expired_bp_automation"}}
+    count = await _db.notification_history.count_documents({
+        "sent_at": {"$gte": today_start},
+        "$or": [{"trigger": {"$exists": False}}, {"trigger": ebp_filter}],
+    })
     return {"count": count, "date": today_start[:10]}
 
 
 @api_router.get("/support/notifications-window-counts")
 async def notifications_window_counts(current_user: dict = Depends(get_current_user)):
-    """Count notification emails sent in rolling 7 / 30 / 90 day windows."""
+    """Count rolling 7 / 30 / 90 day notification emails, excluding EBP automation."""
     now = datetime.now(timezone.utc)
     d7 = (now - timedelta(days=7)).isoformat()
     d30 = (now - timedelta(days=30)).isoformat()
     d90 = (now - timedelta(days=90)).isoformat()
-    c7 = await _db.notification_history.count_documents({"sent_at": {"$gte": d7}})
-    c30 = await _db.notification_history.count_documents({"sent_at": {"$gte": d30}})
-    c90 = await _db.notification_history.count_documents({"sent_at": {"$gte": d90}})
+    ebp_filter = {"$or": [{"trigger": {"$exists": False}}, {"trigger": {"$not": {"$regex": "^expired_bp_automation"}}}]}
+    c7 = await _db.notification_history.count_documents({"sent_at": {"$gte": d7}, **ebp_filter})
+    c30 = await _db.notification_history.count_documents({"sent_at": {"$gte": d30}, **ebp_filter})
+    c90 = await _db.notification_history.count_documents({"sent_at": {"$gte": d90}, **ebp_filter})
     return {"last_7_days": c7, "last_30_days": c30, "last_90_days": c90}
+
+
+@api_router.get("/support/ebp-notifications-counts")
+async def ebp_notifications_counts(current_user: dict = Depends(get_current_user)):
+    """Counts specifically for Expired B/P automation emails: today (ET) + rolling 7/30/90d."""
+    now = datetime.now(timezone.utc)
+    tz = ZoneInfo("America/New_York")
+    today_et_start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat()
+    d7 = (now - timedelta(days=7)).isoformat()
+    d30 = (now - timedelta(days=30)).isoformat()
+    d90 = (now - timedelta(days=90)).isoformat()
+    ebp_only = {"trigger": {"$regex": "^expired_bp_automation"}}
+    today = await _db.notification_history.count_documents({"sent_at": {"$gte": today_et_start}, **ebp_only})
+    c7 = await _db.notification_history.count_documents({"sent_at": {"$gte": d7}, **ebp_only})
+    c30 = await _db.notification_history.count_documents({"sent_at": {"$gte": d30}, **ebp_only})
+    c90 = await _db.notification_history.count_documents({"sent_at": {"$gte": d90}, **ebp_only})
+    return {"today": today, "last_7_days": c7, "last_30_days": c30, "last_90_days": c90, "date": today_et_start[:10]}
 
 
 # ---------------------------------------------------------------------------
