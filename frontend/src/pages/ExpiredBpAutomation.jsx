@@ -36,6 +36,7 @@ export default function ExpiredBpAutomation() {
   const [search, setSearch] = useState("");
   const [savingRow, setSavingRow] = useState(null);
   const [runningRow, setRunningRow] = useState(null);
+  const [runConfirm, setRunConfirm] = useState(null); // row awaiting confirmation
   const [previewOpen, setPreviewOpen] = useState(null); // {subscriber, data}
   const [flash, setFlash] = useState("");
   const [err, setErr] = useState("");
@@ -205,23 +206,38 @@ export default function ExpiredBpAutomation() {
 
   const runNow = async (row) => {
     if (!template) { setErr("Upload a template first"); return; }
-    if (!window.confirm(`Send an Expired B/P email NOW for ${row.subscriber}? This will send to every currently-expired AED (ignoring the yesterday diff).`)) return;
+    // Ask via an in-app modal instead of window.confirm() so browsers
+    // that suppress native confirm dialogs (or users who dismissed them
+    // before) still see the prompt.
+    setRunConfirm(row);
+  };
+
+  const doRunNow = async (row) => {
+    setRunConfirm(null);
     setRunningRow(row.subscriber);
+    setErr("");
     try {
       const r = await fetch(`${API}/admin/expired-bp/run-now/${encodeURIComponent(row.subscriber)}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!r.ok) throw new Error(await r.text());
-      const d = await r.json();
+      const bodyText = await r.text();
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${bodyText.slice(0, 300)}`);
+      let d;
+      try { d = JSON.parse(bodyText); } catch { throw new Error(`Non-JSON response: ${bodyText.slice(0, 200)}`); }
       const res = d.result || {};
       if (res.skipped) {
-        showFlash(`Skipped: ${res.reason}`);
+        showFlash(`Skipped: ${res.reason} (todays_expired=${res.todays_expired_count ?? "?"})`);
       } else {
-        showFlash(`Sent ${res.groups?.length || 0} email(s) — ${res.aed_count} AED(s)`);
+        const grp = res.groups?.[0] || {};
+        const dest = grp.test_mode
+          ? `${grp.to} [TEST MODE, intended ${grp.intended_to}]`
+          : (grp.to || "?");
+        showFlash(`Sent ${res.groups?.length || 0} email(s) — ${res.aed_count} AED(s) → ${dest}`);
       }
       await loadSettings();
     } catch (e) {
+      console.error("Run Now failed:", e);
       setErr(e.message || "Run failed");
     } finally {
       setRunningRow(null);
@@ -576,6 +592,45 @@ export default function ExpiredBpAutomation() {
           )}
         </div>
       </div>
+
+      {/* Run Now confirmation modal */}
+      {runConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setRunConfirm(null)} data-testid="runnow-confirm-modal">
+          <div className="bg-[#0a0f1c] border border-amber-500/50 rounded-sm w-full max-w-[520px] p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+              <div className="font-orbitron text-sm text-amber-300 tracking-widest">CONFIRM RUN NOW</div>
+            </div>
+            <div className="text-[12px] text-slate-300 mb-2">
+              Send Expired B/P email now for <span className="font-mono text-cyan-300">{runConfirm.subscriber}</span>?
+            </div>
+            <div className="text-[11px] text-slate-500 mb-4 leading-relaxed">
+              Uses ALL currently-expired AEDs (ignores the yesterday diff).{" "}
+              {testMode.enabled ? (
+                <span className="text-amber-300">Test Mode is ACTIVE — will send to <code>{testMode.to}</code>{testMode.cc && ` (cc: ${testMode.cc})`} instead of the real subscriber contact.</span>
+              ) : (
+                <span className="text-red-300">Test Mode is OFF — will send to the REAL subscriber contact.</span>
+              )}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setRunConfirm(null)}
+                className="text-[10px] font-orbitron tracking-widest px-3 py-1.5 border border-slate-600 text-slate-300 hover:bg-slate-800 rounded-sm"
+                data-testid="runnow-cancel-btn"
+              >
+                CANCEL
+              </button>
+              <button
+                onClick={() => doRunNow(runConfirm)}
+                className="text-[10px] font-orbitron tracking-widest px-3 py-1.5 border border-amber-500/50 text-amber-300 hover:bg-amber-500/10 rounded-sm flex items-center gap-1"
+                data-testid="runnow-confirm-btn"
+              >
+                <Send className="w-3 h-3" /> SEND NOW
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Preview modal */}
       {previewOpen && (
