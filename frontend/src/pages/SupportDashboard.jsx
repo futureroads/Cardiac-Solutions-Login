@@ -808,6 +808,12 @@ function NotificationHistoryModal({ onClose }) {
   const [bounceDetail, setBounceDetail] = useState(null);
   const [engagementDetail, setEngagementDetail] = useState(null); // {record, eventType: "open"|"click"}
 
+  // Delete is admin-only. Read the current user from localStorage (set at login).
+  const currentUser = (() => {
+    try { return JSON.parse(localStorage.getItem("user") || "{}"); } catch { return {}; }
+  })();
+  const isAdmin = (currentUser?.role || "").toLowerCase() === "admin";
+
   const statusOptions = [
     { value: "SENT", label: "SENT", bg: "bg-green-500/15", text: "text-green-400" },
     { value: "IN PROGRESS", label: "IN PROGRESS", bg: "bg-blue-500/15", text: "text-blue-400" },
@@ -1060,14 +1066,16 @@ function NotificationHistoryModal({ onClose }) {
                           >
                             {loadingEmail ? <Loader2 className="w-3 h-3 animate-spin" /> : "VIEW"}
                           </button>
-                          <button
-                            onClick={() => deleteEntry(h)}
-                            className="p-1 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-sm border border-slate-700 hover:border-red-500/40"
-                            title="Delete this history entry (admin only)"
-                            data-testid={`delete-email-${i}`}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => deleteEntry(h)}
+                              className="p-1 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-sm border border-slate-700 hover:border-red-500/40"
+                              title="Delete this history entry (admin only)"
+                              data-testid={`delete-email-${i}`}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
