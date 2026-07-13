@@ -872,6 +872,32 @@ function NotificationHistoryModal({ onClose }) {
     setLoadingEmail(false);
   };
 
+  const deleteEntry = async (h) => {
+    const label = `${h.subscriber || "(no subscriber)"} → ${h.to_email || ""} (${h.subject || ""})`;
+    if (!window.confirm(`Permanently delete this history entry?\n\n${label}\n\nThis cannot be undone.`)) return;
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API}/support/notification-history/${h._id || h.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        toast.error(`Delete failed: ${txt.slice(0, 200)}`);
+        return;
+      }
+      toast.success("Entry deleted");
+      // Refresh the list
+      const url = filter
+        ? `${API}/support/notification-history?subscriber=${encodeURIComponent(filter)}`
+        : `${API}/support/notification-history`;
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (r.ok) setHistory(await r.json());
+    } catch (e) {
+      toast.error(`Delete failed: ${e.message}`);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
       <div className="bg-[#0a0f1c] border border-cyan-500/30 rounded-sm w-[900px] max-w-[95vw] max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="history-modal">
@@ -1026,13 +1052,23 @@ function NotificationHistoryModal({ onClose }) {
                         )}
                       </td>
                       <td className="p-2 text-center">
-                        <button
-                          onClick={() => openEmail(h.id)}
-                          className="font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10"
-                          data-testid={`view-email-${i}`}
-                        >
-                          {loadingEmail ? <Loader2 className="w-3 h-3 animate-spin" /> : "VIEW"}
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => openEmail(h.id)}
+                            className="font-orbitron text-[7px] px-2 py-1 border border-cyan-500/30 text-cyan-400 rounded-sm hover:bg-cyan-500/10"
+                            data-testid={`view-email-${i}`}
+                          >
+                            {loadingEmail ? <Loader2 className="w-3 h-3 animate-spin" /> : "VIEW"}
+                          </button>
+                          <button
+                            onClick={() => deleteEntry(h)}
+                            className="p-1 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-sm border border-slate-700 hover:border-red-500/40"
+                            title="Delete this history entry (admin only)"
+                            data-testid={`delete-email-${i}`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

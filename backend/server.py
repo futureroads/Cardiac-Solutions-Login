@@ -3642,6 +3642,22 @@ async def update_notification_status(history_id: str, data: dict, current_user: 
     return {"success": True}
 
 
+@api_router.delete("/support/notification-history/{history_id}")
+async def delete_notification_history(history_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a single notification-history entry. Admin only."""
+    from bson import ObjectId
+    if (current_user.get("role") or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    try:
+        oid = ObjectId(history_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid history_id")
+    result = await _db.notification_history.delete_one({"_id": oid})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"success": True, "deleted": history_id}
+
+
 @api_router.get("/support/notified-aeds")
 async def get_notified_aeds(subscriber: str = None, status_filter: str = None, current_user: dict = Depends(get_current_user)):
     """Get all tracked notified AEDs with optional filters."""
