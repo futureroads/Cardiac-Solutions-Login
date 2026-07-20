@@ -1204,19 +1204,19 @@ ${briefingText}`,
             <div className="grid grid-cols-2 gap-[6px] mt-2">
               <div className="border border-amber-500/20 bg-amber-500/5 rounded-sm p-2 text-center">
                 <div className="font-orbitron text-[18px] font-black text-amber-400">{notifToday}</div>
-                <div className="text-[7px] text-amber-500/50 tracking-wider uppercase">Today · {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+                <div className="text-[8px] font-orbitron font-semibold text-amber-200 tracking-wider uppercase">Today · {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
               </div>
               <div className="border border-cyan-500/20 bg-cyan-500/5 rounded-sm p-2 text-center">
                 <div className="font-orbitron text-[18px] font-black text-cyan-300">{notif7d}</div>
-                <div className="text-[7px] text-cyan-500/50 tracking-wider uppercase">Last 7 Days</div>
+                <div className="text-[8px] font-orbitron font-semibold text-cyan-200 tracking-wider uppercase">Last 7 Days</div>
               </div>
               <div className="border border-blue-500/20 bg-blue-500/5 rounded-sm p-2 text-center">
                 <div className="font-orbitron text-[18px] font-black text-blue-300">{notif30d}</div>
-                <div className="text-[7px] text-blue-500/50 tracking-wider uppercase">Last 30 Days</div>
+                <div className="text-[8px] font-orbitron font-semibold text-blue-200 tracking-wider uppercase">Last 30 Days</div>
               </div>
               <div className="border border-emerald-500/20 bg-emerald-500/5 rounded-sm p-2 text-center">
                 <div className="font-orbitron text-[18px] font-black text-emerald-300">{notif90d}</div>
-                <div className="text-[7px] text-emerald-500/50 tracking-wider uppercase">Last 90 Days</div>
+                <div className="text-[8px] font-orbitron font-semibold text-emerald-200 tracking-wider uppercase">Last 90 Days</div>
               </div>
             </div>
           </div>
@@ -1229,19 +1229,19 @@ ${briefingText}`,
             <div className="grid grid-cols-2 gap-[6px] mt-2">
               <div className="border border-amber-500/20 bg-amber-500/5 rounded-sm p-2 text-center">
                 <div className="font-orbitron text-[18px] font-black text-amber-400">{ebpToday}</div>
-                <div className="text-[7px] text-amber-500/50 tracking-wider uppercase">Today · {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+                <div className="text-[8px] font-orbitron font-semibold text-amber-200 tracking-wider uppercase">Today · {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
               </div>
               <div className="border border-cyan-500/20 bg-cyan-500/5 rounded-sm p-2 text-center">
                 <div className="font-orbitron text-[18px] font-black text-cyan-300">{ebp7d}</div>
-                <div className="text-[7px] text-cyan-500/50 tracking-wider uppercase">Last 7 Days</div>
+                <div className="text-[8px] font-orbitron font-semibold text-cyan-200 tracking-wider uppercase">Last 7 Days</div>
               </div>
               <div className="border border-blue-500/20 bg-blue-500/5 rounded-sm p-2 text-center">
                 <div className="font-orbitron text-[18px] font-black text-blue-300">{ebp30d}</div>
-                <div className="text-[7px] text-blue-500/50 tracking-wider uppercase">Last 30 Days</div>
+                <div className="text-[8px] font-orbitron font-semibold text-blue-200 tracking-wider uppercase">Last 30 Days</div>
               </div>
               <div className="border border-emerald-500/20 bg-emerald-500/5 rounded-sm p-2 text-center">
                 <div className="font-orbitron text-[18px] font-black text-emerald-300">{ebp90d}</div>
-                <div className="text-[7px] text-emerald-500/50 tracking-wider uppercase">Last 90 Days</div>
+                <div className="text-[8px] font-orbitron font-semibold text-emerald-200 tracking-wider uppercase">Last 90 Days</div>
               </div>
             </div>
           </div>
