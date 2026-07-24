@@ -106,7 +106,7 @@ async def log_to_db(level, message, context=""):
         pass  # Can't log the log failure
 
 # All available module IDs
-ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path", "hybrid_training", "customer_portal", "map", "sales", "location_contacts", "expired_bp_automation"]
+ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path", "hybrid_training", "customer_portal", "map", "sales", "location_contacts", "expired_bp_automation", "status_comparison"]
 
 # Create the main app
 app = FastAPI(title="Cardiac Solutions API")
@@ -9515,6 +9515,238 @@ async def ebp_run_now(subscriber: str, current_user: dict = Depends(get_current_
     _require_ebp_admin(current_user)
     result = await _ebp_send_for_subscriber(subscriber, force=True, trigger=f"manual:{current_user.get('username', '')}")
     return {"ok": True, "result": result}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# STATUS COMPARISON REPORT
+# For every AED in a subscriber's fleet, side-by-side compare the raw Readisys
+# `detailed_status` with the AI-assigned status from `/subscriber-outreach-detail`.
+# Returns both an on-screen JSON payload and a downloadable XLSX (images embedded).
+# ═══════════════════════════════════════════════════════════════════════════
+
+_STATUS_COMPARISON_STATUSES = [
+    "READY", "REPOSITION", "UNKNOWN", "EXPIRED B/P",
+    "EXPIRING BATT/PADS", "NOT READY", "NOT PRESENT", "LOST CONTACT",
+]
+
+
+async def _fetch_all_devices_for_subscriber(subscriber: str) -> list[dict]:
+    """Full fleet fetch honoring the 500-row per-bucket cap."""
+    import httpx, urllib.parse, asyncio
+    headers = _readisys_auth_headers()
+    enc = urllib.parse.quote(subscriber)
+
+    async def one(client, status):
+        try:
+            r = await client.get(
+                f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc}/devices",
+                params={"status_filter": status, "limit": 2000},
+                headers=headers,
+            )
+            if r.status_code == 200:
+                return r.json().get("devices", []) or []
+        except Exception as e:
+            logger.warning(f"[status-compare] {subscriber}/{status}: {e}")
+        return []
+
+    async with httpx.AsyncClient(timeout=45) as client:
+        buckets = await asyncio.gather(*[one(client, s) for s in _STATUS_COMPARISON_STATUSES])
+
+    seen: set[str] = set()
+    merged = []
+    for b in buckets:
+        for d in b:
+            sid = d.get("sentinel_id")
+            if sid and sid not in seen:
+                seen.add(sid)
+                merged.append(d)
+    return merged
+
+
+async def _fetch_ai_status_for_sids(sids: list[str], concurrency: int = 20) -> dict[str, dict]:
+    """Fetch AI-outreach detail for many sentinel_ids in parallel. Returns {sid: {ai_status, ai_text}}."""
+    import httpx, urllib.parse, asyncio
+    headers = _readisys_auth_headers()
+    sem = asyncio.Semaphore(concurrency)
+    results: dict[str, dict] = {}
+
+    async def one(client, sid):
+        async with sem:
+            try:
+                r = await client.get(
+                    "https://readisys.survivalpath.ai/api/notifications/subscriber-outreach-detail",
+                    params={"sentinel_id": sid},
+                    headers=headers,
+                )
+                if r.status_code == 200:
+                    j = r.json() or {}
+                    results[sid] = {
+                        "ai_status": (j.get("detailed_status") or "").upper(),
+                        "ai_text": j.get("subscriber_outreach_detail") or "",
+                        "ai_source": j.get("subscriber_outreach_detail_source") or "",
+                    }
+                else:
+                    results[sid] = {"ai_status": "", "ai_text": "", "ai_source": ""}
+            except Exception:
+                results[sid] = {"ai_status": "", "ai_text": "", "ai_source": ""}
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        await asyncio.gather(*[one(client, s) for s in sids])
+    return results
+
+
+async def _build_status_comparison_rows(subscriber: str) -> list[dict]:
+    import urllib.parse
+    devices = await _fetch_all_devices_for_subscriber(subscriber)
+    sids = [d.get("sentinel_id") for d in devices if d.get("sentinel_id")]
+    ai = await _fetch_ai_status_for_sids(sids)
+
+    rows = []
+    for d in devices:
+        sid = d.get("sentinel_id") or ""
+        readiness = (d.get("detailed_status") or "").upper()
+        ai_row = ai.get(sid, {})
+        ai_status = ai_row.get("ai_status", "")
+        s3 = d.get("s3_url", "")
+        img_url = (
+            "https://readisys.survivalpath.ai/api/aed-images/download?url="
+            + urllib.parse.quote(s3)
+        ) if s3 else ""
+        loc = " / ".join(x for x in [d.get("site"), d.get("building"), d.get("placement")] if x)
+        rows.append({
+            "model": d.get("model", "") or "",
+            "aed_serial": sid,  # Readisys does not expose a separate physical AED serial
+            "sentinel_id": sid,
+            "readiness_status": readiness,
+            "ai_status": ai_status,
+            "ai_source": ai_row.get("ai_source", ""),
+            "location": loc,
+            "image_url": img_url,
+            "match": bool(readiness and ai_status and readiness == ai_status),
+        })
+    rows.sort(key=lambda r: (r["model"], r["sentinel_id"]))
+    return rows
+
+
+def _require_status_comparison(user: dict) -> None:
+    role = (user.get("role") or "").lower()
+    modules = user.get("allowed_modules") or []
+    if role == "admin" or "status_comparison" in modules:
+        return
+    raise HTTPException(status_code=403, detail="Not authorized for Status Comparison Report")
+
+
+@api_router.get("/reports/status-comparison/subscribers")
+async def status_comparison_subscribers(current_user: dict = Depends(get_current_user)):
+    """List every subscriber that can be selected for the comparison report."""
+    _require_status_comparison(current_user)
+    names: set[str] = set()
+    async for c in _db.subscriber_contacts.find({}, {"_id": 0, "subscriber": 1}):
+        n = c.get("subscriber")
+        if n:
+            names.add(n)
+    return {"subscribers": sorted(names, key=lambda x: x.lower())}
+
+
+@api_router.get("/reports/status-comparison")
+async def status_comparison_report(subscriber: str, current_user: dict = Depends(get_current_user)):
+    _require_status_comparison(current_user)
+    rows = await _build_status_comparison_rows(subscriber)
+    summary = {
+        "total": len(rows),
+        "matches": sum(1 for r in rows if r["match"]),
+        "mismatches": sum(1 for r in rows if not r["match"] and r["readiness_status"] and r["ai_status"]),
+        "missing_ai": sum(1 for r in rows if not r["ai_status"]),
+    }
+    return {"subscriber": subscriber, "rows": rows, "summary": summary}
+
+
+@api_router.get("/reports/status-comparison.xlsx")
+async def status_comparison_xlsx(subscriber: str, current_user: dict = Depends(get_current_user)):
+    _require_status_comparison(current_user)
+    import io, httpx
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.drawing.image import Image as XLImage
+    from PIL import Image as PILImage
+
+    rows = await _build_status_comparison_rows(subscriber)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = (subscriber[:28] + "…") if len(subscriber) > 28 else subscriber
+
+    headers = ["Model", "AED Serial", "Sentinel ID", "Readiness Status", "AI Assigned Status", "Match?", "Location", "Image"]
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill("solid", fgColor="0F172A")
+    for col_idx, h in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="left", vertical="center")
+
+    widths = [30, 20, 20, 22, 22, 10, 40, 18]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[chr(64 + i)].width = w
+
+    # Fetch thumbnails in parallel (best-effort — skip failures)
+    async def fetch_img(client, url):
+        if not url:
+            return None
+        try:
+            r = await client.get(url, timeout=20)
+            if r.status_code == 200 and r.content:
+                return r.content
+        except Exception:
+            return None
+        return None
+
+    import asyncio
+    async with httpx.AsyncClient(timeout=25) as client:
+        imgs = await asyncio.gather(*[fetch_img(client, r["image_url"]) for r in rows])
+
+    mismatch_fill = PatternFill("solid", fgColor="FEE2E2")
+    match_fill = PatternFill("solid", fgColor="DCFCE7")
+
+    for i, r in enumerate(rows, start=2):
+        ws.cell(row=i, column=1, value=r["model"])
+        ws.cell(row=i, column=2, value=r["aed_serial"])
+        ws.cell(row=i, column=3, value=r["sentinel_id"])
+        ws.cell(row=i, column=4, value=r["readiness_status"])
+        ws.cell(row=i, column=5, value=r["ai_status"])
+        match_cell = ws.cell(row=i, column=6, value="MATCH" if r["match"] else ("MISMATCH" if r["ai_status"] else "NO AI"))
+        match_cell.alignment = Alignment(horizontal="center")
+        if r["match"]:
+            match_cell.fill = match_fill
+        elif r["ai_status"] and r["readiness_status"]:
+            match_cell.fill = mismatch_fill
+        ws.cell(row=i, column=7, value=r["location"])
+
+        ws.row_dimensions[i].height = 60
+        img_bytes = imgs[i - 2]
+        if img_bytes:
+            try:
+                pil = PILImage.open(io.BytesIO(img_bytes))
+                # Downsize for Excel — max ~90x90 px
+                pil.thumbnail((90, 90))
+                buf = io.BytesIO()
+                pil.convert("RGB").save(buf, format="PNG")
+                buf.seek(0)
+                x_img = XLImage(buf)
+                ws.add_image(x_img, f"H{i}")
+            except Exception:
+                pass
+
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    from starlette.responses import StreamingResponse
+    filename = f"status-comparison-{subscriber.replace(' ', '_')}-{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(
+        out,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # Include the router in the main app

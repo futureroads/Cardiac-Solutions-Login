@@ -18,6 +18,7 @@ import EmailActivityAdmin from "./pages/EmailActivityAdmin";
 import Reports from "./pages/Reports";
 import LocationContacts from "./pages/LocationContacts";
 import ExpiredBpAutomation from "./pages/ExpiredBpAutomation";
+import StatusComparisonReport from "./pages/StatusComparisonReport";
 import UserActivity from "./pages/UserActivity";
 import Sales from "./pages/Sales";
 import SalesMobile from "./pages/SalesMobile";
@@ -226,6 +227,17 @@ function App() {
                 (user?.allowed_modules || []).includes("expired_bp_automation")
               ) ?
                 <ExpiredBpAutomation /> :
+                <Navigate to="/hub" replace />
+            }
+          />
+          <Route
+            path="/reports/status-comparison"
+            element={
+              isAuthenticated && (
+                user?.role === "admin" ||
+                (user?.allowed_modules || []).includes("status_comparison")
+              ) ?
+                <StatusComparisonReport /> :
                 <Navigate to="/hub" replace />
             }
           />

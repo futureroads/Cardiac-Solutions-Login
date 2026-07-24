@@ -36,6 +36,7 @@ const MODULE_OPTIONS = [
   { id: "sales_field", title: "Sales Field Portal" },
   { id: "location_contacts", title: "Location Contacts" },
   { id: "expired_bp_automation", title: "Expired B/P Notifications" },
+  { id: "status_comparison", title: "Status Comparison Report" },
 ];
 
 const ROLE_OPTIONS = ["admin", "C Level", "Director", "Manager", "Supervisor", "Employee"];

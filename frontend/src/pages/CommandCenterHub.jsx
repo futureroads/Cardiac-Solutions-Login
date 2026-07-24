@@ -21,6 +21,7 @@ import {
   AlertCircle,
   Briefcase,
   LifeBuoy,
+  GitCompareArrows,
 } from "lucide-react";
 
 const ALL_MODULES = [
@@ -178,6 +179,16 @@ const ALL_MODULES = [
     route: "/admin/expired-bp-automation",
     description:
       "Automated daily emails to subscribers when AEDs cross into expired-battery/pads. Upload a template, toggle per subscriber, and set a send time.",
+    badgeCount: null,
+  },
+  {
+    moduleKey: "status_comparison",
+    title: "STATUS COMPARISON REPORT",
+    status: "LIVE",
+    icon: GitCompareArrows,
+    route: "/reports/status-comparison",
+    description:
+      "Side-by-side compare Readisys detailed status vs. the AI-assigned status for every AED in a subscriber's fleet. Download the report as XLSX with images embedded.",
     badgeCount: null,
   },
   {
