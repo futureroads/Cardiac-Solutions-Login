@@ -178,7 +178,7 @@ const ALL_MODULES = [
     icon: AlertTriangle,
     route: "/admin/expired-bp-automation",
     description:
-      "Automated daily emails to subscribers when AEDs cross into expired-battery/pads. Upload a template, toggle per subscriber, and set a send time.",
+      "Automated daily emails to subscribers when AEDs cross into expired-battery/pads, plus 90/60/30-day EXPIRING B/P heads-ups. Upload templates, toggle per subscriber, and set send times.",
     badgeCount: null,
   },
   {

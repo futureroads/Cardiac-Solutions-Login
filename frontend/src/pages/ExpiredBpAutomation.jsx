@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import {
   ArrowLeft, Upload, Loader2, Search, Save, FileText,
   Trash2, Eye, Send, AlertTriangle, Check, Clock,
@@ -284,6 +284,18 @@ export default function ExpiredBpAutomation() {
             <div>
               <div className="font-orbitron text-cyan-400 text-sm tracking-widest">EXPIRED B/P NOTIFICATIONS</div>
               <div className="text-[10px] text-slate-500 tracking-wider">DAILY AUTOMATION — TEMPLATE + PER-SUBSCRIBER SCHEDULE</div>
+            </div>
+            <div className="ml-4 flex items-center gap-2">
+              <Link
+                to="/admin/expired-bp-automation"
+                className="text-[10px] font-orbitron tracking-widest px-3 py-1.5 rounded-sm border bg-cyan-500/20 border-cyan-500/60 text-cyan-200"
+                data-testid="tab-expired"
+              >EXPIRED B/P</Link>
+              <Link
+                to="/admin/expiring-bp-automation"
+                className="text-[10px] font-orbitron tracking-widest px-3 py-1.5 rounded-sm border border-slate-700 text-slate-400 hover:text-cyan-300 hover:border-cyan-500/40"
+                data-testid="tab-expiring"
+              >EXPIRING B/P</Link>
             </div>
           </div>
           <div className="flex items-center gap-3 text-[10px] font-orbitron tracking-wider">

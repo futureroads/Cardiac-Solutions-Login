@@ -2478,7 +2478,7 @@ async def get_notification_history(subscriber: str = None, current_user: dict = 
 async def notifications_today_count(current_user: dict = Depends(get_current_user)):
     """Count notification emails sent today, excluding EBP automation sends."""
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    ebp_filter = {"$not": {"$regex": "^expired_bp_automation"}}
+    ebp_filter = {"$not": {"$regex": "^(expired_bp_automation|expiring_bp_automation)"}}
     count = await _db.notification_history.count_documents({
         "sent_at": {"$gte": today_start},
         "$or": [{"trigger": {"$exists": False}}, {"trigger": ebp_filter}],
@@ -2493,7 +2493,7 @@ async def notifications_window_counts(current_user: dict = Depends(get_current_u
     d7 = (now - timedelta(days=7)).isoformat()
     d30 = (now - timedelta(days=30)).isoformat()
     d90 = (now - timedelta(days=90)).isoformat()
-    ebp_filter = {"$or": [{"trigger": {"$exists": False}}, {"trigger": {"$not": {"$regex": "^expired_bp_automation"}}}]}
+    ebp_filter = {"$or": [{"trigger": {"$exists": False}}, {"trigger": {"$not": {"$regex": "^(expired_bp_automation|expiring_bp_automation)"}}}]}
     c7 = await _db.notification_history.count_documents({"sent_at": {"$gte": d7}, **ebp_filter})
     c30 = await _db.notification_history.count_documents({"sent_at": {"$gte": d30}, **ebp_filter})
     c90 = await _db.notification_history.count_documents({"sent_at": {"$gte": d90}, **ebp_filter})
@@ -2509,7 +2509,7 @@ async def ebp_notifications_counts(current_user: dict = Depends(get_current_user
     d7 = (now - timedelta(days=7)).isoformat()
     d30 = (now - timedelta(days=30)).isoformat()
     d90 = (now - timedelta(days=90)).isoformat()
-    ebp_only = {"trigger": {"$regex": "^expired_bp_automation"}}
+    ebp_only = {"trigger": {"$regex": "^(expired_bp_automation|expiring_bp_automation)"}}
     today = await _db.notification_history.count_documents({"sent_at": {"$gte": today_et_start}, **ebp_only})
     c7 = await _db.notification_history.count_documents({"sent_at": {"$gte": d7}, **ebp_only})
     c30 = await _db.notification_history.count_documents({"sent_at": {"$gte": d30}, **ebp_only})
@@ -9059,6 +9059,238 @@ async def _ebp_load_test_mode() -> dict:
     }
 
 
+# ─── Expiring B/P (90/60/30 day) — separate templates, thresholds, test mode ─
+_EXPIRING_THRESHOLDS = ("90", "60", "30")
+
+
+def _parse_mm_dd_yy(s: str):
+    """Parse Readisys date strings like '01-31-29' → datetime.date. Returns None on failure."""
+    if not s:
+        return None
+    try:
+        parts = s.split("-")
+        if len(parts) != 3:
+            return None
+        mm, dd, yy = (int(x) for x in parts)
+        # Two-digit year → 20yy
+        if yy < 100:
+            yy = 2000 + yy
+        from datetime import date as _date
+        return _date(yy, mm, dd)
+    except Exception:
+        return None
+
+
+def _min_expiration_days(device: dict) -> int | None:
+    """Return the smaller of battery/pad days-until-expiration (integer days).
+    None if neither field can be parsed."""
+    from datetime import date as _date
+    today = _date.today()
+    candidates = []
+    for k in ("battery_expiration", "pad_expiration"):
+        d = _parse_mm_dd_yy(device.get(k, ""))
+        if d:
+            candidates.append((d - today).days)
+    return min(candidates) if candidates else None
+
+
+async def _expiring_bp_load_template(threshold: str) -> dict | None:
+    return await _db.expiring_bp_templates.find_one({"_id": str(threshold)}, {"_id": 0})
+
+
+async def _expiring_bp_load_test_mode() -> dict:
+    doc = await _db.expiring_bp_test_mode.find_one({"_id": "global"}, {"_id": 0}) or {}
+    return {
+        "enabled": bool(doc.get("enabled", False)),
+        "to": doc.get("to", "") or "",
+        "cc": doc.get("cc", "") or "",
+        "updated_by": doc.get("updated_by"),
+        "updated_at": doc.get("updated_at"),
+    }
+
+
+async def _expiring_bp_load_settings(subscriber: str) -> dict:
+    doc = await _db.expiring_bp_settings.find_one({"_id": subscriber}, {"_id": 0}) or {}
+    return {
+        "subscriber": subscriber,
+        "enabled_thresholds": doc.get("enabled_thresholds") or [],
+        "updated_at": doc.get("updated_at"),
+        "updated_by": doc.get("updated_by"),
+        "last_sent_at": doc.get("last_sent_at"),
+        "last_sent_date_et": doc.get("last_sent_date_et"),
+        "last_result": doc.get("last_result"),
+    }
+
+
+async def _expiring_bp_get_devices_for_threshold(subscriber: str, threshold_days: int) -> list[dict]:
+    """Return the subset of the fleet with min(battery,pads) days remaining <= threshold_days AND > 0."""
+    devices = await _fetch_all_devices_for_subscriber(subscriber)
+    hits: list[dict] = []
+    for d in devices:
+        days = _min_expiration_days(d)
+        if days is None:
+            continue
+        if 0 < days <= threshold_days:
+            hits.append({
+                "sentinel_id": d.get("sentinel_id", ""),
+                "site": d.get("site", ""),
+                "building": d.get("building", ""),
+                "placement": d.get("placement", ""),
+                "location": " / ".join(x for x in [d.get("site"), d.get("building"), d.get("placement")] if x),
+                "battery_expiration": d.get("battery_expiration", ""),
+                "pad_expiration": d.get("pad_expiration", ""),
+                "model": d.get("model", ""),
+                "days_until_expiration": days,
+            })
+    return hits
+
+
+async def _expiring_bp_new_for_threshold(subscriber: str, threshold: str, todays: list[dict]) -> list[dict]:
+    """Diff today's set of devices in the ≤threshold window against yesterday's snapshot."""
+    tz = ZoneInfo("America/New_York")
+    today_et = datetime.now(tz).date()
+    yday_et = (today_et - timedelta(days=1)).isoformat()
+    ydoc = await _db.expiring_bp_daily_snapshot.find_one(
+        {"subscriber": subscriber, "threshold": str(threshold), "date_et": yday_et},
+        {"_id": 0, "sentinel_ids": 1},
+    )
+    if not ydoc:
+        # First-run seed: skip today, save snapshot so tomorrow's diff works.
+        return []
+    yset = set(ydoc.get("sentinel_ids") or [])
+    return [d for d in todays if d.get("sentinel_id") and d["sentinel_id"] not in yset]
+
+
+async def _expiring_bp_save_snapshot(subscriber: str, threshold: str, sids: list[str]) -> None:
+    tz = ZoneInfo("America/New_York")
+    today_et = datetime.now(tz).date().isoformat()
+    await _db.expiring_bp_daily_snapshot.update_one(
+        {"subscriber": subscriber, "threshold": str(threshold), "date_et": today_et},
+        {"$set": {
+            "subscriber": subscriber, "threshold": str(threshold),
+            "date_et": today_et, "sentinel_ids": sids,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+
+
+async def _expiring_bp_send_for_subscriber(subscriber: str, threshold: str, *, force: bool = False, trigger: str = "scheduler") -> dict:
+    """Compose + send the Expiring B/P email for one subscriber at one threshold."""
+    tpl = await _expiring_bp_load_template(threshold)
+    if not tpl:
+        return {"skipped": True, "reason": f"no_template_{threshold}", "threshold": threshold}
+
+    thr_days = int(threshold)
+    todays = await _expiring_bp_get_devices_for_threshold(subscriber, thr_days)
+    todays_sids = [d["sentinel_id"] for d in todays if d.get("sentinel_id")]
+    new_hits = todays if force else await _expiring_bp_new_for_threshold(subscriber, threshold, todays)
+    await _expiring_bp_save_snapshot(subscriber, threshold, todays_sids)
+
+    if not new_hits:
+        return {"skipped": True, "reason": "no_new_expiring", "todays_count": len(todays), "threshold": threshold}
+
+    groups = await _ebp_resolve_recipients(subscriber, new_hits)
+    if not groups:
+        return {"skipped": True, "reason": "no_recipients", "aed_count": len(new_hits), "threshold": threshold}
+
+    template_text = tpl.get("text_content") or ""
+    is_html = (tpl.get("filename") or "").lower().endswith((".html", ".htm"))
+    subject_template = tpl.get("subject") or f"AED Batteries / Pads Expiring in {threshold} Days"
+
+    test_mode = await _expiring_bp_load_test_mode()
+
+    sends = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for g in groups:
+        html_body = _render_ebp_html(template_text, is_html, {
+            "subscriber_name": subscriber,
+            "contact_name": g.get("contact_name", ""),
+            "aeds": g["aeds"],
+        })
+        loc = g.get("loc_label")
+        subj = (subject_template
+                .replace("{{location}}", loc or "")
+                .replace("{{subscriber}}", subscriber)
+                .replace("{{threshold}}", threshold))
+        if not loc:
+            subj = subj.replace(" — ", "").strip()
+
+        original_to = g["to"]
+        original_cc = g.get("cc", "")
+        original_bcc = g.get("bcc", "")
+        if test_mode.get("enabled") and (test_mode.get("to") or "").strip():
+            send_to = test_mode["to"]
+            send_cc = test_mode.get("cc", "") or ""
+            send_bcc = ""
+            subj = f"[TEST MODE] {subj}"
+            banner = (
+                f"<div style=\"background:#fef3c7;border:1px solid #f59e0b;color:#92400e;"
+                f"padding:10px 14px;margin:0 0 16px 0;font-family:Arial,sans-serif;font-size:12px;\">"
+                f"<strong>TEST MODE</strong> — this email would normally be sent to <strong>{original_to}</strong>"
+                + (f" (cc: {original_cc})" if original_cc else "") +
+                f" for subscriber <strong>{subscriber}</strong> at the {threshold}-day threshold."
+                f"</div>"
+            )
+            html_body = banner + html_body
+        else:
+            send_to = original_to
+            send_cc = original_cc
+            send_bcc = original_bcc
+
+        res = await send_email_unified(
+            to_email=send_to, cc_email=send_cc, bcc_emails=send_bcc,
+            subject=subj, html_body=html_body,
+        )
+
+        try:
+            history_doc = {
+                "subscriber": subscriber,
+                "to_email": send_to, "cc_email": send_cc, "bcc_emails": send_bcc,
+                "subject": subj, "html_body": html_body,
+                "sent_by": "system:expiring-bp",
+                "sent_at": now_iso,
+                "success": bool(res.get("success")),
+                "email_response": f"{res.get('provider', '?')} {res.get('status_text', '')}".strip(),
+                "sg_message_id": res.get("message_id", ""),
+                "linked_sentinel_ids": [a["sentinel_id"] for a in g["aeds"]],
+                "provider": res.get("provider", ""),
+                "delivered_at": None, "open_count": 0, "click_count": 0,
+                "bounced": False, "spam_reported": False,
+                "trigger": f"expiring_bp_automation:{threshold}:{trigger}",
+            }
+            if test_mode.get("enabled") and (test_mode.get("to") or "").strip():
+                history_doc["test_mode"] = True
+                history_doc["intended_to_email"] = original_to
+                history_doc["intended_cc_email"] = original_cc
+                history_doc["intended_bcc_emails"] = original_bcc
+            await _db.notification_history.insert_one(history_doc)
+        except Exception as e:
+            logger.warning(f"[Expiring-BP] history insert failed for {subscriber}/{threshold}: {e}")
+
+        sends.append({
+            "to": send_to, "aed_count": len(g["aeds"]),
+            "success": bool(res.get("success")), "status": res.get("status_text", ""),
+            "test_mode": bool(test_mode.get("enabled") and (test_mode.get("to") or "").strip()),
+            "intended_to": original_to if test_mode.get("enabled") else None,
+            "threshold": threshold,
+        })
+
+    tz = ZoneInfo("America/New_York")
+    today_et = datetime.now(tz).date().isoformat()
+    await _db.expiring_bp_settings.update_one(
+        {"_id": subscriber},
+        {"$set": {
+            "last_sent_at": now_iso,
+            "last_sent_date_et": today_et,
+            "last_result": {"threshold": threshold, "groups": len(sends), "aeds": len(new_hits), "trigger": trigger},
+        }},
+        upsert=True,
+    )
+
+    return {"sent": True, "threshold": threshold, "groups": sends, "aed_count": len(new_hits), "todays_count": len(todays)}
+
+
 async def _ebp_load_template() -> dict | None:
     return await _db.expired_bp_template.find_one({"_id": "global"}, {"_id": 0})
 
@@ -9308,7 +9540,8 @@ async def _ebp_send_for_subscriber(subscriber: str, *, force: bool = False, trig
 async def _expired_bp_scheduler_loop():
     """Every minute, wake up and check each enabled subscriber. If the current
     ET wall clock has crossed their configured send time and they have not
-    already been sent today, fire off a send.
+    already been sent today, fire off a send. Handles both Expired B/P and
+    Expiring B/P automations off the same per-subscriber send time.
     """
     await asyncio.sleep(60)  # short warmup
     tz = ZoneInfo("America/New_York")
@@ -9317,21 +9550,52 @@ async def _expired_bp_scheduler_loop():
             now_et = datetime.now(tz)
             today_et = now_et.date().isoformat()
             now_hhmm = now_et.strftime("%H:%M")
-            async for doc in _db.expired_bp_settings.find({"enabled": True}):
+
+            # Build the union of subscribers that have Expired B/P enabled OR
+            # have any Expiring B/P thresholds enabled. Use the Expired B/P
+            # settings doc as the authority for send_time (single source of truth).
+            ebp_subs: dict[str, dict] = {}
+            async for doc in _db.expired_bp_settings.find({}):
                 sub = doc.get("_id")
-                if not sub:
-                    continue
-                if doc.get("last_sent_date_et") == today_et:
-                    continue  # already fired today
-                send_time = (doc.get("send_time_et") or "06:00")[:5]
+                if sub:
+                    ebp_subs[sub] = doc
+            expiring_subs: set[str] = set()
+            async for doc in _db.expiring_bp_settings.find({"enabled_thresholds": {"$exists": True, "$ne": []}}, {"_id": 1}):
+                sub = doc.get("_id")
+                if sub:
+                    expiring_subs.add(sub)
+
+            all_subs = set(ebp_subs.keys()) | expiring_subs
+            for sub in all_subs:
+                ebp_doc = ebp_subs.get(sub) or {}
+                send_time = (ebp_doc.get("send_time_et") or "06:00")[:5]
                 if now_hhmm < send_time:
-                    continue  # not yet
+                    continue
+
+                # Expired B/P (only if that subscriber has EBP enabled)
+                if ebp_doc.get("enabled") and ebp_doc.get("last_sent_date_et") != today_et:
+                    try:
+                        logger.info(f"[EBP] firing send for {sub} (time={send_time} ET)")
+                        result = await _ebp_send_for_subscriber(sub, trigger="scheduler")
+                        logger.info(f"[EBP] {sub} result: {result}")
+                    except Exception as e:
+                        logger.error(f"[EBP] send error for {sub}: {e}", exc_info=True)
+
+                # Expiring B/P (independent of EBP enabled state)
                 try:
-                    logger.info(f"[EBP] firing send for {sub} (time={send_time} ET)")
-                    result = await _ebp_send_for_subscriber(sub, trigger="scheduler")
-                    logger.info(f"[EBP] {sub} result: {result}")
+                    esettings = await _expiring_bp_load_settings(sub)
+                    if esettings.get("last_sent_date_et") == today_et:
+                        continue
+                    for thr in (esettings.get("enabled_thresholds") or []):
+                        if str(thr) not in _EXPIRING_THRESHOLDS:
+                            continue
+                        try:
+                            r = await _expiring_bp_send_for_subscriber(sub, str(thr), trigger="scheduler")
+                            logger.info(f"[Expiring-BP] {sub}/{thr}: {r}")
+                        except Exception as e:
+                            logger.error(f"[Expiring-BP] send error for {sub}/{thr}: {e}", exc_info=True)
                 except Exception as e:
-                    logger.error(f"[EBP] send error for {sub}: {e}", exc_info=True)
+                    logger.error(f"[Expiring-BP] settings load failed for {sub}: {e}", exc_info=True)
         except Exception as loop_err:
             logger.error(f"[EBP] scheduler loop error: {loop_err}", exc_info=True)
         await asyncio.sleep(60)
@@ -9515,6 +9779,172 @@ async def ebp_run_now(subscriber: str, current_user: dict = Depends(get_current_
     _require_ebp_admin(current_user)
     result = await _ebp_send_for_subscriber(subscriber, force=True, trigger=f"manual:{current_user.get('username', '')}")
     return {"ok": True, "result": result}
+
+
+# ─── Expiring B/P (90/60/30) admin endpoints ────────────────────────────────
+
+@api_router.get("/admin/expiring-bp/template")
+async def expiring_bp_get_template(threshold: str, current_user: dict = Depends(get_current_user)):
+    _require_ebp_admin(current_user)
+    if threshold not in _EXPIRING_THRESHOLDS:
+        raise HTTPException(status_code=400, detail="threshold must be 90, 60, or 30")
+    tpl = await _expiring_bp_load_template(threshold)
+    if not tpl:
+        return {"exists": False, "threshold": threshold}
+    return {
+        "exists": True, "threshold": threshold,
+        "filename": tpl.get("filename"),
+        "content_type": tpl.get("content_type"),
+        "uploaded_by": tpl.get("uploaded_by"),
+        "uploaded_at": tpl.get("uploaded_at"),
+        "text_content": tpl.get("text_content", ""),
+        "subject": tpl.get("subject") or f"AED Batteries / Pads Expiring in {threshold} Days",
+        "size_bytes": tpl.get("size_bytes", 0),
+    }
+
+
+@api_router.post("/admin/expiring-bp/template")
+async def expiring_bp_upload_template(
+    threshold: str = Form(...),
+    file: UploadFile = File(...),
+    subject: str = Form(""),
+    current_user: dict = Depends(get_current_user),
+):
+    _require_ebp_admin(current_user)
+    if threshold not in _EXPIRING_THRESHOLDS:
+        raise HTTPException(status_code=400, detail="threshold must be 90, 60, or 30")
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+    text = _extract_template_text(file.filename or "", raw)
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Could not extract text from file")
+    doc = {
+        "_id": threshold,
+        "filename": file.filename or "template",
+        "content_type": file.content_type or "application/octet-stream",
+        "text_content": text,
+        "subject": (subject or "").strip() or f"AED Batteries / Pads Expiring in {threshold} Days",
+        "uploaded_by": current_user.get("username", ""),
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "size_bytes": len(raw),
+    }
+    await _db.expiring_bp_templates.update_one({"_id": threshold}, {"$set": doc}, upsert=True)
+    return {"ok": True, "threshold": threshold, "filename": doc["filename"], "size_bytes": doc["size_bytes"]}
+
+
+@api_router.delete("/admin/expiring-bp/template")
+async def expiring_bp_delete_template(threshold: str, current_user: dict = Depends(get_current_user)):
+    _require_ebp_admin(current_user)
+    if threshold not in _EXPIRING_THRESHOLDS:
+        raise HTTPException(status_code=400, detail="threshold must be 90, 60, or 30")
+    await _db.expiring_bp_templates.delete_one({"_id": threshold})
+    return {"ok": True, "threshold": threshold}
+
+
+@api_router.get("/admin/expiring-bp/test-mode")
+async def expiring_bp_get_test_mode(current_user: dict = Depends(get_current_user)):
+    _require_ebp_admin(current_user)
+    return await _expiring_bp_load_test_mode()
+
+
+@api_router.put("/admin/expiring-bp/test-mode")
+async def expiring_bp_set_test_mode(data: dict, current_user: dict = Depends(get_current_user)):
+    _require_ebp_admin(current_user)
+    enabled = bool(data.get("enabled", False))
+    to = (data.get("to") or "").strip()
+    cc = (data.get("cc") or "").strip()
+    if enabled and not to:
+        raise HTTPException(status_code=400, detail="A TO address is required to enable test mode.")
+    await _db.expiring_bp_test_mode.update_one(
+        {"_id": "global"},
+        {"$set": {
+            "enabled": enabled, "to": to, "cc": cc,
+            "updated_by": current_user.get("username", ""),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return await _expiring_bp_load_test_mode()
+
+
+@api_router.get("/admin/expiring-bp/settings")
+async def expiring_bp_list_settings(current_user: dict = Depends(get_current_user)):
+    _require_ebp_admin(current_user)
+    subs: dict[str, dict] = {}
+    async for c in _db.subscriber_contacts.find({}, {"_id": 0, "subscriber": 1}):
+        name = c.get("subscriber")
+        if name:
+            subs[name] = await _expiring_bp_load_settings(name)
+    async for d in _db.expiring_bp_settings.find({}, {"_id": 1}):
+        name = d.get("_id")
+        if name and name not in subs:
+            subs[name] = await _expiring_bp_load_settings(name)
+    items = sorted(subs.values(), key=lambda x: x["subscriber"].lower())
+    return {"items": items, "total": len(items)}
+
+
+@api_router.put("/admin/expiring-bp/settings/{subscriber}")
+async def expiring_bp_upsert_settings(subscriber: str, data: dict, current_user: dict = Depends(get_current_user)):
+    _require_ebp_admin(current_user)
+    raw_thr = data.get("enabled_thresholds") or []
+    valid = [str(t) for t in raw_thr if str(t) in _EXPIRING_THRESHOLDS]
+    valid = sorted(set(valid), key=lambda x: -int(x))
+    await _db.expiring_bp_settings.update_one(
+        {"_id": subscriber},
+        {"$set": {
+            "enabled_thresholds": valid,
+            "updated_by": current_user.get("username", ""),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"ok": True, "settings": await _expiring_bp_load_settings(subscriber)}
+
+
+@api_router.post("/admin/expiring-bp/preview/{subscriber}")
+async def expiring_bp_preview(subscriber: str, threshold: str, current_user: dict = Depends(get_current_user)):
+    _require_ebp_admin(current_user)
+    if threshold not in _EXPIRING_THRESHOLDS:
+        raise HTTPException(status_code=400, detail="threshold must be 90, 60, or 30")
+    tpl = await _expiring_bp_load_template(threshold)
+    if not tpl:
+        raise HTTPException(status_code=400, detail=f"No template uploaded for {threshold}-day threshold")
+    hits = await _expiring_bp_get_devices_for_threshold(subscriber, int(threshold))
+    groups = await _ebp_resolve_recipients(subscriber, hits) if hits else []
+    is_html = (tpl.get("filename") or "").lower().endswith((".html", ".htm"))
+    previews = []
+    for g in groups:
+        html = _render_ebp_html(tpl.get("text_content") or "", is_html, {
+            "subscriber_name": subscriber,
+            "contact_name": g.get("contact_name", ""),
+            "aeds": g["aeds"],
+        })
+        previews.append({
+            "to": g["to"], "cc": g.get("cc", ""), "bcc": g.get("bcc", ""),
+            "aed_count": len(g["aeds"]),
+            "loc_label": g.get("loc_label", ""),
+            "html": html,
+        })
+    return {
+        "subscriber": subscriber, "threshold": threshold,
+        "todays_count": len(hits),
+        "recipient_groups": previews,
+        "subject_template": tpl.get("subject") or f"AED Batteries / Pads Expiring in {threshold} Days",
+    }
+
+
+@api_router.post("/admin/expiring-bp/run-now/{subscriber}")
+async def expiring_bp_run_now(subscriber: str, threshold: str, current_user: dict = Depends(get_current_user)):
+    _require_ebp_admin(current_user)
+    if threshold not in _EXPIRING_THRESHOLDS:
+        raise HTTPException(status_code=400, detail="threshold must be 90, 60, or 30")
+    result = await _expiring_bp_send_for_subscriber(
+        subscriber, threshold, force=True,
+        trigger=f"manual:{current_user.get('username', '')}",
+    )
+    return {"ok": True, "result": result}
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════
