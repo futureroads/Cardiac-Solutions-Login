@@ -9600,11 +9600,17 @@ async def _build_status_comparison_rows(subscriber: str) -> list[dict]:
     devices = await _fetch_all_devices_for_subscriber(subscriber)
     sids = [d.get("sentinel_id") for d in devices if d.get("sentinel_id")]
     ai = await _fetch_ai_status_for_sids(sids)
+    # Also fetch per-device detail to get the ORIGINAL readiness (Readisys's
+    # `device.status` field, before AI reclassification). The bulk voice
+    # `/devices` endpoint only returns `detailed_status` (AI-adjusted), so we
+    # have to call `/device/{sid}` for each one to reveal the raw readiness.
+    originals = await _fetch_original_readiness_for_sids(subscriber, sids)
 
     rows = []
     for d in devices:
         sid = d.get("sentinel_id") or ""
-        readiness = (d.get("detailed_status") or "").upper()
+        readiness = (originals.get(sid) or "").upper()
+        assigned = (d.get("detailed_status") or "").upper()
         ai_row = ai.get(sid, {})
         ai_status = ai_row.get("ai_status", "")
         s3 = d.get("s3_url", "")
@@ -9617,15 +9623,45 @@ async def _build_status_comparison_rows(subscriber: str) -> list[dict]:
             "model": d.get("model", "") or "",
             "aed_serial": sid,  # Readisys does not expose a separate physical AED serial
             "sentinel_id": sid,
-            "readiness_status": readiness,
-            "ai_status": ai_status,
+            "readiness_status": readiness,       # ORIGINAL readiness (device.status)
+            "assigned_status": assigned,          # AI-adjusted (device.detailed_status)
+            "ai_status": ai_status,               # AI outreach-detail (usually == assigned)
             "ai_source": ai_row.get("ai_source", ""),
             "location": loc,
             "image_url": img_url,
-            "match": bool(readiness and ai_status and readiness == ai_status),
+            "match": bool(readiness and assigned and readiness == assigned),
         })
     rows.sort(key=lambda r: (r["model"], r["sentinel_id"]))
     return rows
+
+
+async def _fetch_original_readiness_for_sids(subscriber: str, sids: list[str], concurrency: int = 20) -> dict[str, str]:
+    """Parallel fetch `device.status` (the ORIGINAL Readisys readiness before AI
+    reclassification) for many sentinel_ids. Returns {sid: status_string}."""
+    import httpx, urllib.parse, asyncio
+    headers = _readisys_auth_headers()
+    enc_sub = urllib.parse.quote(subscriber)
+    sem = asyncio.Semaphore(concurrency)
+    out: dict[str, str] = {}
+
+    async def one(client, sid):
+        async with sem:
+            try:
+                r = await client.get(
+                    f"https://readisys.survivalpath.ai/api/voice/subscriber/{enc_sub}/device/{sid}",
+                    headers=headers,
+                )
+                if r.status_code == 200:
+                    dev = (r.json() or {}).get("device") or {}
+                    out[sid] = dev.get("status", "") or ""
+                else:
+                    out[sid] = ""
+            except Exception:
+                out[sid] = ""
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        await asyncio.gather(*[one(client, s) for s in sids])
+    return out
 
 
 def _require_status_comparison(user: dict) -> None:
@@ -9655,8 +9691,8 @@ async def status_comparison_report(subscriber: str, current_user: dict = Depends
     summary = {
         "total": len(rows),
         "matches": sum(1 for r in rows if r["match"]),
-        "mismatches": sum(1 for r in rows if not r["match"] and r["readiness_status"] and r["ai_status"]),
-        "missing_ai": sum(1 for r in rows if not r["ai_status"]),
+        "mismatches": sum(1 for r in rows if not r["match"] and r["readiness_status"] and r["assigned_status"]),
+        "missing_ai": sum(1 for r in rows if not r["assigned_status"]),
     }
     return {"subscriber": subscriber, "rows": rows, "summary": summary}
 
@@ -9676,7 +9712,7 @@ async def status_comparison_xlsx(subscriber: str, current_user: dict = Depends(g
     ws = wb.active
     ws.title = (subscriber[:28] + "…") if len(subscriber) > 28 else subscriber
 
-    headers = ["Model", "AED Serial", "Sentinel ID", "Readiness Status", "AI Assigned Status", "Match?", "Location", "Image"]
+    headers = ["Model", "AED Serial", "Sentinel ID", "Original Readiness", "Assigned Status", "Match?", "Location", "Image"]
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill("solid", fgColor="0F172A")
     for col_idx, h in enumerate(headers, start=1):
@@ -9713,12 +9749,12 @@ async def status_comparison_xlsx(subscriber: str, current_user: dict = Depends(g
         ws.cell(row=i, column=2, value=r["aed_serial"])
         ws.cell(row=i, column=3, value=r["sentinel_id"])
         ws.cell(row=i, column=4, value=r["readiness_status"])
-        ws.cell(row=i, column=5, value=r["ai_status"])
-        match_cell = ws.cell(row=i, column=6, value="MATCH" if r["match"] else ("MISMATCH" if r["ai_status"] else "NO AI"))
+        ws.cell(row=i, column=5, value=r["assigned_status"])
+        match_cell = ws.cell(row=i, column=6, value="MATCH" if r["match"] else ("MISMATCH" if r["assigned_status"] else "NO STATUS"))
         match_cell.alignment = Alignment(horizontal="center")
         if r["match"]:
             match_cell.fill = match_fill
-        elif r["ai_status"] and r["readiness_status"]:
+        elif r["assigned_status"] and r["readiness_status"]:
             match_cell.fill = mismatch_fill
         ws.cell(row=i, column=7, value=r["location"])
 

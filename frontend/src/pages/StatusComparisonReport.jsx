@@ -74,7 +74,7 @@ export default function StatusComparisonReport() {
 
   const rows = useMemo(() => {
     const all = report?.rows || [];
-    if (filterMode === "mismatch") return all.filter(r => !r.match && r.ai_status && r.readiness_status);
+    if (filterMode === "mismatch") return all.filter(r => !r.match && r.assigned_status && r.readiness_status);
     if (filterMode === "match") return all.filter(r => r.match);
     return all;
   }, [report, filterMode]);
@@ -180,8 +180,8 @@ export default function StatusComparisonReport() {
                     <th className="py-2 px-2 font-orbitron text-[9px] text-slate-400 tracking-widest">MODEL</th>
                     <th className="py-2 px-2 font-orbitron text-[9px] text-slate-400 tracking-widest">AED SERIAL</th>
                     <th className="py-2 px-2 font-orbitron text-[9px] text-slate-400 tracking-widest">SENTINEL ID</th>
-                    <th className="py-2 px-2 font-orbitron text-[9px] text-slate-400 tracking-widest">READINESS STATUS</th>
-                    <th className="py-2 px-2 font-orbitron text-[9px] text-slate-400 tracking-widest">AI ASSIGNED STATUS</th>
+                    <th className="py-2 px-2 font-orbitron text-[9px] text-slate-400 tracking-widest">ORIGINAL READINESS</th>
+                    <th className="py-2 px-2 font-orbitron text-[9px] text-slate-400 tracking-widest">ASSIGNED STATUS</th>
                     <th className="py-2 px-2 font-orbitron text-[9px] text-slate-400 tracking-widest">MATCH</th>
                     <th className="py-2 px-2 font-orbitron text-[9px] text-slate-400 tracking-widest">LOCATION</th>
                     <th className="py-2 px-2 font-orbitron text-[9px] text-slate-400 tracking-widest">IMAGE</th>
@@ -189,18 +189,18 @@ export default function StatusComparisonReport() {
                 </thead>
                 <tbody>
                   {rows.map(r => (
-                    <tr key={r.sentinel_id} className={`border-b border-slate-900 ${r.match ? "" : (r.ai_status && r.readiness_status ? "bg-red-500/5" : "")}`} data-testid={`row-${r.sentinel_id}`}>
+                    <tr key={r.sentinel_id} className={`border-b border-slate-900 ${r.match ? "" : (r.assigned_status && r.readiness_status ? "bg-red-500/5" : "")}`} data-testid={`row-${r.sentinel_id}`}>
                       <td className="py-2 px-2 font-mono text-slate-300">{r.model}</td>
                       <td className="py-2 px-2 font-mono text-slate-400">{r.aed_serial}</td>
                       <td className="py-2 px-2 font-mono text-cyan-300 font-bold">{r.sentinel_id}</td>
                       <td className="py-2 px-2 font-orbitron text-[10px] text-slate-200">{r.readiness_status || "—"}</td>
-                      <td className="py-2 px-2 font-orbitron text-[10px] text-slate-200">{r.ai_status || <span className="text-slate-600">NO AI</span>}</td>
+                      <td className="py-2 px-2 font-orbitron text-[10px] text-slate-200">{r.assigned_status || <span className="text-slate-600">—</span>}</td>
                       <td className="py-2 px-2">
                         {r.match ? (
                           <span className="inline-flex items-center gap-1 text-[9px] font-orbitron tracking-widest text-emerald-300 bg-emerald-500/10 border border-emerald-500/40 px-1.5 py-0.5 rounded-sm">
                             <Check className="w-3 h-3" /> MATCH
                           </span>
-                        ) : r.ai_status && r.readiness_status ? (
+                        ) : r.assigned_status && r.readiness_status ? (
                           <span className="inline-flex items-center gap-1 text-[9px] font-orbitron tracking-widest text-red-300 bg-red-500/10 border border-red-500/40 px-1.5 py-0.5 rounded-sm">
                             <XIcon className="w-3 h-3" /> MISMATCH
                           </span>

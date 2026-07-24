@@ -1,0 +1,44 @@
+{
+  "summary": "Backend-only test of Status Comparison Report bug fix (readiness_status = original device.status, not AI-adjusted detailed_status). All 4 targeted pytest tests PASSED against the public preview URL.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_status_comparison_report.py",
+    "/app/test_reports/pytest/status_comparison_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is very large (>9700 lines). Consider modularizing feature sections (e.g., status_comparison_report) into their own routers.",
+    "_fetch_all_devices_for_subscriber uses concurrency=implicit (asyncio.gather over 8 statuses). Fine, but consider a hard cap on total devices per subscriber to guard against runaway N per-device calls in _fetch_original_readiness_for_sids (currently semaphore=20, good, but the outer report could take minutes for large fleets).",
+    "In _build_status_comparison_rows, sentinel_id is used as aed_serial fallback with a code comment saying Readisys doesn't expose a separate serial. Consider surfacing this to the frontend as null rather than duplicating sid.",
+    "Recurring backend log warning '[AEDA-Cache] warmer error: Cannot use MongoClient after close' — unrelated to this bug but worth investigating; happens after WatchFiles reloads."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_status_comparison_report.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "N/A (not requested)"},
+  "test_credentials": "username=futureroads password=@@U1s9m6c7@@ (admin)",
+  "seed_data_creation": "None. Read-only endpoints against live Readisys upstream.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Test file /app/backend/tests/test_status_comparison_report.py validates the Status Comparison Report bug fix. Key evidence: ODWCB-S15 at Lawson State Community College returns readiness_status='UNKNOWN' and assigned_status='REPOSITION' with match=false, exactly matching the report.cardiac-solutions.ai reference. Public URL was briefly slow/timing out at test start; a supervisorctl restart of backend cleared it. Report endpoint takes ~30-50s for medium fleets because it fan-outs one /voice/subscriber/{sub}/device/{sid} call per AED — set client timeouts >=120s.",
+  "verification_evidence": {
+    "ODWCB-S15": {
+      "model": "HeartSine Samaritan PAD 360P",
+      "readiness_status": "UNKNOWN",
+      "assigned_status": "REPOSITION",
+      "ai_status": "REPOSITION",
+      "ai_source": "mark_feedback_override",
+      "match": false
+    },
+    "xlsx_headers": ["Model", "AED Serial", "Sentinel ID", "Original Readiness", "Assigned Status", "Match?", "Location", "Image"],
+    "subscribers_count": ">=20"
+  }
+}
