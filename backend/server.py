@@ -9110,7 +9110,21 @@ async def _expiring_bp_load_test_mode() -> dict:
 
 
 async def _expiring_bp_load_settings(subscriber: str) -> dict:
-    doc = await _db.expiring_bp_settings.find_one({"_id": subscriber}, {"_id": 0}) or {}
+    doc = await _db.expiring_bp_settings.find_one({"_id": subscriber}, {"_id": 0})
+    # If the subscriber has never been configured, default to 60-day only.
+    # (The scheduler still only fires for subscribers with an explicit DB doc —
+    # this default is purely the initial state shown in the UI so a first save
+    # persists 60d unless the admin unchecks it.)
+    if not doc:
+        return {
+            "subscriber": subscriber,
+            "enabled_thresholds": ["60"],
+            "updated_at": None,
+            "updated_by": None,
+            "last_sent_at": None,
+            "last_sent_date_et": None,
+            "last_result": None,
+        }
     return {
         "subscriber": subscriber,
         "enabled_thresholds": doc.get("enabled_thresholds") or [],
