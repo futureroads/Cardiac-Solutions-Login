@@ -10025,15 +10025,23 @@ async def scan2link_lookup(serial: str, current_user: dict = Depends(get_current
 
 @api_router.get("/scan2link/gp-locations")
 async def scan2link_gp_locations(current_user: dict = Depends(get_current_user)):
-    """Georgia Power location dropdown options."""
+    """Georgia Power location dropdown options — deduped {site, building} pairs
+    from the geocoded map data. 280 records collapse to ~100-200 unique picks."""
     _require_scan2link(current_user)
-    locs = []
-    async for d in _db.location_contacts.find({"subscriber": "Georgia Power"}, {"_id": 0}):
-        site = d.get("site", ""); building = d.get("building", "")
+    seen: dict[str, dict] = {}
+    async for d in _db.subscriber_map_locations.find({"subscriber": "Georgia Power"}, {"_id": 0}):
+        site = (d.get("site") or "").strip()
+        building = (d.get("building") or "").strip()
         label = " / ".join(x for x in [site, building] if x)
-        if label:
-            locs.append({"site": site, "building": building, "label": label})
-    locs.sort(key=lambda x: x["label"].lower())
+        if not label or label in seen:
+            continue
+        seen[label] = {
+            "site": site,
+            "building": building,
+            "label": label,
+            "address": d.get("clean_address") or d.get("formatted_address") or "",
+        }
+    locs = sorted(seen.values(), key=lambda x: x["label"].lower())
     return {"locations": locs}
 
 
