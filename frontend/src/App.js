@@ -20,6 +20,7 @@ import LocationContacts from "./pages/LocationContacts";
 import ExpiredBpAutomation from "./pages/ExpiredBpAutomation";
 import ExpiringBpAutomation from "./pages/ExpiringBpAutomation";
 import StatusComparisonReport from "./pages/StatusComparisonReport";
+import Scan2Link from "./pages/Scan2Link";
 import UserActivity from "./pages/UserActivity";
 import Sales from "./pages/Sales";
 import SalesMobile from "./pages/SalesMobile";
@@ -250,6 +251,17 @@ function App() {
                 (user?.allowed_modules || []).includes("status_comparison")
               ) ?
                 <StatusComparisonReport /> :
+                <Navigate to="/hub" replace />
+            }
+          />
+          <Route
+            path="/scan2link"
+            element={
+              isAuthenticated && (
+                user?.role === "admin" ||
+                (user?.allowed_modules || []).includes("scan2link")
+              ) ?
+                <Scan2Link /> :
                 <Navigate to="/hub" replace />
             }
           />

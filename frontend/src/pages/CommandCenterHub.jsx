@@ -22,6 +22,7 @@ import {
   Briefcase,
   LifeBuoy,
   GitCompareArrows,
+  ScanLine,
 } from "lucide-react";
 
 const ALL_MODULES = [
@@ -189,6 +190,16 @@ const ALL_MODULES = [
     route: "/reports/status-comparison",
     description:
       "Side-by-side compare Readisys detailed status vs. the AI-assigned status for every AED in a subscriber's fleet. Download the report as XLSX with images embedded.",
+    badgeCount: null,
+  },
+  {
+    moduleKey: "scan2link",
+    title: "SCAN2LINK",
+    status: "LIVE",
+    icon: ScanLine,
+    route: "/scan2link",
+    description:
+      "Field-tech tool: scan a tracker's QR (IMEI), then scan the AED barcode, and link the two. Auto-looks up model + location in Readisys. Georgia Power gets an optional location picker.",
     badgeCount: null,
   },
   {

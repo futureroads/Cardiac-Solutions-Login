@@ -106,7 +106,7 @@ async def log_to_db(level, message, context=""):
         pass  # Can't log the log failure
 
 # All available module IDs
-ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path", "hybrid_training", "customer_portal", "map", "sales", "location_contacts", "expired_bp_automation", "status_comparison"]
+ALL_MODULE_IDS = ["daily_report", "notifications", "service_tickets", "dashboard", "survival_path", "hybrid_training", "customer_portal", "map", "sales", "location_contacts", "expired_bp_automation", "status_comparison", "scan2link"]
 
 # Create the main app
 app = FastAPI(title="Cardiac Solutions API")
@@ -9958,6 +9958,120 @@ async def expiring_bp_run_now(subscriber: str, threshold: str, current_user: dic
         trigger=f"manual:{current_user.get('username', '')}",
     )
     return {"ok": True, "result": result}
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SCAN2LINK — Field tech pairs a tracker IMEI with an AED serial (sentinel_id).
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _require_scan2link(user: dict) -> None:
+    role = (user.get("role") or "").lower()
+    modules = user.get("allowed_modules") or []
+    if role == "admin" or "scan2link" in modules:
+        return
+    raise HTTPException(status_code=403, detail="Not authorized for Scan2Link")
+
+
+@api_router.get("/scan2link/lookup")
+async def scan2link_lookup(serial: str, current_user: dict = Depends(get_current_user)):
+    """Look up an AED serial (treated as Readisys sentinel_id) across all
+    subscribers to return model/site/building/placement/subscriber."""
+    _require_scan2link(current_user)
+    import httpx, urllib.parse, asyncio
+    headers = _readisys_auth_headers()
+    serial = (serial or "").strip()
+    if not serial:
+        raise HTTPException(status_code=400, detail="serial required")
+
+    subs: list[str] = []
+    async for c in _db.subscriber_contacts.find({}, {"_id": 0, "subscriber": 1}):
+        n = c.get("subscriber")
+        if n:
+            subs.append(n)
+
+    async def probe(client, sub):
+        try:
+            r = await client.get(
+                f"https://readisys.survivalpath.ai/api/voice/subscriber/{urllib.parse.quote(sub)}/device/{urllib.parse.quote(serial)}",
+                headers=headers,
+            )
+            if r.status_code == 200:
+                dev = (r.json() or {}).get("device") or {}
+                if dev.get("sentinel_id"):
+                    return (sub, dev)
+        except Exception:
+            pass
+        return None
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        results = await asyncio.gather(*[probe(client, s) for s in subs])
+    for hit in results:
+        if hit:
+            sub, dev = hit
+            return {
+                "found": True,
+                "subscriber": sub,
+                "sentinel_id": dev.get("sentinel_id"),
+                "model": dev.get("model", ""),
+                "site": dev.get("site", ""),
+                "building": dev.get("building", ""),
+                "placement": dev.get("placement", ""),
+                "status": dev.get("status", ""),
+                "detailed_status": dev.get("detailed_status", ""),
+            }
+    return {"found": False, "serial": serial}
+
+
+@api_router.get("/scan2link/gp-locations")
+async def scan2link_gp_locations(current_user: dict = Depends(get_current_user)):
+    """Georgia Power location dropdown options."""
+    _require_scan2link(current_user)
+    locs = []
+    async for d in _db.location_contacts.find({"subscriber": "Georgia Power"}, {"_id": 0}):
+        site = d.get("site", ""); building = d.get("building", "")
+        label = " / ".join(x for x in [site, building] if x)
+        if label:
+            locs.append({"site": site, "building": building, "label": label})
+    locs.sort(key=lambda x: x["label"].lower())
+    return {"locations": locs}
+
+
+@api_router.post("/scan2link/link")
+async def scan2link_link(data: dict, current_user: dict = Depends(get_current_user)):
+    """Persist a tracker↔AED link. Upsert keyed on tracker_imei."""
+    _require_scan2link(current_user)
+    imei = (data.get("tracker_imei") or "").strip()
+    serial = (data.get("aed_serial") or "").strip()
+    if not imei or not serial:
+        raise HTTPException(status_code=400, detail="tracker_imei and aed_serial are required")
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "tracker_imei": imei,
+        "aed_serial": serial,
+        "subscriber": (data.get("subscriber") or "").strip(),
+        "site": (data.get("site") or "").strip(),
+        "building": (data.get("building") or "").strip(),
+        "placement": (data.get("placement") or "").strip(),
+        "model": (data.get("model") or "").strip(),
+        "linked_by": current_user.get("username", ""),
+        "linked_at": now,
+    }
+    await _db.aed_tracker_links.update_one(
+        {"tracker_imei": imei},
+        {"$set": doc, "$setOnInsert": {"created_at": now}},
+        upsert=True,
+    )
+    return {"ok": True, "link": doc}
+
+
+@api_router.get("/scan2link/links")
+async def scan2link_list(current_user: dict = Depends(get_current_user)):
+    _require_scan2link(current_user)
+    items = []
+    async for d in _db.aed_tracker_links.find({}, {"_id": 0}).sort("linked_at", -1).limit(500):
+        items.append(d)
+    return {"items": items, "total": len(items)}
 
 
 
