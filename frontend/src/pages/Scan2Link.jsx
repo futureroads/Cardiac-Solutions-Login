@@ -91,7 +91,7 @@ export default function Scan2Link() {
   };
 
   const send = async () => {
-    if (!imei.trim() || !serial.trim()) { setErr("Both tracker IMEI and AED serial are required."); return; }
+    if (!imei.trim() || !serial.trim()) { setErr("Both Tracker ID and AED SN are required."); return; }
     setSending(true); setErr("");
     const chosenLoc = gpChoice ? gpLocs.find(l => l.label === gpChoice) : null;
     const body = {
@@ -142,10 +142,10 @@ export default function Scan2Link() {
         <div className="border border-cyan-500/30 bg-[#0a0f1c] rounded-sm p-4">
           <div className="flex items-center gap-2 mb-3">
             <span className="font-orbitron text-[10px] tracking-widest text-cyan-400 bg-cyan-500/10 border border-cyan-500/40 px-2 py-0.5 rounded-sm">STEP 1</span>
-            <div className="font-orbitron text-cyan-300 text-sm tracking-widest">TRACKER IMEI</div>
+            <div className="font-orbitron text-cyan-300 text-sm tracking-widest">TRACKER ID</div>
           </div>
           <div className="flex gap-2">
-            <input value={imei} onChange={e => setImei(e.target.value)} placeholder="Scan or type IMEI" className="flex-1 bg-slate-900/60 border border-slate-700 rounded-sm px-3 py-2 text-[13px] font-mono text-slate-200" data-testid="imei-input" />
+            <input value={imei} onChange={e => setImei(e.target.value)} placeholder="Scan or type Tracker ID" className="flex-1 bg-slate-900/60 border border-slate-700 rounded-sm px-3 py-2 text-[13px] font-mono text-slate-200" data-testid="imei-input" />
             <button onClick={() => setScannerFor("imei")} className="px-3 py-2 border border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/10 rounded-sm flex items-center gap-1" data-testid="scan-imei-btn">
               <Camera className="w-4 h-4" />
             </button>
@@ -156,10 +156,10 @@ export default function Scan2Link() {
         <div className="border border-cyan-500/30 bg-[#0a0f1c] rounded-sm p-4">
           <div className="flex items-center gap-2 mb-3">
             <span className="font-orbitron text-[10px] tracking-widest text-cyan-400 bg-cyan-500/10 border border-cyan-500/40 px-2 py-0.5 rounded-sm">STEP 2</span>
-            <div className="font-orbitron text-cyan-300 text-sm tracking-widest">AED SERIAL</div>
+            <div className="font-orbitron text-cyan-300 text-sm tracking-widest">AED SN</div>
           </div>
           <div className="flex gap-2">
-            <input value={serial} onChange={e => setSerial(e.target.value)} onBlur={e => doLookup(e.target.value)} placeholder="Scan or type AED serial / sentinel ID" className="flex-1 bg-slate-900/60 border border-slate-700 rounded-sm px-3 py-2 text-[13px] font-mono text-slate-200" data-testid="serial-input" />
+            <input value={serial} onChange={e => setSerial(e.target.value)} onBlur={e => doLookup(e.target.value)} placeholder="Scan or type AED SN" className="flex-1 bg-slate-900/60 border border-slate-700 rounded-sm px-3 py-2 text-[13px] font-mono text-slate-200" data-testid="serial-input" />
             <button onClick={() => setScannerFor("serial")} className="px-3 py-2 border border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/10 rounded-sm flex items-center gap-1" data-testid="scan-serial-btn">
               <Camera className="w-4 h-4" />
             </button>
@@ -180,7 +180,7 @@ export default function Scan2Link() {
                   </div>
                 </>
               ) : (
-                <div className="text-[11px] text-amber-300 font-orbitron tracking-wider">Not found in Readisys — you can still SEND (link will save without subscriber/model).</div>
+                <div className="text-[11px] text-amber-300 font-orbitron tracking-wider">Not found — you can still SEND (link will save without subscriber/model).</div>
               )}
             </div>
           )}
@@ -214,7 +214,7 @@ export default function Scan2Link() {
 
       <ScannerModal
         open={!!scannerFor}
-        hint={scannerFor === "imei" ? "SCAN TRACKER QR (IMEI)" : "SCAN AED BARCODE"}
+        hint={scannerFor === "imei" ? "SCAN TRACKER QR (ID)" : "SCAN AED SN BARCODE"}
         onClose={() => setScannerFor(null)}
         onDetected={(v) => {
           if (scannerFor === "imei") setImei(v);
