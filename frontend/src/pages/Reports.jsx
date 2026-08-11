@@ -109,19 +109,9 @@ export default function Reports() {
 
   const filtered = useMemo(() => {
     if (!rows) return [];
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => {
-      return (
-        (r.subscriber || "").toLowerCase().includes(q) ||
-        (r.sentinel_id || "").toLowerCase().includes(q) ||
-        (r.site || "").toLowerCase().includes(q) ||
-        (r.building || "").toLowerCase().includes(q) ||
-        (r.placement || "").toLowerCase().includes(q) ||
-        (r.model || "").toLowerCase().includes(q) ||
-        (r.detailed_status || "").toLowerCase().includes(q)
-      );
-    });
+    const sub = search.trim();
+    if (!sub) return rows;
+    return rows.filter((r) => (r.subscriber || "") === sub);
   }, [rows, search]);
 
   const handleDownload = () => {
@@ -218,32 +208,30 @@ export default function Reports() {
               </div>
             </div>
 
-            <div className="flex-1 min-w-[200px]">
+            <div className="flex-1 min-w-[220px]">
               <label className="block font-orbitron text-[9px] tracking-widest text-slate-500 mb-1">
-                FILTER RESULTS
+                SUBSCRIBER
               </label>
               <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500" />
-                <input
-                  type="text"
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500 pointer-events-none z-10" />
+                <select
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Subscriber, sentinel ID, site…"
-                  data-testid="report-search-input"
-                  disabled={!rows}
-                  list="report-subscribers-list"
-                  autoComplete="off"
-                  className="w-full bg-slate-950 border border-slate-700 text-slate-200 text-xs pl-8 pr-3 py-2 rounded-sm focus:outline-none focus:border-cyan-500/60 disabled:opacity-50"
-                />
-                <datalist id="report-subscribers-list">
+                  data-testid="report-subscriber-select"
+                  disabled={!rows && subscribers.length === 0}
+                  className="w-full bg-slate-950 border border-slate-700 text-slate-200 text-xs pl-8 pr-3 py-2 rounded-sm focus:outline-none focus:border-cyan-500/60 disabled:opacity-50 appearance-none"
+                >
+                  <option value="">— All subscribers —</option>
                   {subscribers.map((s) => (
-                    <option key={s} value={s} />
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
                   ))}
-                </datalist>
+                </select>
               </div>
               {subscribers.length > 0 && (
                 <div className="mt-1 text-[9px] text-slate-600 font-orbitron tracking-wider">
-                  {subscribers.length} SUBSCRIBERS · AUTOCOMPLETE ON
+                  {subscribers.length} SUBSCRIBERS · ALPHABETICAL
                 </div>
               )}
             </div>
