@@ -37,6 +37,7 @@ const MODULE_OPTIONS = [
   { id: "location_contacts", title: "Location Contacts" },
   { id: "expired_bp_automation", title: "Expired B/P Notifications" },
   { id: "status_comparison", title: "Status Comparison Report" },
+  { id: "reports", title: "Reports (By Model / All Fleet)" },
   { id: "scan2link", title: "Scan2Link" },
 ];
 

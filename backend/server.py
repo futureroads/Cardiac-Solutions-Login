@@ -8355,11 +8355,18 @@ async def _fetch_all_devices_flat() -> list[dict]:
     return all_devs
 
 
+def _require_reports(user: dict) -> None:
+    role = (user.get("role") or "").lower()
+    modules = user.get("allowed_modules") or []
+    if role == "admin" or "reports" in modules:
+        return
+    raise HTTPException(status_code=403, detail="Not authorized for Reports")
+
+
 @api_router.get("/admin/reports/by-model/models")
 async def reports_by_model_models(current_user: dict = Depends(get_current_user)):
     """Return distinct AED models present across the live device fleet."""
-    if current_user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_reports(current_user)
     devs = await _fetch_all_devices_flat()
     models = sorted({d["model"] for d in devs if d.get("model")})
     return {"models": models, "device_count": len(devs)}
@@ -8368,8 +8375,7 @@ async def reports_by_model_models(current_user: dict = Depends(get_current_user)
 @api_router.get("/admin/reports/by-model/subscribers")
 async def reports_by_model_subscribers(current_user: dict = Depends(get_current_user)):
     """Return distinct subscribers present across the live device fleet for typeahead."""
-    if current_user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_reports(current_user)
     devs = await _fetch_all_devices_flat()
     subs = sorted({d["subscriber"] for d in devs if d.get("subscriber")}, key=lambda s: s.lower())
     return {"subscribers": subs}
@@ -8398,8 +8404,7 @@ async def reports_by_model(
 ):
     """JSON: every AED of the given model, with subscriber, status, B/P expirations.
     Pass model=ALL to get every device across every model (optionally filter by subscriber)."""
-    if current_user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    _require_reports(current_user)
     devs = await _fetch_all_devices_flat()
     rows = _filter_by_model(devs, model, subscriber)
     return {
@@ -8419,8 +8424,9 @@ async def reports_by_model_xlsx(
 ):
     """XLSX download — accepts token via query param so window.location.href works."""
     user_doc = await _decode_token_user(token)
-    if not user_doc or user_doc.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    if not user_doc:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    _require_reports(user_doc)
     devs = await _fetch_all_devices_flat()
     rows = _filter_by_model(devs, model, subscriber)
 

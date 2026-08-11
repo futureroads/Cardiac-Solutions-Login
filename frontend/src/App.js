@@ -205,7 +205,10 @@ function App() {
           <Route
             path="/admin/reports"
             element={
-              isAuthenticated && user?.role === "admin" ?
+              isAuthenticated && (
+                user?.role === "admin" ||
+                (user?.allowed_modules || []).includes("reports")
+              ) ?
                 <Reports /> :
                 <Navigate to="/hub" replace />
             }

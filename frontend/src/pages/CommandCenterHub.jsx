@@ -157,9 +157,8 @@ const ALL_MODULES = [
     status: "LIVE",
     icon: FileSpreadsheet,
     route: "/admin/reports",
-    adminOnly: true,
     description:
-      "Admin-only fleet reporting. Run a By-Model report — every AED of a chosen model, its subscriber, status, and battery / pads expiration. Export to Excel.",
+      "Fleet reporting. Run a By-Model report — every AED of a chosen model (or ALL models filtered by subscriber), its status, and battery / pads expiration. Export to Excel.",
     badgeCount: null,
   },
   {
