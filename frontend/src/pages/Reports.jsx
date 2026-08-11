@@ -238,7 +238,7 @@ export default function Reports() {
 
             <button
               onClick={handleDownload}
-              disabled={!model || !rows || rows.length === 0}
+              disabled={!model || !rows || rows.length === 0 || !search.trim()}
               data-testid="report-download-xlsx-btn"
               className="font-orbitron text-[10px] tracking-widest px-4 py-2 rounded-sm border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-400 disabled:opacity-30 disabled:cursor-not-allowed"
             >
@@ -254,8 +254,8 @@ export default function Reports() {
           )}
         </div>
 
-        {/* Results */}
-        {model && (
+        {/* Results — only shown after a subscriber is picked */}
+        {model && search.trim() && (
           <div className="border border-slate-800 rounded-md bg-slate-900/30">
             <div className="px-4 py-3 border-b border-slate-800 flex flex-wrap items-center gap-3">
               <div className="font-orbitron text-[10px] tracking-widest text-slate-400">
@@ -331,6 +331,12 @@ export default function Reports() {
         {!model && !err && (
           <div className="text-center py-16 text-slate-600 font-orbitron text-[11px] tracking-wider">
             SELECT A MODEL ABOVE TO RUN A REPORT
+          </div>
+        )}
+
+        {model && !search.trim() && !err && (
+          <div className="text-center py-16 text-slate-600 font-orbitron text-[11px] tracking-wider">
+            SELECT A SUBSCRIBER ABOVE TO DISPLAY DEVICES
           </div>
         )}
       </div>
