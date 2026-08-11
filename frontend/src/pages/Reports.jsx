@@ -29,6 +29,7 @@ function StatusBadge({ status }) {
 export default function Reports() {
   const navigate = useNavigate();
   const [models, setModels] = useState([]);
+  const [subscribers, setSubscribers] = useState([]);
   const [model, setModel] = useState("");
   const [rows, setRows] = useState(null);
   const [loadingModels, setLoadingModels] = useState(true);
@@ -43,15 +44,24 @@ export default function Reports() {
     setLoadingModels(true);
     setErr("");
     try {
-      const r = await fetch(`${API}/admin/reports/by-model/models`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}));
-        throw new Error(d.detail || `HTTP ${r.status}`);
+      const [mr, sr] = await Promise.all([
+        fetch(`${API}/admin/reports/by-model/models`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API}/admin/reports/by-model/subscribers`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+      if (!mr.ok) {
+        const d = await mr.json().catch(() => ({}));
+        throw new Error(d.detail || `HTTP ${mr.status}`);
       }
-      const d = await r.json();
-      setModels(d.models || []);
+      const md = await mr.json();
+      setModels(md.models || []);
+      if (sr.ok) {
+        const sd = await sr.json();
+        setSubscribers(sd.subscribers || []);
+      }
     } catch (e) {
       setErr(e.message || "Failed to load models");
     } finally {
@@ -221,9 +231,21 @@ export default function Reports() {
                   placeholder="Subscriber, sentinel ID, site…"
                   data-testid="report-search-input"
                   disabled={!rows}
+                  list="report-subscribers-list"
+                  autoComplete="off"
                   className="w-full bg-slate-950 border border-slate-700 text-slate-200 text-xs pl-8 pr-3 py-2 rounded-sm focus:outline-none focus:border-cyan-500/60 disabled:opacity-50"
                 />
+                <datalist id="report-subscribers-list">
+                  {subscribers.map((s) => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
               </div>
+              {subscribers.length > 0 && (
+                <div className="mt-1 text-[9px] text-slate-600 font-orbitron tracking-wider">
+                  {subscribers.length} SUBSCRIBERS · AUTOCOMPLETE ON
+                </div>
+              )}
             </div>
 
             <button

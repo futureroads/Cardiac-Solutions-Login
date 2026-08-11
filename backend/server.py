@@ -8365,6 +8365,16 @@ async def reports_by_model_models(current_user: dict = Depends(get_current_user)
     return {"models": models, "device_count": len(devs)}
 
 
+@api_router.get("/admin/reports/by-model/subscribers")
+async def reports_by_model_subscribers(current_user: dict = Depends(get_current_user)):
+    """Return distinct subscribers present across the live device fleet for typeahead."""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    devs = await _fetch_all_devices_flat()
+    subs = sorted({d["subscriber"] for d in devs if d.get("subscriber")}, key=lambda s: s.lower())
+    return {"subscribers": subs}
+
+
 def _filter_by_model(devs: list[dict], model: str, subscriber: str = "") -> list[dict]:
     m = (model or "").strip().lower()
     if not m:
