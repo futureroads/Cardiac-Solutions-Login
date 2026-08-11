@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Camera, Loader2, Send, Check, X, ScanLine, MapPin } from "lucide-react";
+import { ArrowLeft, Camera, Loader2, Send, Check, X, ScanLine, MapPin, Plus } from "lucide-react";
 import API_BASE from "@/apiBase";
 
 const API = `${API_BASE}/api`;
@@ -89,6 +89,12 @@ export default function Scan2Link() {
   const [sending, setSending] = useState(false);
   const [flash, setFlash] = useState("");
   const [err, setErr] = useState("");
+  // Inline "add new GA Power location" form
+  const [showNewLoc, setShowNewLoc] = useState(false);
+  const [newAddr, setNewAddr] = useState("");
+  const [newCity, setNewCity] = useState("");
+  const [newZip, setNewZip] = useState("");
+  const [savingLoc, setSavingLoc] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/scan2link/gp-locations`, { headers: { Authorization: `Bearer ${token}` } })
@@ -96,6 +102,35 @@ export default function Scan2Link() {
       .then(d => setGpLocs(d.locations || []))
       .catch(() => {});
   }, [token]);
+
+  const reloadGpLocs = async () => {
+    try {
+      const r = await fetch(`${API}/scan2link/gp-locations`, { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json();
+      setGpLocs(d.locations || []);
+    } catch { /* ignore */ }
+  };
+
+  const saveNewLocation = async () => {
+    if (!newAddr.trim() || !newCity.trim()) { setErr("Address and City are required."); return; }
+    setSavingLoc(true); setErr("");
+    try {
+      const r = await fetch(`${API}/scan2link/gp-locations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ address: newAddr.trim(), city: newCity.trim(), zip: newZip.trim() }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || "Save failed");
+      await reloadGpLocs();
+      if (d.location?.label) setGpChoice(d.location.label);
+      setShowNewLoc(false);
+      setNewAddr(""); setNewCity(""); setNewZip("");
+      setFlash(d.duplicate ? "Location already exists — selected ✓" : "New GA Power location added ✓");
+      setTimeout(() => setFlash(""), 3000);
+    } catch (e) { setErr(e.message || "Save failed"); }
+    setSavingLoc(false);
+  };
 
   const doLookup = async (s) => {
     if (!s?.trim()) { setAedInfo(null); return; }
@@ -214,11 +249,83 @@ export default function Scan2Link() {
               <MapPin className="w-4 h-4 text-cyan-400" />
               <div className="font-orbitron text-cyan-300 text-sm tracking-widest">GA POWER LOCATION (OPTIONAL)</div>
             </div>
-            <select value={gpChoice} onChange={e => setGpChoice(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700 rounded-sm px-3 py-2 text-[13px] font-mono text-slate-200 mb-2" data-testid="gp-location-select">
-              <option value="">-- pick a location --</option>
-              {gpLocs.map(l => <option key={l.label} value={l.label}>{l.label}</option>)}
-            </select>
-            <input value={gpFree} onChange={e => setGpFree(e.target.value)} placeholder="Or type placement details (e.g., 'Lobby wall by front desk')" className="w-full bg-slate-900/60 border border-slate-700 rounded-sm px-3 py-2 text-[12px] font-mono text-slate-200" data-testid="gp-freetext" />
+            <div className="flex gap-2 mb-2">
+              <select
+                value={gpChoice}
+                onChange={e => setGpChoice(e.target.value)}
+                disabled={showNewLoc}
+                className="flex-1 bg-slate-900/60 border border-slate-700 rounded-sm px-3 py-2 text-[13px] font-mono text-slate-200 disabled:opacity-50"
+                data-testid="gp-location-select"
+              >
+                <option value="">-- pick a location --</option>
+                {gpLocs.map(l => <option key={l.label} value={l.label}>{l.label}</option>)}
+              </select>
+              <button
+                type="button"
+                onClick={() => { setShowNewLoc(v => !v); setGpChoice(""); }}
+                data-testid="gp-new-location-btn"
+                className={`px-3 py-2 rounded-sm text-[11px] font-orbitron tracking-widest flex items-center gap-1 border ${showNewLoc ? "border-red-500/50 text-red-300 bg-red-500/10 hover:bg-red-500/20" : "border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/10"}`}
+              >
+                {showNewLoc ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                {showNewLoc ? "CANCEL" : "NEW"}
+              </button>
+            </div>
+
+            {showNewLoc && (
+              <div className="border border-cyan-500/30 bg-slate-950/60 rounded-sm p-3 mb-2 space-y-2" data-testid="gp-new-location-form">
+                <div className="font-orbitron text-[10px] tracking-widest text-cyan-300 mb-1">ADD NEW GA POWER LOCATION</div>
+                <div>
+                  <label className="block text-[9px] font-orbitron tracking-widest text-slate-500 mb-0.5">ADDRESS</label>
+                  <input
+                    value={newAddr}
+                    onChange={e => setNewAddr(e.target.value)}
+                    placeholder="e.g. 101 GA Power Rd"
+                    className="w-full bg-slate-900/60 border border-slate-700 rounded-sm px-3 py-2 text-[13px] font-mono text-slate-200"
+                    data-testid="gp-new-address"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[9px] font-orbitron tracking-widest text-slate-500 mb-0.5">CITY</label>
+                    <input
+                      value={newCity}
+                      onChange={e => setNewCity(e.target.value)}
+                      placeholder="e.g. Albany"
+                      className="w-full bg-slate-900/60 border border-slate-700 rounded-sm px-3 py-2 text-[13px] font-mono text-slate-200"
+                      data-testid="gp-new-city"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-orbitron tracking-widest text-slate-500 mb-0.5">ZIP CODE</label>
+                    <input
+                      value={newZip}
+                      onChange={e => setNewZip(e.target.value.replace(/[^0-9-]/g, ""))}
+                      placeholder="e.g. 31705"
+                      inputMode="numeric"
+                      className="w-full bg-slate-900/60 border border-slate-700 rounded-sm px-3 py-2 text-[13px] font-mono text-slate-200"
+                      data-testid="gp-new-zip"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={saveNewLocation}
+                  disabled={savingLoc || !newAddr.trim() || !newCity.trim()}
+                  data-testid="gp-new-save-btn"
+                  className="w-full py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-orbitron tracking-widest text-[11px] rounded-sm flex items-center justify-center gap-2 disabled:opacity-40"
+                >
+                  {savingLoc ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  SAVE LOCATION
+                </button>
+              </div>
+            )}
+
+            <input
+              value={gpFree}
+              onChange={e => setGpFree(e.target.value)}
+              placeholder="Or type placement details (e.g., 'Lobby wall by front desk')"
+              className="w-full bg-slate-900/60 border border-slate-700 rounded-sm px-3 py-2 text-[12px] font-mono text-slate-200"
+              data-testid="gp-freetext"
+            />
           </div>
         )}
 

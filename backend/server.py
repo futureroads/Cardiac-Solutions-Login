@@ -10080,6 +10080,65 @@ async def scan2link_gp_locations(current_user: dict = Depends(get_current_user))
     return {"locations": locs}
 
 
+@api_router.post("/scan2link/gp-locations")
+async def scan2link_gp_locations_create(data: dict, current_user: dict = Depends(get_current_user)):
+    """Field-tech creation of a new Georgia Power location when the address is
+    not yet in the map. Stores subscriber=Georgia Power with site=city and
+    building=address so it appears in the dropdown immediately."""
+    _require_scan2link(current_user)
+    address = (data.get("address") or "").strip()
+    city = (data.get("city") or "").strip()
+    zip_code = (data.get("zip") or data.get("zip_code") or "").strip()
+    if not address or not city:
+        raise HTTPException(status_code=400, detail="Address and City are required")
+    clean_address = f"{address}, {city}, GA{(' ' + zip_code) if zip_code else ''}"
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "sentinel_id": f"MANUAL-{uuid.uuid4().hex[:8].upper()}",
+        "location_group": "",
+        "site": city,
+        "building": address,
+        "placement_location": "",
+        "clean_address": clean_address,
+        "latitude": None,
+        "longitude": None,
+        "subscriber": "Georgia Power",
+        "geocode_precision": "MANUAL",
+        "geocode_source": "scan2link",
+        "formatted_address": f"{city}, GA{(' ' + zip_code) if zip_code else ''}",
+        "zip_code": zip_code,
+        "created_by": current_user.get("username", ""),
+        "created_at": now,
+    }
+    # Prevent trivial dupes on same site+building
+    existing = await _db.subscriber_map_locations.find_one({
+        "subscriber": "Georgia Power",
+        "site": city,
+        "building": address,
+    })
+    if existing:
+        return {
+            "ok": True,
+            "duplicate": True,
+            "location": {
+                "site": city,
+                "building": address,
+                "label": f"{city} / {address}",
+                "address": clean_address,
+            },
+        }
+    await _db.subscriber_map_locations.insert_one(doc)
+    return {
+        "ok": True,
+        "location": {
+            "site": city,
+            "building": address,
+            "label": f"{city} / {address}",
+            "address": clean_address,
+        },
+    }
+
+
 @api_router.post("/scan2link/link")
 async def scan2link_link(data: dict, current_user: dict = Depends(get_current_user)):
     """Persist a tracker↔AED link. Upsert keyed on tracker_imei."""
