@@ -8365,11 +8365,17 @@ async def reports_by_model_models(current_user: dict = Depends(get_current_user)
     return {"models": models, "device_count": len(devs)}
 
 
-def _filter_by_model(devs: list[dict], model: str) -> list[dict]:
+def _filter_by_model(devs: list[dict], model: str, subscriber: str = "") -> list[dict]:
     m = (model or "").strip().lower()
     if not m:
         return []
-    out = [d for d in devs if (d.get("model") or "").strip().lower() == m]
+    if m in ("all", "*", "__all__"):
+        out = list(devs)
+    else:
+        out = [d for d in devs if (d.get("model") or "").strip().lower() == m]
+    sub_q = (subscriber or "").strip().lower()
+    if sub_q:
+        out = [d for d in out if sub_q in (d.get("subscriber") or "").lower()]
     out.sort(key=lambda x: ((x.get("subscriber") or "").lower(), (x.get("sentinel_id") or "")))
     return out
 
@@ -8377,15 +8383,18 @@ def _filter_by_model(devs: list[dict], model: str) -> list[dict]:
 @api_router.get("/admin/reports/by-model")
 async def reports_by_model(
     model: str,
+    subscriber: str = "",
     current_user: dict = Depends(get_current_user),
 ):
-    """JSON: every AED of the given model, with subscriber, status, B/P expirations."""
+    """JSON: every AED of the given model, with subscriber, status, B/P expirations.
+    Pass model=ALL to get every device across every model (optionally filter by subscriber)."""
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     devs = await _fetch_all_devices_flat()
-    rows = _filter_by_model(devs, model)
+    rows = _filter_by_model(devs, model, subscriber)
     return {
         "model": model,
+        "subscriber": subscriber,
         "count": len(rows),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "rows": rows,
@@ -8395,6 +8404,7 @@ async def reports_by_model(
 @api_router.get("/admin/reports/by-model.xlsx")
 async def reports_by_model_xlsx(
     model: str,
+    subscriber: str = "",
     token: str = "",
 ):
     """XLSX download — accepts token via query param so window.location.href works."""
@@ -8402,7 +8412,7 @@ async def reports_by_model_xlsx(
     if not user_doc or user_doc.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     devs = await _fetch_all_devices_flat()
-    rows = _filter_by_model(devs, model)
+    rows = _filter_by_model(devs, model, subscriber)
 
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
@@ -8410,17 +8420,21 @@ async def reports_by_model_xlsx(
 
     wb = Workbook()
     ws = wb.active
-    ws.title = (model or "Report")[:31] or "Report"
+    is_all = (model or "").strip().lower() in ("all", "*", "__all__")
+    title_label = "ALL MODELS" if is_all else model
+    if is_all and subscriber:
+        title_label = f"ALL MODELS — {subscriber}"
+    ws.title = (title_label or "Report")[:31] or "Report"
 
-    ws["A1"] = f"AEDs by Model — {model}"
+    ws["A1"] = f"AEDs by Model — {title_label}"
     ws["A1"].font = Font(size=14, bold=True)
-    ws.merge_cells("A1:F1")
+    ws.merge_cells("A1:G1")
     ws["A2"] = f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}   ·   {len(rows)} device(s)"
     ws["A2"].font = Font(size=10, italic=True, color="666666")
-    ws.merge_cells("A2:F2")
+    ws.merge_cells("A2:G2")
 
     headers_row = [
-        "Subscriber", "Sentinel ID", "Site / Building / Placement",
+        "Subscriber", "Sentinel ID", "Model", "Site / Building / Placement",
         "Status", "Battery Expiration", "Pads Expiration",
     ]
     ws.append([])  # row 3 spacer
@@ -8439,13 +8453,14 @@ async def reports_by_model_xlsx(
         ws.append([
             r.get("subscriber") or "",
             r.get("sentinel_id") or "",
+            r.get("model") or "",
             loc,
             r.get("detailed_status") or "",
             r.get("battery_expiration") or "",
             r.get("pad_expiration") or "",
         ])
 
-    widths = [32, 18, 50, 22, 20, 20]
+    widths = [32, 18, 22, 50, 22, 20, 20]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[chr(64 + i)].width = w
     ws.freeze_panes = "A5"
@@ -8454,7 +8469,11 @@ async def reports_by_model_xlsx(
     wb.save(buf)
     buf.seek(0)
     safe_model = re.sub(r"[^A-Za-z0-9._-]+", "-", (model or "report")).strip("-") or "report"
-    filename = f"AED-By-Model-{safe_model}.xlsx"
+    if is_all and subscriber:
+        safe_sub = re.sub(r"[^A-Za-z0-9._-]+", "-", subscriber).strip("-") or "subscriber"
+        filename = f"AED-Fleet-{safe_sub}.xlsx"
+    else:
+        filename = f"AED-By-Model-{safe_model}.xlsx"
     return Response(
         content=buf.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

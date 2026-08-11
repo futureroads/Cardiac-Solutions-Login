@@ -67,7 +67,11 @@ export default function Reports() {
     setLoadingRows(true);
     setErr("");
     try {
-      const r = await fetch(`${API}/admin/reports/by-model?model=${encodeURIComponent(m)}`, {
+      const isAll = m === "__ALL__";
+      const url = isAll
+        ? `${API}/admin/reports/by-model?model=ALL`
+        : `${API}/admin/reports/by-model?model=${encodeURIComponent(m)}`;
+      const r = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!r.ok) {
@@ -104,6 +108,7 @@ export default function Reports() {
         (r.site || "").toLowerCase().includes(q) ||
         (r.building || "").toLowerCase().includes(q) ||
         (r.placement || "").toLowerCase().includes(q) ||
+        (r.model || "").toLowerCase().includes(q) ||
         (r.detailed_status || "").toLowerCase().includes(q)
       );
     });
@@ -111,7 +116,10 @@ export default function Reports() {
 
   const handleDownload = () => {
     if (!model) return;
-    const url = `${API}/admin/reports/by-model.xlsx?model=${encodeURIComponent(model)}&token=${encodeURIComponent(token)}`;
+    const isAll = model === "__ALL__";
+    const url = isAll
+      ? `${API}/admin/reports/by-model.xlsx?model=ALL&subscriber=${encodeURIComponent(search.trim())}&token=${encodeURIComponent(token)}`
+      : `${API}/admin/reports/by-model.xlsx?model=${encodeURIComponent(model)}&token=${encodeURIComponent(token)}`;
     window.location.href = url;
   };
 
@@ -184,6 +192,7 @@ export default function Reports() {
                 className="w-full bg-slate-950 border border-slate-700 text-cyan-200 text-sm font-orbitron px-3 py-2 rounded-sm focus:outline-none focus:border-cyan-500/60"
               >
                 <option value="">— Select a model —</option>
+                <option value="__ALL__">ALL MODELS (filter by Subscriber)</option>
                 {models.map((m) => (
                   <option key={m} value={m}>
                     {m}
@@ -191,7 +200,11 @@ export default function Reports() {
                 ))}
               </select>
               <div className="mt-1 text-[9px] text-slate-600 font-orbitron tracking-wider">
-                {loadingModels ? "LOADING MODELS…" : `${models.length} MODEL${models.length === 1 ? "" : "S"} ACROSS LIVE FLEET`}
+                {loadingModels
+                  ? "LOADING MODELS…"
+                  : model === "__ALL__"
+                    ? "ALL MODELS — TYPE A SUBSCRIBER NAME TO FILTER"
+                    : `${models.length} MODEL${models.length === 1 ? "" : "S"} ACROSS LIVE FLEET`}
               </div>
             </div>
 
@@ -266,6 +279,9 @@ export default function Reports() {
                     <tr className="font-orbitron text-[9px] tracking-widest text-slate-500">
                       <th className="text-left px-4 py-2.5">SUBSCRIBER</th>
                       <th className="text-left px-4 py-2.5">SENTINEL ID</th>
+                      {model === "__ALL__" && (
+                        <th className="text-left px-4 py-2.5">MODEL</th>
+                      )}
                       <th className="text-left px-4 py-2.5">LOCATION</th>
                       <th className="text-left px-4 py-2.5">STATUS</th>
                       <th className="text-left px-4 py-2.5">BATTERY EXP</th>
@@ -280,6 +296,9 @@ export default function Reports() {
                       >
                         <td className="px-4 py-2 text-slate-200">{r.subscriber || "—"}</td>
                         <td className="px-4 py-2 text-cyan-300 font-mono text-[11px]">{r.sentinel_id || "—"}</td>
+                        {model === "__ALL__" && (
+                          <td className="px-4 py-2 text-slate-300 text-[11px]">{r.model || "—"}</td>
+                        )}
                         <td className="px-4 py-2 text-slate-400 max-w-[360px]">
                           {[r.site, r.building, r.placement].filter(Boolean).join(" / ") || "—"}
                         </td>

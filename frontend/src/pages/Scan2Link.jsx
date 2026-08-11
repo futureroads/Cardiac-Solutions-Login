@@ -8,37 +8,57 @@ const API = `${API_BASE}/api`;
 function ScannerModal({ open, onDetected, onClose, hint }) {
   const divId = useRef(`qr-reader-${Math.random().toString(36).slice(2)}`);
   const scannerRef = useRef(null);
+  // Stable ref so useEffect doesn't restart the camera every parent re-render.
+  const onDetectedRef = useRef(onDetected);
+  useEffect(() => { onDetectedRef.current = onDetected; }, [onDetected]);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    (async () => {
-      const { Html5Qrcode } = await import("html5-qrcode");
-      if (cancelled) return;
-      const scanner = new Html5Qrcode(divId.current);
-      scannerRef.current = scanner;
+    let started = false;
+
+    const cleanup = () => {
+      const s = scannerRef.current;
+      scannerRef.current = null;
+      if (!s) return;
+      // Only call stop() if we successfully started; guard against double-stop.
       try {
+        if (started) {
+          s.stop().then(() => { try { s.clear(); } catch { /* ignore */ } }).catch(() => {});
+        } else {
+          try { s.clear(); } catch { /* ignore */ }
+        }
+      } catch { /* ignore */ }
+    };
+
+    (async () => {
+      try {
+        const { Html5Qrcode } = await import("html5-qrcode");
+        if (cancelled) return;
+        const scanner = new Html5Qrcode(divId.current);
+        scannerRef.current = scanner;
         await scanner.start(
           { facingMode: "environment" },
           { fps: 10, qrbox: { width: 260, height: 160 } },
           (decoded) => {
-            onDetected(decoded);
-            scanner.stop().then(() => scanner.clear()).catch(() => {});
+            // Fire the callback ONCE — parent's onClose will set open=false and
+            // this effect's cleanup will stop the camera. Don't stop here.
+            if (!scannerRef.current) return;
+            const cb = onDetectedRef.current;
+            scannerRef.current = null; // block further hits
+            try { cb && cb(decoded); } catch { /* ignore */ }
           },
           () => {}
         );
+        started = true;
+        if (cancelled) cleanup();
       } catch (e) {
         console.error("camera start failed:", e);
       }
     })();
-    return () => {
-      cancelled = true;
-      if (scannerRef.current) {
-        scannerRef.current.stop().then(() => scannerRef.current.clear()).catch(() => {});
-        scannerRef.current = null;
-      }
-    };
-  }, [open, onDetected]);
+
+    return cleanup;
+  }, [open]);
 
   if (!open) return null;
   return (
